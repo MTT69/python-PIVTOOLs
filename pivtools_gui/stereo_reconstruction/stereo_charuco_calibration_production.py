@@ -17,13 +17,13 @@ from loguru import logger
 
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.image_handling.calibration_loader import get_calibration_frame_count
+from pivtools_gui.stereo_reconstruction.stereo_calibration_base import (
+    BaseStereoCalibrator,
+)
 
 from .calibration_io import (
-    ARUCO_DICT_MAP,
     create_charuco_detector,
 )
-from pivtools_gui.stereo_reconstruction.stereo_calibration_base import BaseStereoCalibrator
-
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup (CLI mode)
@@ -92,12 +92,16 @@ def apply_cli_settings_to_config() -> Config:
         # Need to save and reload first so paths are correct for detection
         config.save()
         config = reload_config()
-        detected_count = get_calibration_frame_count(camera=CAMERA_PAIR[0], config=config)
+        detected_count = get_calibration_frame_count(
+            camera=CAMERA_PAIR[0], config=config
+        )
         if detected_count > 0:
             config.data["calibration"]["num_images"] = detected_count
             logger.info(f"Auto-detected {detected_count} calibration images")
         else:
-            logger.warning("Could not auto-detect calibration image count, using default")
+            logger.warning(
+                "Could not auto-detect calibration image count, using default"
+            )
 
     # Stereo-specific params
     config.data["calibration"]["stereo"]["camera_pair"] = CAMERA_PAIR
@@ -112,7 +116,7 @@ def apply_cli_settings_to_config() -> Config:
 
     # Save to disk so centralized loader picks up changes
     config.save()
-    logger.info(f"Updated config.yaml with CLI settings")
+    logger.info("Updated config.yaml with CLI settings")
 
     # Reload to ensure fresh state
     return reload_config()
@@ -186,17 +190,17 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         # Get ChArUco params from config.charuco_calibration if available
         if config is not None:
             charuco_cfg = config.charuco_calibration
-            squares_h = charuco_cfg.get('squares_h', squares_h)
-            squares_v = charuco_cfg.get('squares_v', squares_v)
-            square_size = charuco_cfg.get('square_size', square_size)
-            marker_ratio = charuco_cfg.get('marker_ratio', marker_ratio)
-            aruco_dict = charuco_cfg.get('aruco_dict', aruco_dict)
-            min_corners = charuco_cfg.get('min_corners', min_corners)
+            squares_h = charuco_cfg.get("squares_h", squares_h)
+            squares_v = charuco_cfg.get("squares_v", squares_v)
+            square_size = charuco_cfg.get("square_size", square_size)
+            marker_ratio = charuco_cfg.get("marker_ratio", marker_ratio)
+            aruco_dict = charuco_cfg.get("aruco_dict", aruco_dict)
+            min_corners = charuco_cfg.get("min_corners", min_corners)
             # Get stereo-specific params from stereo_charuco config
             stereo_cfg = config.stereo_charuco_calibration
-            dt = stereo_cfg.get('dt', dt)
-            datum_camera = stereo_cfg.get('datum_camera', datum_camera)
-            datum_frame = stereo_cfg.get('datum_frame', datum_frame)
+            dt = stereo_cfg.get("dt", dt)
+            datum_camera = stereo_cfg.get("datum_camera", datum_camera)
+            datum_frame = stereo_cfg.get("datum_frame", datum_frame)
 
         self.squares_h = squares_h
         self.squares_v = squares_v
@@ -218,7 +222,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             dt=dt,
         )
 
-    def _create_detector(self) -> Tuple[cv2.aruco.CharucoBoard, cv2.aruco.CharucoDetector]:
+    def _create_detector(
+        self,
+    ) -> Tuple[cv2.aruco.CharucoBoard, cv2.aruco.CharucoDetector]:
         """Create ChArUco board and detector.
 
         Returns
@@ -227,13 +233,18 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             (CharucoBoard, CharucoDetector)
         """
         return create_charuco_detector(
-            self.squares_h, self.squares_v, self.square_size,
-            self.marker_ratio, self.aruco_dict_name,
+            self.squares_h,
+            self.squares_v,
+            self.square_size,
+            self.marker_ratio,
+            self.aruco_dict_name,
         )
 
     def detect_pattern(
         self, image: np.ndarray
-    ) -> Tuple[bool, Optional[np.ndarray], Optional[np.ndarray], Optional[Dict[str, Any]]]:
+    ) -> Tuple[
+        bool, Optional[np.ndarray], Optional[np.ndarray], Optional[Dict[str, Any]]
+    ]:
         """Detect ChArUco corners in image.
 
         Parameters
@@ -262,7 +273,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         if gray.dtype != np.uint8:
             gmin, gmax = float(gray.min()), float(gray.max())
             if gmax > gmin:
-                gray = ((gray.astype(np.float64) - gmin) / (gmax - gmin) * 255).astype(np.uint8)
+                gray = ((gray.astype(np.float64) - gmin) / (gmax - gmin) * 255).astype(
+                    np.uint8
+                )
             else:
                 gray = np.zeros(gray.shape, dtype=np.uint8)
 
@@ -271,12 +284,12 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
 
         # Build info dict for figure generation
         info = {
-            'board_params': {
-                'squares_h': self.squares_h,
-                'squares_v': self.squares_v,
-                'square_size': self.square_size,
-                'square_size_mm': self.square_size * 1000,
-                'marker_ratio': self.marker_ratio,
+            "board_params": {
+                "squares_h": self.squares_h,
+                "squares_v": self.squares_v,
+                "square_size": self.square_size,
+                "square_size_mm": self.square_size * 1000,
+                "marker_ratio": self.marker_ratio,
             },
         }
 
@@ -312,16 +325,16 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
             Pattern parameters
         """
         return {
-            'pattern_type': 'charuco',
-            'squares_h': self.squares_h,
-            'squares_v': self.squares_v,
-            'square_size': self.square_size,
-            'square_size_mm': self.square_size * 1000,
-            'marker_ratio': self.marker_ratio,
-            'aruco_dict': self.aruco_dict_name,
-            'min_corners': self.min_corners,
-            'datum_camera': self.datum_camera,
-            'datum_frame': self.datum_frame,
+            "pattern_type": "charuco",
+            "squares_h": self.squares_h,
+            "squares_v": self.squares_v,
+            "square_size": self.square_size,
+            "square_size_mm": self.square_size * 1000,
+            "marker_ratio": self.marker_ratio,
+            "aruco_dict": self.aruco_dict_name,
+            "min_corners": self.min_corners,
+            "datum_camera": self.datum_camera,
+            "datum_frame": self.datum_frame,
         }
 
     def _match_object_points(
@@ -362,7 +375,9 @@ class StereoCharucoCalibrator(BaseStereoCalibrator):
         common_ids = np.intersect1d(ids1, ids2)
 
         if len(common_ids) < self.min_corners:
-            logger.warning(f"Only {len(common_ids)} common corners found (need {self.min_corners})")
+            logger.warning(
+                f"Only {len(common_ids)} common corners found (need {self.min_corners})"
+            )
             return None
 
         # Get indices of common IDs in each detection
@@ -384,7 +399,9 @@ def main():
     """
     if USE_CONFIG_DIRECTLY:
         # Load settings directly from existing config.yaml
-        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        logger.info(
+            "Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)"
+        )
         config = get_config()
     else:
         # Apply CLI settings to config.yaml so centralized loaders work correctly

@@ -14,7 +14,6 @@ import math
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pytest
 
@@ -29,9 +28,9 @@ from pivtools_gui.stereo_reconstruction.self_calibration import (
 # Constants
 # ---------------------------------------------------------------------------
 
-TRUE_Z_OFFSET = 0.3       # mm
-TRUE_TILT_X = 0.002       # rad
-TRUE_TILT_Y = -0.001      # rad
+TRUE_Z_OFFSET = 0.3  # mm
+TRUE_TILT_X = 0.002  # rad
+TRUE_TILT_Y = -0.001  # rad
 STEREO_ANGLE_DEG = 30.0
 N_IMAGE_PAIRS = 20
 N_PARTICLES = 2000
@@ -50,6 +49,7 @@ CONVERGENCE_THRESHOLD = 0.1  # px
 # Synthetic camera + particle generation
 # ---------------------------------------------------------------------------
 
+
 def create_stereo_cameras(
     stereo_angle_deg=STEREO_ANGLE_DEG,
     focal_length_px=FOCAL_LENGTH_PX,
@@ -60,11 +60,13 @@ def create_stereo_cameras(
     w, h = image_size
     theta = math.radians(stereo_angle_deg / 2.0)
 
-    K = np.array([
-        [focal_length_px, 0.0, w / 2.0],
-        [0.0, focal_length_px, h / 2.0],
-        [0.0, 0.0, 1.0],
-    ])
+    K = np.array(
+        [
+            [focal_length_px, 0.0, w / 2.0],
+            [0.0, focal_length_px, h / 2.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
     dist = np.zeros(5)
 
     z_cam = baseline_mm / (2.0 * math.tan(theta))
@@ -91,8 +93,12 @@ def create_stereo_cameras(
     t1 = (-R1 @ cam1_pos).reshape(3, 1)
     t2 = (-R2 @ cam2_pos).reshape(3, 1)
 
-    cam1 = PinholeCamera(K=K.copy(), dist=dist.copy(), R=R1, t=t1, image_size=image_size)
-    cam2 = PinholeCamera(K=K.copy(), dist=dist.copy(), R=R2, t=t2, image_size=image_size)
+    cam1 = PinholeCamera(
+        K=K.copy(), dist=dist.copy(), R=R1, t=t1, image_size=image_size
+    )
+    cam2 = PinholeCamera(
+        K=K.copy(), dist=dist.copy(), R=R2, t=t2, image_size=image_size
+    )
     return cam1, cam2
 
 
@@ -104,7 +110,9 @@ def generate_particles(n_particles, x_range, y_range, z_offset, tilt_x, tilt_y):
     return np.column_stack([x, y, z])
 
 
-def render_particles(particles, camera, particle_sigma=PARTICLE_SIGMA, intensity=PARTICLE_INTENSITY):
+def render_particles(
+    particles, camera, particle_sigma=PARTICLE_SIGMA, intensity=PARTICLE_INTENSITY
+):
     """Render particles as Gaussian spots on an image."""
     w, h = camera.image_size
     image = np.zeros((h, w), dtype=np.float32)
@@ -127,10 +135,11 @@ def render_particles(particles, camera, particle_sigma=PARTICLE_SIGMA, intensity
         dx = px - ix
         dy = py - iy
         kernel = intensity * np.exp(
-            -((kxx - dx) ** 2 + (kyy - dy) ** 2) / (2 * particle_sigma ** 2)
+            -((kxx - dx) ** 2 + (kyy - dy) ** 2) / (2 * particle_sigma**2)
         )
-        image[iy - half_size:iy + half_size + 1,
-              ix - half_size:ix + half_size + 1] += kernel
+        image[
+            iy - half_size : iy + half_size + 1, ix - half_size : ix + half_size + 1
+        ] += kernel
 
     noise = np.random.normal(0, 5, image.shape).astype(np.float32)
     image = np.clip(image + noise, 0, 255)
@@ -140,6 +149,7 @@ def render_particles(particles, camera, particle_sigma=PARTICLE_SIGMA, intensity
 # ---------------------------------------------------------------------------
 # Fixtures (module-scoped for expensive computation)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def stereo_cameras():
@@ -177,8 +187,10 @@ def self_calibration_result(stereo_cameras, synthetic_images):
     images_cam1, images_cam2 = synthetic_images
 
     return run_self_calibration(
-        cam1, cam2,
-        images_cam1, images_cam2,
+        cam1,
+        cam2,
+        images_cam1,
+        images_cam2,
         world_bounds=WORLD_BOUNDS,
         window_size=WINDOW_SIZE,
         overlap=OVERLAP,
@@ -191,6 +203,7 @@ def self_calibration_result(stereo_cameras, synthetic_images):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_self_calibration_converges(self_calibration_result):
     """Self-calibration should converge."""
@@ -225,14 +238,15 @@ def test_rms_disparity_reduced(self_calibration_result):
 
 def test_iterations_reasonable(self_calibration_result):
     """Should converge in < 10 iterations."""
-    assert self_calibration_result.n_iterations < 10, (
-        f"Took {self_calibration_result.n_iterations} iterations (expected < 10)"
-    )
+    assert (
+        self_calibration_result.n_iterations < 10
+    ), f"Took {self_calibration_result.n_iterations} iterations (expected < 10)"
 
 
 # ---------------------------------------------------------------------------
 # Diagnostic figures (gated by --make-figures)
 # ---------------------------------------------------------------------------
+
 
 class TestDiagnosticFigures:
     """Generates diagnostic figures when --make-figures is passed."""
@@ -242,6 +256,7 @@ class TestDiagnosticFigures:
             pytest.skip("Pass --make-figures to generate diagnostic figures")
 
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -255,7 +270,12 @@ class TestDiagnosticFigures:
         rms_vals = [h.rms_disparity for h in hist]
         ax = axes[0, 0]
         ax.semilogy(iters, rms_vals, "bo-", linewidth=2, markersize=8)
-        ax.axhline(CONVERGENCE_THRESHOLD, color="r", linestyle="--", label=f"Threshold ({CONVERGENCE_THRESHOLD} px)")
+        ax.axhline(
+            CONVERGENCE_THRESHOLD,
+            color="r",
+            linestyle="--",
+            label=f"Threshold ({CONVERGENCE_THRESHOLD} px)",
+        )
         ax.set_xlabel("Iteration")
         ax.set_ylabel("RMS disparity (px)")
         ax.set_title("RMS Disparity Convergence")
@@ -266,7 +286,9 @@ class TestDiagnosticFigures:
         z_vals = [h.cumulative_z for h in hist]
         ax = axes[0, 1]
         ax.plot(iters, z_vals, "rs-", linewidth=2, markersize=8)
-        ax.axhline(TRUE_Z_OFFSET, color="k", linestyle="--", label=f"True ({TRUE_Z_OFFSET} mm)")
+        ax.axhline(
+            TRUE_Z_OFFSET, color="k", linestyle="--", label=f"True ({TRUE_Z_OFFSET} mm)"
+        )
         ax.set_xlabel("Iteration")
         ax.set_ylabel("Z offset (mm)")
         ax.set_title("Z Offset Recovery")
@@ -277,8 +299,12 @@ class TestDiagnosticFigures:
         tx_vals = [math.degrees(h.cumulative_tilt_x) for h in hist]
         ax = axes[1, 0]
         ax.plot(iters, tx_vals, "g^-", linewidth=2, markersize=8)
-        ax.axhline(math.degrees(TRUE_TILT_X), color="k", linestyle="--",
-                    label=f"True ({math.degrees(TRUE_TILT_X):.4f} deg)")
+        ax.axhline(
+            math.degrees(TRUE_TILT_X),
+            color="k",
+            linestyle="--",
+            label=f"True ({math.degrees(TRUE_TILT_X):.4f} deg)",
+        )
         ax.set_xlabel("Iteration")
         ax.set_ylabel("Tilt X (deg)")
         ax.set_title("Tilt X Recovery")
@@ -290,14 +316,24 @@ class TestDiagnosticFigures:
         ax.axis("off")
         rows = [
             ["Parameter", "True", "Recovered", "Error"],
-            ["Z (mm)", f"{TRUE_Z_OFFSET:.4f}", f"{result.z_offset:.4f}",
-             f"{abs(result.z_offset - TRUE_Z_OFFSET):.4f}"],
-            ["Tilt X (deg)", f"{math.degrees(TRUE_TILT_X):.4f}",
-             f"{math.degrees(result.tilt_x):.4f}",
-             f"{abs(math.degrees(result.tilt_x - TRUE_TILT_X)):.4f}"],
-            ["Tilt Y (deg)", f"{math.degrees(TRUE_TILT_Y):.4f}",
-             f"{math.degrees(result.tilt_y):.4f}",
-             f"{abs(math.degrees(result.tilt_y - TRUE_TILT_Y)):.4f}"],
+            [
+                "Z (mm)",
+                f"{TRUE_Z_OFFSET:.4f}",
+                f"{result.z_offset:.4f}",
+                f"{abs(result.z_offset - TRUE_Z_OFFSET):.4f}",
+            ],
+            [
+                "Tilt X (deg)",
+                f"{math.degrees(TRUE_TILT_X):.4f}",
+                f"{math.degrees(result.tilt_x):.4f}",
+                f"{abs(math.degrees(result.tilt_x - TRUE_TILT_X)):.4f}",
+            ],
+            [
+                "Tilt Y (deg)",
+                f"{math.degrees(TRUE_TILT_Y):.4f}",
+                f"{math.degrees(result.tilt_y):.4f}",
+                f"{abs(math.degrees(result.tilt_y - TRUE_TILT_Y)):.4f}",
+            ],
             ["RMS (px)", "", f"{result.final_rms_disparity:.4f}", ""],
             ["Iterations", "", f"{result.n_iterations}", ""],
         ]

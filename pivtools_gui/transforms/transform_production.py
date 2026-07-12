@@ -13,7 +13,6 @@ Pattern matches: planar_calibration_production.py
 """
 
 import logging
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -21,19 +20,16 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
-from pivtools_core.config import Config, get_config, reload_config
-
-from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
+from pivtools_core.config import Config, get_config
+from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 from .transform_operations import (
-    VALID_TRANSFORMATIONS,
-    apply_transformation_to_piv_result,
     apply_transformation_to_coordinates,
+    apply_transformation_to_piv_result,
     coords_to_structured_array,
     load_mat_for_transform,
     save_mat_from_transform,
     simplify_transformations,
-    validate_transformations,
 )
 
 # ===================== CONFIGURATION =====================
@@ -56,16 +52,24 @@ USE_MERGED = False
 USE_CONFIG_DIRECTLY = True
 
 # LOGGING SETUP
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
 # ===================== HELPER FUNCTIONS =====================
 
 
-def get_data_dir(base_dir: Path, num_frame_pairs: int, camera: int,
-                 type_name: str, use_merged: bool, use_stereo: bool = False,
-                 stereo_camera_pair: Optional[tuple] = None) -> Path:
+def get_data_dir(
+    base_dir: Path,
+    num_frame_pairs: int,
+    camera: int,
+    type_name: str,
+    use_merged: bool,
+    use_stereo: bool = False,
+    stereo_camera_pair: Optional[tuple] = None,
+) -> Path:
     """Build path to calibrated PIV data directory."""
     num_str = str(num_frame_pairs)
     if use_stereo:
@@ -74,7 +78,14 @@ def get_data_dir(base_dir: Path, num_frame_pairs: int, camera: int,
         cam_pair_str = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
         return base_dir / "stereo_calibrated" / num_str / cam_pair_str / type_name
     elif use_merged:
-        return base_dir / "calibrated_piv" / num_str / "merged" / f"Cam{camera}" / type_name
+        return (
+            base_dir
+            / "calibrated_piv"
+            / num_str
+            / "merged"
+            / f"Cam{camera}"
+            / type_name
+        )
     else:
         return base_dir / "calibrated_piv" / num_str / f"Cam{camera}" / type_name
 
@@ -221,7 +232,9 @@ class TransformProcessor:
                     for trans in transforms:
                         if isinstance(coords, np.ndarray) and coords.dtype == object:
                             for run_idx in range(coords.size):
-                                apply_transformation_to_coordinates(coords, run_idx + 1, trans)
+                                apply_transformation_to_coordinates(
+                                    coords, run_idx + 1, trans
+                                )
                         else:
                             apply_transformation_to_coordinates(coords, 1, trans)
                     coords_struct = coords_to_structured_array(coords)
@@ -231,7 +244,9 @@ class TransformProcessor:
             # Transform vector files in parallel
             num_workers = get_max_workers(len(vector_files))
 
-            with ProcessPoolExecutor(max_workers=num_workers, initializer=worker_initializer) as executor:
+            with ProcessPoolExecutor(
+                max_workers=num_workers, initializer=worker_initializer
+            ) as executor:
                 futures = {}
                 for mat_file in vector_files:
                     future = executor.submit(
@@ -247,12 +262,18 @@ class TransformProcessor:
                         if success:
                             processed_files += 1
                         if progress_callback:
-                            progress = int(processed_files / total_files * 100) if total_files > 0 else 100
-                            progress_callback({
-                                "progress": progress,
-                                "processed_files": processed_files,
-                                "total_files": total_files,
-                            })
+                            progress = (
+                                int(processed_files / total_files * 100)
+                                if total_files > 0
+                                else 100
+                            )
+                            progress_callback(
+                                {
+                                    "progress": progress,
+                                    "processed_files": processed_files,
+                                    "total_files": total_files,
+                                }
+                            )
                     except Exception as e:
                         logger.error(f"Error transforming {futures[future]}: {e}")
 
@@ -290,12 +311,14 @@ class TransformProcessor:
             results[camera] = result
 
             if progress_callback:
-                progress_callback({
-                    "progress": int((idx + 1) / total_cameras * 100),
-                    "current_camera": camera,
-                    "processed_cameras": idx + 1,
-                    "total_cameras": total_cameras,
-                })
+                progress_callback(
+                    {
+                        "progress": int((idx + 1) / total_cameras * 100),
+                        "current_camera": camera,
+                        "processed_cameras": idx + 1,
+                        "total_cameras": total_cameras,
+                    }
+                )
 
         return {
             "success": all(r.get("success", False) for r in results.values()),
@@ -305,8 +328,10 @@ class TransformProcessor:
 
 def _transform_vector_file_worker(mat_file_path: str, transforms: List[str]) -> bool:
     """Worker function for parallel vector file transformation."""
-    from scipy.io import loadmat, savemat
     import warnings
+
+    from scipy.io import loadmat, savemat
+
     # Import inside worker for multiprocessing compatibility
     from pivtools_core.vector_loading import is_run_valid
 
@@ -328,11 +353,15 @@ def _transform_vector_file_worker(mat_file_path: str, transforms: List[str]) -> 
         for run_idx in range(piv_result.size):
             pr = piv_result[run_idx]
             try:
-                if is_run_valid(pr, fields=("ux",), require_2d=False, reject_all_nan=True):
+                if is_run_valid(
+                    pr, fields=("ux",), require_2d=False, reject_all_nan=True
+                ):
                     for trans in transforms:
                         apply_transformation_to_piv_result(pr, trans)
             except Exception as e:
-                logger.warning(f"Error validating run {run_idx + 1} in {mat_file_path}: {e}")
+                logger.warning(
+                    f"Error validating run {run_idx + 1} in {mat_file_path}: {e}"
+                )
                 continue
 
         # Remove any legacy pending_transformations field
@@ -400,7 +429,9 @@ if __name__ == "__main__":
 
             if result["success"]:
                 for cam, res in result["camera_results"].items():
-                    logger.info(f"  Camera {cam}: {res.get('transformed_files', 0)} files")
+                    logger.info(
+                        f"  Camera {cam}: {res.get('transformed_files', 0)} files"
+                    )
             else:
                 logger.error(f"Path {path_idx + 1}: FAILED")
                 for cam, res in result["camera_results"].items():
@@ -453,7 +484,9 @@ if __name__ == "__main__":
         if result["success"]:
             logger.info("Transformation completed successfully")
             for cam, res in result["camera_results"].items():
-                logger.info(f"  Camera {cam}: {res.get('transformed_files', 0)} files in {res.get('elapsed_time', 0):.2f}s")
+                logger.info(
+                    f"  Camera {cam}: {res.get('transformed_files', 0)} files in {res.get('elapsed_time', 0):.2f}s"
+                )
             logger.info("")
             logger.info("NOTE: Statistics files were NOT transformed.")
             logger.info("Please recalculate statistics if needed.")

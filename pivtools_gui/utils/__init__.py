@@ -35,7 +35,6 @@ def camera_number(camera: Union[str, int]) -> int:
     return cam_int
 
 
-
 def numpy_to_png_base64(arr: np.ndarray, compress_level: int = 1) -> str:
     """Convert a numpy array (uint8 or convertible) to a base64 PNG string.
 
@@ -89,7 +88,14 @@ def get_display_contrast_stats(arr: np.ndarray) -> dict:
     return {"vmin_pct": round(vmin_pct, 2), "vmax_pct": round(vmax_pct, 2)}
 
 
-def numpy_to_base64(arr: np.ndarray, format: str = "png", compress_level: int = 1, jpeg_quality: int = 85, vmin: float = None, vmax: float = None) -> str:
+def numpy_to_base64(
+    arr: np.ndarray,
+    format: str = "png",
+    compress_level: int = 1,
+    jpeg_quality: int = 85,
+    vmin: float = None,
+    vmax: float = None,
+) -> str:
     """Convert a numpy array to a base64 encoded image string.
 
     For high-bit-depth images (12/16-bit), applies a sqrt transform before

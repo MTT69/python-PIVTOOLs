@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
@@ -46,10 +46,10 @@ from .detection.stepped_levels import SteppedBoardSpec, stitch_levels_pose_local
 from .record import MonoRecord, StereoRecord, WorldFrame, geometry_meta
 from .stereo_model import camera_z_sign, compose_stereo
 
-
 # ---------------------------------------------------------------------------
 # Fiducial -> absolute grid index assignment (datum pose only) — ported verbatim
 # ---------------------------------------------------------------------------
+
 
 def _pixel_to_grid_index(pixel_px: np.ndarray, H: np.ndarray) -> np.ndarray:
     """Map a pixel position to fractional grid indices using homography inverse."""
@@ -59,16 +59,18 @@ def _pixel_to_grid_index(pixel_px: np.ndarray, H: np.ndarray) -> np.ndarray:
     return (q[:2] / q[2]).astype(np.float32)
 
 
-def _inject_click_into_level(level_data: dict, click_px: np.ndarray) -> Tuple[dict, int]:
+def _inject_click_into_level(
+    level_data: dict, click_px: np.ndarray
+) -> Tuple[dict, int]:
     """Inject a fiducial click into a level's detected grid.
 
     Uses the homography to determine the grid index from the clicked pixel
     position. If a detected dot already exists at that grid index, returns it.
     Otherwise injects the click as a new point.
     """
-    centers = level_data['centers']
-    gi = level_data['grid_indices']
-    H = level_data['H']
+    centers = level_data["centers"]
+    gi = level_data["grid_indices"]
+    H = level_data["H"]
 
     fractional_gi = _pixel_to_grid_index(click_px, H)
     click_gi = np.round(fractional_gi).astype(np.int32)
@@ -80,8 +82,8 @@ def _inject_click_into_level(level_data: dict, click_px: np.ndarray) -> Tuple[di
     new_centers = np.vstack([centers, click_px.reshape(1, 2)])
     new_gi = np.vstack([gi, click_gi.reshape(1, 2)])
     updated = dict(level_data)
-    updated['centers'] = new_centers
-    updated['grid_indices'] = new_gi
+    updated["centers"] = new_centers
+    updated["grid_indices"] = new_gi
     return updated, len(new_centers) - 1
 
 
@@ -108,15 +110,15 @@ def assign_absolute_grid_indices(
         {'centers', 'grid_indices'}; plus 'orientation'
         {swap_axes, col_sign, row_sign} and '_origin_on_level' ('A' or 'B').
     """
-    origin_px = np.array(fiducials['origin'], dtype=np.float32)
-    x_axis_px = np.array(fiducials['x_axis'], dtype=np.float32)
-    y_axis_px = np.array(fiducials['y_axis'], dtype=np.float32)
+    origin_px = np.array(fiducials["origin"], dtype=np.float32)
+    x_axis_px = np.array(fiducials["x_axis"], dtype=np.float32)
+    y_axis_px = np.array(fiducials["y_axis"], dtype=np.float32)
 
     # Determine which level the clicked dot belongs to using homography residual.
-    frac_A = _pixel_to_grid_index(origin_px, level_A_data['H'])
+    frac_A = _pixel_to_grid_index(origin_px, level_A_data["H"])
     res_A = float(np.max(np.abs(frac_A - np.round(frac_A))))
     if level_B_data is not None:
-        frac_B = _pixel_to_grid_index(origin_px, level_B_data['H'])
+        frac_B = _pixel_to_grid_index(origin_px, level_B_data["H"])
         res_B = float(np.max(np.abs(frac_B - np.round(frac_B))))
     else:
         res_B = np.inf
@@ -138,10 +140,11 @@ def assign_absolute_grid_indices(
 
     # Inject +X and +Y clicks into whichever level they belong to.
     for click_px in [x_axis_px, y_axis_px]:
+
         def grid_residual_for_level(ld, point):
-            if ld is None or 'H' not in ld:
+            if ld is None or "H" not in ld:
                 return np.inf
-            frac_gi = _pixel_to_grid_index(point, ld['H'])
+            frac_gi = _pixel_to_grid_index(point, ld["H"])
             return float(np.max(np.abs(frac_gi - np.round(frac_gi))))
 
         res_origin = grid_residual_for_level(origin_data, click_px)
@@ -151,13 +154,13 @@ def assign_absolute_grid_indices(
         elif other_data is not None:
             other_data, _ = _inject_click_into_level(other_data, click_px)
 
-    origin_bfs = origin_data['grid_indices'][origin_idx_in_level].copy()
+    origin_bfs = origin_data["grid_indices"][origin_idx_in_level].copy()
 
     # Determine axis orientation from fiducial vectors vs BFS vectors.
     fid_x_vec = x_axis_px - origin_px
     fid_y_vec = y_axis_px - origin_px
-    bfs_vec1 = origin_data['vec1']
-    bfs_vec2 = origin_data['vec2']
+    bfs_vec1 = origin_data["vec1"]
+    bfs_vec2 = origin_data["vec2"]
 
     def alignment(a, b):
         na, nb = np.linalg.norm(a), np.linalg.norm(b)
@@ -189,19 +192,19 @@ def assign_absolute_grid_indices(
         return abs_gi
 
     # Origin level: transform BFS -> absolute (origin = grid (0,0)).
-    abs_gi_origin = transform_indices(origin_data['grid_indices'].copy(), origin_bfs)
+    abs_gi_origin = transform_indices(origin_data["grid_indices"].copy(), origin_bfs)
 
     result = {}
     result[clicked_level] = {
-        'centers': origin_data['centers'].copy(),
-        'grid_indices': abs_gi_origin,
+        "centers": origin_data["centers"].copy(),
+        "grid_indices": abs_gi_origin,
     }
 
     # Other level: BFS + anchor offset.
     other_level = "trough" if clicked_level == "peak" else "peak"
     if other_data is not None:
-        origin_centers = result[clicked_level]['centers']
-        origin_abs_gi = result[clicked_level]['grid_indices']
+        origin_centers = result[clicked_level]["centers"]
+        origin_abs_gi = result[clicked_level]["grid_indices"]
         origin_tree = cKDTree(origin_centers)
 
         spacing = board.dot_spacing_mm
@@ -210,11 +213,11 @@ def assign_absolute_grid_indices(
         origin_phys_x = origin_abs_gi[:, 0].astype(float) * spacing
         origin_phys_y = origin_abs_gi[:, 1].astype(float) * spacing
 
-        other_bfs_gi = other_data['grid_indices'].copy()
+        other_bfs_gi = other_data["grid_indices"].copy()
         dummy_origin = np.array([0, 0], dtype=np.int32)
         oriented_other_gi = transform_indices(other_bfs_gi, dummy_origin)
 
-        other_centers = other_data['centers'].copy()
+        other_centers = other_data["centers"].copy()
         n_other = len(other_centers)
 
         anchor_offsets = []
@@ -251,8 +254,8 @@ def assign_absolute_grid_indices(
             abs_gi_other = oriented_other_gi + abs_offset
 
             result[other_level] = {
-                'centers': other_centers,
-                'grid_indices': abs_gi_other,
+                "centers": other_centers,
+                "grid_indices": abs_gi_other,
             }
         else:
             logger.warning(f"No anchor points found for {other_level} level")
@@ -260,13 +263,13 @@ def assign_absolute_grid_indices(
     # Expose the fiducial-derived orientation so non-datum poses reuse the SAME
     # convention instead of re-deriving it from raw BFS vectors (back-view cameras
     # silently disagree with their datum otherwise, blowing up the intrinsic fit).
-    result['orientation'] = {
-        'swap_axes': bool(swap_axes),
-        'col_sign': int(col_sign),
-        'row_sign': int(row_sign),
+    result["orientation"] = {
+        "swap_axes": bool(swap_axes),
+        "col_sign": int(col_sign),
+        "row_sign": int(row_sign),
     }
     # Which of level_A / level_B the fiducial origin click landed on.
-    result['_origin_on_level'] = 'A' if res_A <= res_B else 'B'
+    result["_origin_on_level"] = "A" if res_A <= res_B else "B"
 
     return result
 
@@ -274,6 +277,7 @@ def assign_absolute_grid_indices(
 # ---------------------------------------------------------------------------
 # Object points + per-level Z / xy-offset — ported verbatim
 # ---------------------------------------------------------------------------
+
 
 def build_object_points(
     grid_indices: np.ndarray, z_mm: float, spacing_mm: float, xy_offset_mm: float = 0.0
@@ -328,14 +332,15 @@ def compute_z_and_offsets(
     cam2_xy_offset = {cam2_clicked_level: 0.0, cam2_other: offset}
 
     return {
-        'Cam1': {'z': cam1_z, 'xy_offset': cam1_xy_offset},
-        'Cam2': {'z': cam2_z, 'xy_offset': cam2_xy_offset},
+        "Cam1": {"z": cam1_z, "xy_offset": cam1_xy_offset},
+        "Cam2": {"z": cam2_z, "xy_offset": cam2_xy_offset},
     }
 
 
 # ---------------------------------------------------------------------------
 # Two-stage pinhole fit — ported verbatim
 # ---------------------------------------------------------------------------
+
 
 def fit_pinhole(
     obj_views: list,
@@ -371,9 +376,9 @@ def fit_pinhole(
         mask = np.abs(obj[:, 2] - z_for_init) < 0.5
         if mask.sum() < 4:
             continue
-        obj_z0 = np.column_stack([
-            obj[mask, 0], obj[mask, 1], np.zeros(mask.sum())
-        ]).astype(np.float32)
+        obj_z0 = np.column_stack(
+            [obj[mask, 0], obj[mask, 1], np.zeros(mask.sum())]
+        ).astype(np.float32)
         init_objs.append(obj_z0)
         init_imgs.append(img[mask].reshape(-1, 1, 2).astype(np.float32))
 
@@ -384,7 +389,8 @@ def fit_pinhole(
         init_flags |= cv2.CALIB_FIX_K2
 
     _, K_init, dist_init, _, _ = cv2.calibrateCamera(
-        init_objs, init_imgs, (W, H), None, None, flags=init_flags)
+        init_objs, init_imgs, (W, H), None, None, flags=init_flags
+    )
 
     # Step 2: Refine with all views using true 3D coordinates.
     obj_list = [obj.astype(np.float32) for obj in obj_views]
@@ -397,7 +403,8 @@ def fit_pinhole(
         flags |= cv2.CALIB_FIX_K2
 
     rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
-        obj_list, img_list, (W, H), K_init.copy(), dist_init.copy(), flags=flags)
+        obj_list, img_list, (W, H), K_init.copy(), dist_init.copy(), flags=flags
+    )
 
     return rms, K, dist, rvecs, tvecs
 
@@ -447,7 +454,8 @@ def fit_pinhole_single_view(
         flags |= cv2.CALIB_FIX_K2
 
     rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
-        obj_list, img_list, (W, H), K_init.copy(), dist_init.copy(), flags=flags)
+        obj_list, img_list, (W, H), K_init.copy(), dist_init.copy(), flags=flags
+    )
 
     return rms, K, dist, rvecs, tvecs
 
@@ -455,6 +463,7 @@ def fit_pinhole_single_view(
 # ---------------------------------------------------------------------------
 # Non-datum pose object-point construction (re-stitch with datum orientation)
 # ---------------------------------------------------------------------------
+
 
 def _build_non_datum_pose_view(
     level_A: Optional[dict],
@@ -477,28 +486,31 @@ def _build_non_datum_pose_view(
     """
     spacing = board.dot_spacing_mm
     stitched = stitch_levels_pose_local(
-        level_A, level_B, board, orientation_override=orientation_override,
+        level_A,
+        level_B,
+        board,
+        orientation_override=orientation_override,
     )
     if stitched is None:
         return None, None, None
 
-    ref = stitched['reference']
-    other = stitched.get('other')
-    stitch_meta = dict(stitched.get('metadata', {}))
+    ref = stitched["reference"]
+    other = stitched.get("other")
+    stitch_meta = dict(stitched.get("metadata", {}))
 
     def _level_name(source_letter):
-        return A_label if source_letter == 'A' else B_label
+        return A_label if source_letter == "A" else B_label
 
     all_obj = []
     all_img = []
     for entry in (ref, other):
         if entry is None:
             continue
-        level_name = _level_name(entry['source_level'])
-        gi = np.asarray(entry['grid_indices'], dtype=np.int32)
-        centers = np.asarray(entry['centers'], dtype=np.float32)
-        z_mm = geo_cam['z'][level_name]
-        xy_off = geo_cam['xy_offset'][level_name]
+        level_name = _level_name(entry["source_level"])
+        gi = np.asarray(entry["grid_indices"], dtype=np.int32)
+        centers = np.asarray(entry["centers"], dtype=np.float32)
+        z_mm = geo_cam["z"][level_name]
+        xy_off = geo_cam["xy_offset"][level_name]
         obj = build_object_points(gi, z_mm, spacing, xy_off)
         all_obj.append(obj)
         all_img.append(centers)
@@ -513,6 +525,7 @@ def _build_non_datum_pose_view(
 # Mono orchestrator
 # ---------------------------------------------------------------------------
 
+
 def _level_dicts(detection: DetectionResult) -> Tuple[Optional[dict], Optional[dict]]:
     """Pull the two raw per-level grid dicts (the stepped solve input).
 
@@ -523,10 +536,12 @@ def _level_dicts(detection: DetectionResult) -> Tuple[Optional[dict], Optional[d
     return ld.get("a"), ld.get("b")
 
 
-def _write_poly3d_figure(figure_dir, model, datum_obj, datum_img, images,
-                         datum_index, prefix) -> None:
+def _write_poly3d_figure(
+    figure_dir, model, datum_obj, datum_img, images, datum_index, prefix
+) -> None:
     """Datum-view reprojection + residual figure for the 3D polynomial fit."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -543,8 +558,15 @@ def _write_poly3d_figure(figure_dir, model, datum_obj, datum_img, images,
     if images is not None and 0 <= datum_index < len(images):
         ax.imshow(images[datum_index], cmap="gray")
     sc = ax.scatter(img[:, 0], img[:, 1], c=z, cmap="coolwarm", s=12, label="detected")
-    ax.scatter(proj[:, 0], proj[:, 1], facecolors="none", edgecolors="lime",
-               s=24, linewidths=0.6, label="projected")
+    ax.scatter(
+        proj[:, 0],
+        proj[:, 1],
+        facecolors="none",
+        edgecolors="lime",
+        s=24,
+        linewidths=0.6,
+        label="projected",
+    )
     ax.set_title(f"poly3d datum reprojection (RMS {model.rms_px:.3f} px)")
     ax.set_xlabel("u (px)")
     ax.set_ylabel("v (px, image-down)")
@@ -554,8 +576,9 @@ def _write_poly3d_figure(figure_dir, model, datum_obj, datum_img, images,
 
     ax2 = axes[1]
     mag = np.linalg.norm(res, axis=1)
-    q = ax2.quiver(img[:, 0], img[:, 1], res[:, 0], res[:, 1], mag,
-                   cmap="viridis", angles="xy")
+    q = ax2.quiver(
+        img[:, 0], img[:, 1], res[:, 0], res[:, 1], mag, cmap="viridis", angles="xy"
+    )
     ax2.set_title("reprojection residuals")
     ax2.set_xlabel("u (px)")
     ax2.set_ylabel("v (px, image-down)")
@@ -590,19 +613,21 @@ def _calibrate_stepped_mono_poly3d(
     stepped clicked-level convention (the dotted peak face is nearer the camera than
     the trough), so ``world_z_toward_camera = +1``.
     """
-    model = fit_polynomial3d(datum_obj, datum_img, image_size, world_z_toward_camera=1.0)
+    model = fit_polynomial3d(
+        datum_obj, datum_img, image_size, world_z_toward_camera=1.0
+    )
     logger.info(
         f"stepped poly3d cam{camera}: rms={model.rms_px:.3f}px, "
         f"per-plane={[round(v, 3) for v in model.plane_rms_px]}"
     )
     wf = WorldFrame(
         mode="clicks",
-        origin_px=np.asarray(fiducials['origin'], dtype=np.float64).reshape(2),
-        x_axis_px=np.asarray(fiducials['x_axis'], dtype=np.float64).reshape(2),
-        y_axis_px=np.asarray(fiducials['y_axis'], dtype=np.float64).reshape(2),
-        swap_axes=bool(orientation['swap_axes']),
-        col_sign=int(orientation['col_sign']),
-        row_sign=int(orientation['row_sign']),
+        origin_px=np.asarray(fiducials["origin"], dtype=np.float64).reshape(2),
+        x_axis_px=np.asarray(fiducials["x_axis"], dtype=np.float64).reshape(2),
+        y_axis_px=np.asarray(fiducials["y_axis"], dtype=np.float64).reshape(2),
+        swap_axes=bool(orientation["swap_axes"]),
+        col_sign=int(orientation["col_sign"]),
+        row_sign=int(orientation["row_sign"]),
         origin_grid=np.array([0.0, 0.0]),
         origin_mm=np.array([0.0, 0.0]),
     )
@@ -618,13 +643,24 @@ def _calibrate_stepped_mono_poly3d(
     }
     if figure_dir is not None:
         try:
-            _write_poly3d_figure(figure_dir, model, datum_obj, datum_img,
-                                 images, datum_index, figure_prefix)
+            _write_poly3d_figure(
+                figure_dir,
+                model,
+                datum_obj,
+                datum_img,
+                images,
+                datum_index,
+                figure_prefix,
+            )
         except Exception:  # figures never abort the fit
             logger.warning("stepped poly3d figure writing failed (non-fatal)")
     return MonoRecord(
-        camera=int(camera), board_type="stepped", camera_model=model,
-        world_frame=wf, per_view_rms=[float(model.rms_px)], board_meta=meta,
+        camera=int(camera),
+        board_type="stepped",
+        camera_model=model,
+        world_frame=wf,
+        per_view_rms=[float(model.rms_px)],
+        board_meta=meta,
     )
 
 
@@ -689,8 +725,10 @@ def calibrate_stepped_mono(
     MonoRecord with a ``CameraModel`` (one (R,t,K,dist) covering both surfaces) and
     the resolved ``WorldFrame``.
     """
-    if clicked_level not in ('peak', 'trough'):
-        raise ValueError(f"clicked_level must be 'peak' or 'trough', got {clicked_level!r}")
+    if clicked_level not in ("peak", "trough"):
+        raise ValueError(
+            f"clicked_level must be 'peak' or 'trough', got {clicked_level!r}"
+        )
     n_poses = len(detections)
     if n_poses == 0:
         raise ValueError("calibrate_stepped_mono: no detections provided")
@@ -701,14 +739,16 @@ def calibrate_stepped_mono(
             f"pose_levels has length {len(pose_levels)} but there are {n_poses} poses"
         )
     for i, lbl in enumerate(pose_levels):
-        if lbl not in ('peak', 'trough'):
+        if lbl not in ("peak", "trough"):
             raise ValueError(f"pose_levels[{i}]={lbl!r}, expected 'peak' or 'trough'")
 
-    other_level = 'trough' if clicked_level == 'peak' else 'peak'
+    other_level = "trough" if clicked_level == "peak" else "peak"
     if geo_override is not None:
         geo_cam = geo_override
     else:
-        geo_cam = compute_z_and_offsets('same_side', clicked_level, clicked_level, board)['Cam1']
+        geo_cam = compute_z_and_offsets(
+            "same_side", clicked_level, clicked_level, board
+        )["Cam1"]
     spacing = board.dot_spacing_mm
 
     # ---- Datum pose: fiducial-anchored world frame ----
@@ -719,7 +759,9 @@ def calibrate_stepped_mono(
 
     absolute = assign_absolute_grid_indices(fiducials, lv_A, lv_B, clicked_level, board)
 
-    missing = [name for name in (clicked_level, other_level) if absolute.get(name) is None]
+    missing = [
+        name for name in (clicked_level, other_level) if absolute.get(name) is None
+    ]
     if missing:
         raise RuntimeError(
             f"datum pose missing {' and '.join(missing)} level(s); a stepped datum "
@@ -727,14 +769,16 @@ def calibrate_stepped_mono(
             f"frame or reduce board tilt."
         )
 
-    orientation = absolute['orientation']
-    origin_on_level = absolute.get('_origin_on_level')
-    if origin_on_level == 'A':
+    orientation = absolute["orientation"]
+    origin_on_level = absolute.get("_origin_on_level")
+    if origin_on_level == "A":
         datum_A_label = clicked_level
-    elif origin_on_level == 'B':
+    elif origin_on_level == "B":
         datum_A_label = other_level
     else:
-        raise RuntimeError("datum fiducial origin-on-level unresolved; re-run fiducial snap")
+        raise RuntimeError(
+            "datum fiducial origin-on-level unresolved; re-run fiducial snap"
+        )
 
     if pose_levels[datum_index] != datum_A_label:
         raise ValueError(
@@ -749,10 +793,12 @@ def calibrate_stepped_mono(
     datum_img = []
     for level_name in (clicked_level, other_level):
         data = absolute[level_name]
-        z_mm = geo_cam['z'][level_name]
-        xy_off = geo_cam['xy_offset'][level_name]
-        datum_obj.append(build_object_points(data['grid_indices'], z_mm, spacing, xy_off))
-        datum_img.append(np.asarray(data['centers'], dtype=np.float32))
+        z_mm = geo_cam["z"][level_name]
+        xy_off = geo_cam["xy_offset"][level_name]
+        datum_obj.append(
+            build_object_points(data["grid_indices"], z_mm, spacing, xy_off)
+        )
+        datum_img.append(np.asarray(data["centers"], dtype=np.float32))
     datum_obj = np.vstack(datum_obj).astype(np.float32)
     datum_img = np.vstack(datum_img).astype(np.float32)
 
@@ -761,10 +807,19 @@ def calibrate_stepped_mono(
         # Single datum view, two planes -> 3D cubic forward map. No multi-pose fit,
         # no pinhole intrinsics/pose: the polynomial absorbs the clicked frame directly.
         return _calibrate_stepped_mono_poly3d(
-            datum_obj=datum_obj, datum_img=datum_img, fiducials=fiducials,
-            orientation=orientation, clicked_level=clicked_level, board=board,
-            spacing=spacing, camera=camera, image_size=W_H, datum=datum,
-            images=images, datum_index=datum_index, figure_dir=figure_dir,
+            datum_obj=datum_obj,
+            datum_img=datum_img,
+            fiducials=fiducials,
+            orientation=orientation,
+            clicked_level=clicked_level,
+            board=board,
+            spacing=spacing,
+            camera=camera,
+            image_size=W_H,
+            datum=datum,
+            images=images,
+            datum_index=datum_index,
+            figure_dir=figure_dir,
             figure_prefix=figure_prefix,
         )
     if model_type != "pinhole":
@@ -792,9 +847,14 @@ def calibrate_stepped_mono(
             )
             continue
         A_label = pose_levels[pose_idx]
-        B_label = 'trough' if A_label == 'peak' else 'peak'
+        B_label = "trough" if A_label == "peak" else "peak"
         obj_np, img_np, meta = _build_non_datum_pose_view(
-            a_pose, b_pose, geo_cam, A_label, B_label, board,
+            a_pose,
+            b_pose,
+            geo_cam,
+            A_label,
+            B_label,
+            board,
             orientation_override=orientation,
         )
         if obj_np is None:
@@ -803,8 +863,8 @@ def calibrate_stepped_mono(
         pose_img_views.append(img_np.astype(np.float32))
         used_pose_indices.append(pose_idx)
         used_detections.append(det)
-        if meta and not meta.get('degraded_single_level', False):
-            cp = meta.get('consensus_pct', float('nan'))
+        if meta and not meta.get("degraded_single_level", False):
+            cp = meta.get("consensus_pct", float("nan"))
             if cp == cp and cp < 80.0:
                 logger.warning(
                     f"pose {pose_idx}: stitch consensus only {cp:.0f}% — included, "
@@ -812,7 +872,9 @@ def calibrate_stepped_mono(
                 )
 
     if len(pose_obj_views) == 0:
-        raise RuntimeError("calibrate_stepped_mono: no usable poses for the intrinsic fit")
+        raise RuntimeError(
+            "calibrate_stepped_mono: no usable poses for the intrinsic fit"
+        )
 
     # ---- Pinhole intrinsic fit (free + fixed aspect, keep lower RMS) ----
     # >=3 poses -> multi-view Zhang init (best-conditioned). Fewer -> single-view 3D-object
@@ -828,12 +890,20 @@ def calibrate_stepped_mono(
             f"distortion fit (use more views where you can)."
         )
     rms_free, K_free, dist_free, rvecs_free, tvecs_free = _fit(
-        pose_obj_views, pose_img_views, W_H, fix_aspect=False, fix_k2=fix_k2)
+        pose_obj_views, pose_img_views, W_H, fix_aspect=False, fix_k2=fix_k2
+    )
     rms_fixed, K_fixed, dist_fixed, rvecs_fixed, tvecs_fixed = _fit(
-        pose_obj_views, pose_img_views, W_H, fix_aspect=True, fix_k2=fix_k2)
+        pose_obj_views, pose_img_views, W_H, fix_aspect=True, fix_k2=fix_k2
+    )
 
     if rms_fixed <= rms_free * 1.05:
-        rms, K, dist, rvecs, tvecs = rms_fixed, K_fixed, dist_fixed, rvecs_fixed, tvecs_fixed
+        rms, K, dist, rvecs, tvecs = (
+            rms_fixed,
+            K_fixed,
+            dist_fixed,
+            rvecs_fixed,
+            tvecs_fixed,
+        )
     else:
         rms, K, dist, rvecs, tvecs = rms_free, K_free, dist_free, rvecs_free, tvecs_free
 
@@ -841,20 +911,25 @@ def calibrate_stepped_mono(
     R, t = fit_pose(datum_obj, datum_img, K, dist, planar=False)
 
     cam = CameraModel(
-        K=K, dist=dist, R=R, t=t, image_size=W_H,
-        distortion_model=distortion_model, rms=float(rms),
+        K=K,
+        dist=dist,
+        R=R,
+        t=t,
+        image_size=W_H,
+        distortion_model=distortion_model,
+        rms=float(rms),
     )
 
     pv = per_view_rms(pose_obj_views, pose_img_views, K, dist, rvecs, tvecs)
 
     wf = WorldFrame(
         mode="clicks",
-        origin_px=np.asarray(fiducials['origin'], dtype=np.float64).reshape(2),
-        x_axis_px=np.asarray(fiducials['x_axis'], dtype=np.float64).reshape(2),
-        y_axis_px=np.asarray(fiducials['y_axis'], dtype=np.float64).reshape(2),
-        swap_axes=bool(orientation['swap_axes']),
-        col_sign=int(orientation['col_sign']),
-        row_sign=int(orientation['row_sign']),
+        origin_px=np.asarray(fiducials["origin"], dtype=np.float64).reshape(2),
+        x_axis_px=np.asarray(fiducials["x_axis"], dtype=np.float64).reshape(2),
+        y_axis_px=np.asarray(fiducials["y_axis"], dtype=np.float64).reshape(2),
+        swap_axes=bool(orientation["swap_axes"]),
+        col_sign=int(orientation["col_sign"]),
+        row_sign=int(orientation["row_sign"]),
         origin_grid=np.array([0.0, 0.0]),  # clicked dot is re-anchored to grid (0,0)
         origin_mm=np.array([0.0, 0.0]),
     )
@@ -872,14 +947,26 @@ def calibrate_stepped_mono(
     # ---- Proof figures (optional; drawn while the fit arrays are live) ----
     if figure_dir is not None:
         from . import figures as c2figs
+
         try:
             c2figs.write_stepped_figures(
-                figure_dir, images=images, used_detections=used_detections,
-                used_pose_indices=used_pose_indices, pose_obj_views=pose_obj_views,
-                pose_img_views=pose_img_views, rvecs=rvecs, tvecs=tvecs,
-                per_view=list(pv), rms=float(rms), cam=cam, wf=wf, spacing=float(spacing),
-                datum_index=datum_index, datum_detection=datum,
-                pose_levels=list(pose_levels), prefix=figure_prefix,
+                figure_dir,
+                images=images,
+                used_detections=used_detections,
+                used_pose_indices=used_pose_indices,
+                pose_obj_views=pose_obj_views,
+                pose_img_views=pose_img_views,
+                rvecs=rvecs,
+                tvecs=tvecs,
+                per_view=list(pv),
+                rms=float(rms),
+                cam=cam,
+                wf=wf,
+                spacing=float(spacing),
+                datum_index=datum_index,
+                datum_detection=datum,
+                pose_levels=list(pose_levels),
+                prefix=figure_prefix,
             )
         except Exception:  # figures never abort the fit
             logger.warning("stepped mono figure writing failed (non-fatal)")
@@ -924,7 +1011,9 @@ def _click_chirality(fiducials: Dict[str, Sequence[float]]) -> float:
     vy = np.asarray(fiducials["y_axis"], dtype=np.float64).reshape(2) - o
     nx, ny = np.linalg.norm(vx), np.linalg.norm(vy)
     if nx < 1e-9 or ny < 1e-9:
-        raise ValueError("click chirality undefined: +X or +Y click coincides with origin")
+        raise ValueError(
+            "click chirality undefined: +X or +Y click coincides with origin"
+        )
     cross = float(vx[0] * vy[1] - vx[1] * vy[0])
     if abs(cross) < _CHIRALITY_MIN_SIN * nx * ny:
         raise ValueError(
@@ -1035,19 +1124,38 @@ def calibrate_stepped_stereo(
     # Cam1 defines the shared world frame (clicked level at Z=0). Its geometry is
     # config-independent, so the mono default (== geo['Cam1']) is correct as-is.
     rec1 = calibrate_stepped_mono(
-        detections=detections1, fiducials=fiducials1, clicked_level=clicked_level1,
-        pose_levels=pose_levels1, board=board, image_size=image_size1,
-        camera=cam1, datum_index=datum_index, distortion_model=distortion_model,
-        model_type=model_type, fix_k2=fix_k2,
-        images=images1, figure_dir=figure_dir, figure_prefix=cam1_prefix,
+        detections=detections1,
+        fiducials=fiducials1,
+        clicked_level=clicked_level1,
+        pose_levels=pose_levels1,
+        board=board,
+        image_size=image_size1,
+        camera=cam1,
+        datum_index=datum_index,
+        distortion_model=distortion_model,
+        model_type=model_type,
+        fix_k2=fix_k2,
+        images=images1,
+        figure_dir=figure_dir,
+        figure_prefix=cam1_prefix,
     )
     # Cam2 into the SAME frame: its levels sit at their absolute Z (geo['Cam2']).
     rec2 = calibrate_stepped_mono(
-        detections=detections2, fiducials=fiducials2, clicked_level=clicked_level2,
-        pose_levels=pose_levels2, board=board, image_size=image_size2,
-        camera=cam2, datum_index=datum_index, distortion_model=distortion_model,
-        geo_override=geo["Cam2"], model_type=model_type, fix_k2=fix_k2,
-        images=images2, figure_dir=figure_dir, figure_prefix=cam2_prefix,
+        detections=detections2,
+        fiducials=fiducials2,
+        clicked_level=clicked_level2,
+        pose_levels=pose_levels2,
+        board=board,
+        image_size=image_size2,
+        camera=cam2,
+        datum_index=datum_index,
+        distortion_model=distortion_model,
+        geo_override=geo["Cam2"],
+        model_type=model_type,
+        fix_k2=fix_k2,
+        images=images2,
+        figure_dir=figure_dir,
+        figure_prefix=cam2_prefix,
     )
 
     model1, model2 = rec1.camera_model, rec2.camera_model
@@ -1077,11 +1185,16 @@ def calibrate_stepped_stereo(
             "geometry": geometry_meta("stepped", board, model_type="polynomial3d"),
         }
         return StereoRecord(
-            cam1=int(cam1), cam2=int(cam2), board_type="stepped",
-            model1=model1, model2=model2,
-            R_stereo=None, T_stereo=None,
+            cam1=int(cam1),
+            cam2=int(cam2),
+            board_type="stepped",
+            model1=model1,
+            model2=model2,
+            R_stereo=None,
+            T_stereo=None,
             world_frame=rec1.world_frame,
-            per_view_rms1=list(rec1.per_view_rms), per_view_rms2=list(rec2.per_view_rms),
+            per_view_rms1=list(rec1.per_view_rms),
+            per_view_rms2=list(rec2.per_view_rms),
             board_meta=meta,
         )
 
@@ -1093,8 +1206,9 @@ def calibrate_stepped_stereo(
     # roll difference between the camera frames (ported from v1).
     axis1 = model1.R.T @ np.array([0.0, 0.0, 1.0])
     axis2 = model2.R.T @ np.array([0.0, 0.0, 1.0])
-    relative_angle_deg = float(np.degrees(np.arccos(
-        np.clip(float(np.dot(axis1, axis2)), -1.0, 1.0))))
+    relative_angle_deg = float(
+        np.degrees(np.arccos(np.clip(float(np.dot(axis1, axis2)), -1.0, 1.0)))
+    )
     baseline_mm = float(np.linalg.norm(T_stereo))
 
     logger.info(
@@ -1126,34 +1240,53 @@ def calibrate_stepped_stereo(
     # uses (deterministic — not a divergent re-derivation), purely to draw the board.
     if figure_dir is not None and images1 is not None and images2 is not None:
         from . import figures as c2figs
+
         try:
             datum1 = detections1[datum_index]
             lv_A, lv_B = _level_dicts(datum1)
             absolute = assign_absolute_grid_indices(
-                fiducials1, lv_A, lv_B, clicked_level1, board)
-            other1 = 'trough' if clicked_level1 == 'peak' else 'peak'
+                fiducials1, lv_A, lv_B, clicked_level1, board
+            )
+            other1 = "trough" if clicked_level1 == "peak" else "peak"
             geo_cam1 = geo["Cam1"]
-            board_world = np.vstack([
-                build_object_points(
-                    absolute[lvl]['grid_indices'], geo_cam1['z'][lvl],
-                    board.dot_spacing_mm, geo_cam1['xy_offset'][lvl])
-                for lvl in (clicked_level1, other1) if absolute.get(lvl) is not None
-            ]).astype(np.float64)
+            board_world = np.vstack(
+                [
+                    build_object_points(
+                        absolute[lvl]["grid_indices"],
+                        geo_cam1["z"][lvl],
+                        board.dot_spacing_mm,
+                        geo_cam1["xy_offset"][lvl],
+                    )
+                    for lvl in (clicked_level1, other1)
+                    if absolute.get(lvl) is not None
+                ]
+            ).astype(np.float64)
             c2figs.write_stereo_figures(
-                figure_dir, model1=model1, model2=model2,
-                R_stereo=R_stereo, T_stereo=T_stereo,
-                img1=images1[datum_index], img2=images2[datum_index],
-                datum_board_world=board_world, spacing=float(board.dot_spacing_mm),
-                cam1_num=int(cam1), cam2_num=int(cam2),
+                figure_dir,
+                model1=model1,
+                model2=model2,
+                R_stereo=R_stereo,
+                T_stereo=T_stereo,
+                img1=images1[datum_index],
+                img2=images2[datum_index],
+                datum_board_world=board_world,
+                spacing=float(board.dot_spacing_mm),
+                cam1_num=int(cam1),
+                cam2_num=int(cam2),
             )
         except Exception:  # figures never abort the fit
             logger.warning("stepped stereo rig figure writing failed (non-fatal)")
 
     return StereoRecord(
-        cam1=int(cam1), cam2=int(cam2), board_type="stepped",
-        model1=model1, model2=model2,
-        R_stereo=R_stereo, T_stereo=T_stereo,
+        cam1=int(cam1),
+        cam2=int(cam2),
+        board_type="stepped",
+        model1=model1,
+        model2=model2,
+        R_stereo=R_stereo,
+        T_stereo=T_stereo,
         world_frame=rec1.world_frame,
-        per_view_rms1=list(rec1.per_view_rms), per_view_rms2=list(rec2.per_view_rms),
+        per_view_rms1=list(rec1.per_view_rms),
+        per_view_rms2=list(rec2.per_view_rms),
         board_meta=meta,
     )

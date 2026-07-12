@@ -32,6 +32,7 @@ def worker_initializer():
     # not environment variable. Safe to call even if cv2 isn't imported yet.
     try:
         import cv2
+
         cv2.setNumThreads(1)
     except ImportError:
         pass

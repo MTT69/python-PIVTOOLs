@@ -1,6 +1,7 @@
 """
 Pytest configuration for PIVTOOLs unit tests.
 """
+
 import sys
 from pathlib import Path
 
@@ -13,7 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def pytest_addoption(parser):
     """Register custom CLI options."""
     parser.addoption(
-        "--make-figures", action="store_true", default=False,
+        "--make-figures",
+        action="store_true",
+        default=False,
         help="Generate diagnostic figures from tests into unit-tests/test_output/",
     )
 

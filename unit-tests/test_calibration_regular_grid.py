@@ -17,7 +17,6 @@ from pivtools_gui.calibration.stereo_model import (
     regular_world_grid,
 )
 
-
 # ---------------------------------------------------------------------------
 # Synthetic stereo pair (matches test_calibration_self_cal.py's factory)
 # ---------------------------------------------------------------------------
@@ -59,6 +58,7 @@ def _uniform_disp(model: CameraModel, coords: np.ndarray, U_mm) -> tuple:
 # regular_world_grid
 # ---------------------------------------------------------------------------
 
+
 def test_regular_grid_is_regular():
     """Constant spacing along both axes, snapped axes, Z on the sheet plane."""
     m1, m2 = _stereo_pair()
@@ -72,8 +72,8 @@ def test_regular_grid_is_regular():
     # plots row 0 at the top with no detection or flipping.
     assert np.allclose(np.diff(gY, axis=0), -sp, atol=1e-9)
     assert gY[0, 0] == np.max(gY) and gY[-1, 0] == np.min(gY)
-    assert np.allclose(gX, gX[:1, :])          # rows identical
-    assert np.allclose(gY, gY[:, :1])          # cols identical
+    assert np.allclose(gX, gX[:1, :])  # rows identical
+    assert np.allclose(gY, gY[:, :1])  # cols identical
     # Axes snapped to spacing multiples.
     assert np.allclose(np.round(gX[0, :] / sp) * sp, gX[0, :], atol=1e-9)
     assert np.allclose(np.round(gY[:, 0] / sp) * sp, gY[:, 0], atol=1e-9)
@@ -124,6 +124,7 @@ def test_degenerate_grid_raises():
 # reconstruct_3c_field on the regular grid
 # ---------------------------------------------------------------------------
 
+
 def test_uniform_flow_ground_truth():
     """A uniform 3C world displacement reconstructs exactly on unmasked points."""
     m1, m2 = _stereo_pair()
@@ -136,8 +137,17 @@ def test_uniform_flow_ground_truth():
 
     grid = regular_world_grid(m1, m2, coords1, coords2)[:3]
     U, V, W, mask = reconstruct_3c_field(
-        m1, m2, grid, coords1, ux1, uy1, coords2, ux2, uy2,
-        dt=1.0, interpolator="linear",
+        m1,
+        m2,
+        grid,
+        coords1,
+        ux1,
+        uy1,
+        coords2,
+        ux2,
+        uy2,
+        dt=1.0,
+        interpolator="linear",
     )
     assert not mask.all()
     assert np.isfinite(U[~mask]).all()
@@ -170,12 +180,31 @@ def test_bmasks_propagate_symmetrically():
 
         kwargs = {"bmask1": bmask} if cam_idx == 0 else {"bmask2": bmask}
         _, _, _, mask = reconstruct_3c_field(
-            m1, m2, (gX, gY, gZ), coords1, zero, zero, coords2, zero, zero,
-            dt=1.0, interpolator="linear", **kwargs,
+            m1,
+            m2,
+            (gX, gY, gZ),
+            coords1,
+            zero,
+            zero,
+            coords2,
+            zero,
+            zero,
+            dt=1.0,
+            interpolator="linear",
+            **kwargs,
         )
         _, _, _, mask_ref = reconstruct_3c_field(
-            m1, m2, (gX, gY, gZ), coords1, zero, zero, coords2, zero, zero,
-            dt=1.0, interpolator="linear",
+            m1,
+            m2,
+            (gX, gY, gZ),
+            coords1,
+            zero,
+            zero,
+            coords2,
+            zero,
+            zero,
+            dt=1.0,
+            interpolator="linear",
         )
 
         # Grid points whose projection lands well inside the masked pixel block
@@ -184,8 +213,10 @@ def test_bmasks_propagate_symmetrically():
         xs = coords[0, :, 0]
         ys = coords[:, 0, 1]
         in_block = (
-            (proj[:, 0] > xs[6]) & (proj[:, 0] < xs[11])
-            & (proj[:, 1] > ys[4]) & (proj[:, 1] < ys[8])
+            (proj[:, 0] > xs[6])
+            & (proj[:, 0] < xs[11])
+            & (proj[:, 1] > ys[4])
+            & (proj[:, 1] < ys[8])
         ).reshape(mask.shape)
         assert in_block.any(), "test block must be visible on the grid"
         assert mask[in_block].all()
@@ -197,7 +228,9 @@ def test_bmasks_propagate_symmetrically():
         # bilinear resampling bleeds one PIV cell beyond the block edge.
         proj_own = model.project(world)
         near_block = (
-            (proj_own[:, 0] > xs[5]) & (proj_own[:, 0] < xs[12])
-            & (proj_own[:, 1] > ys[3]) & (proj_own[:, 1] < ys[9])
+            (proj_own[:, 0] > xs[5])
+            & (proj_own[:, 0] < xs[12])
+            & (proj_own[:, 1] > ys[3])
+            & (proj_own[:, 1] < ys[9])
         ).reshape(mask.shape)
         assert not mask[far & ~near_block].any()

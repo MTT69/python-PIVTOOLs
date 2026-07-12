@@ -4,8 +4,9 @@ import numpy as np
 from flask import Blueprint, jsonify, request
 
 from pivtools_core.config import get_config
-from ...utils import camera_number, numpy_to_png_base64
 from pivtools_core.vector_loading import read_mask_from_mat, save_mask_to_mat
+
+from ...utils import camera_number, numpy_to_png_base64
 
 masking_bp = Blueprint("masking", __name__)
 
@@ -96,7 +97,9 @@ def load_mask():
     """
     cfg = _cfg()
     path = request.args.get("path", default=None, type=str)
-    polygons_only = request.args.get("polygons_only", default="false", type=str).lower() == "true"
+    polygons_only = (
+        request.args.get("polygons_only", default="false", type=str).lower() == "true"
+    )
 
     # Optionally reconstruct path if not provided
     if not path or not Path(path).exists():

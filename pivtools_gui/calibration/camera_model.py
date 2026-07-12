@@ -27,7 +27,6 @@ from typing import List, Sequence, Tuple
 import cv2
 import numpy as np
 
-
 # OpenCV LM termination: match the existing stereo calibration code.
 CRITERIA = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 1e-5)
 
@@ -35,9 +34,9 @@ CRITERIA = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 1e-5)
 class DistortionModel(str, Enum):
     """Supported distortion models. STANDARD is the DaVis-matching default."""
 
-    STANDARD = "standard"   # k1, k2, p1, p2, k3  (k3 fixed to 0 -> DaVis 4-coeff)
-    RATIONAL = "rational"   # + k4, k5, k6 (wide-angle only)
-    TILTED = "tilted"       # + tauX, tauY (Scheimpflug); opt-in only
+    STANDARD = "standard"  # k1, k2, p1, p2, k3  (k3 fixed to 0 -> DaVis 4-coeff)
+    RATIONAL = "rational"  # + k4, k5, k6 (wide-angle only)
+    TILTED = "tilted"  # + tauX, tauY (Scheimpflug); opt-in only
 
 
 @dataclass
@@ -81,9 +80,7 @@ class CameraModel:
     def project(self, world_pts: np.ndarray) -> np.ndarray:
         """Project world points (N,3) mm -> image-down pixels (N,2)."""
         wp = np.asarray(world_pts, dtype=np.float64).reshape(-1, 3)
-        px, _ = cv2.projectPoints(
-            wp, self.rvec, self.t.reshape(3), self.K, self.dist
-        )
+        px, _ = cv2.projectPoints(wp, self.rvec, self.t.reshape(3), self.K, self.dist)
         return px.reshape(-1, 2)
 
     def back_project_to_plane(
@@ -119,11 +116,11 @@ class PolynomialModel:
     only.
     """
 
-    coeffs_x: np.ndarray   # (10,)
-    coeffs_y: np.ndarray   # (10,)
-    x0: float              # normalisation: s = (x - x0) / sx
+    coeffs_x: np.ndarray  # (10,)
+    coeffs_y: np.ndarray  # (10,)
+    x0: float  # normalisation: s = (x - x0) / sx
     sx: float
-    y0: float              # normalisation: t = (y - y0) / sy
+    y0: float  # normalisation: t = (y - y0) / sy
     sy: float
     image_size: Tuple[int, int]
     rms_x_mm: float = float("nan")
@@ -200,17 +197,17 @@ class Polynomial3DModel:
     trough Z=-step).
     """
 
-    coeffs_u: np.ndarray   # (20,) normalised-world basis -> image u (px)
-    coeffs_v: np.ndarray   # (20,) normalised-world basis -> image v (px)
-    x0: float              # world normalisation: p = (X - x0) / sx
+    coeffs_u: np.ndarray  # (20,) normalised-world basis -> image u (px)
+    coeffs_v: np.ndarray  # (20,) normalised-world basis -> image v (px)
+    x0: float  # world normalisation: p = (X - x0) / sx
     sx: float
-    y0: float              # q = (Y - y0) / sy
+    y0: float  # q = (Y - y0) / sy
     sy: float
-    z0: float              # r = (Z - z0) / sz  (the two planes land at r = +-1)
+    z0: float  # r = (Z - z0) / sz  (the two planes land at r = +-1)
     sz: float
     image_size: Tuple[int, int]
     rms_px: float = float("nan")
-    plane_rms_px: Tuple[float, ...] = ()   # per-plane reprojection RMS (px), Z-ascending
+    plane_rms_px: Tuple[float, ...] = ()  # per-plane reprojection RMS (px), Z-ascending
     world_z_toward_camera: float = 1.0
     model_type: str = "polynomial3d"
 
@@ -225,9 +222,11 @@ class Polynomial3DModel:
 
     def _norm(self, world_pts: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         wp = np.asarray(world_pts, dtype=np.float64).reshape(-1, 3)
-        return ((wp[:, 0] - self.x0) / self.sx,
-                (wp[:, 1] - self.y0) / self.sy,
-                (wp[:, 2] - self.z0) / self.sz)
+        return (
+            (wp[:, 0] - self.x0) / self.sx,
+            (wp[:, 1] - self.y0) / self.sy,
+            (wp[:, 2] - self.z0) / self.sz,
+        )
 
     def project(self, world_pts: np.ndarray) -> np.ndarray:
         """Project world points (N,3) mm -> image-down pixels (N,2)."""
@@ -290,12 +289,12 @@ class Polynomial3DModel:
             for _ in range(POLY3D_NEWTON_ITERS):
                 z = z_world + tan_ty * x + tan_tx * y
                 wp = np.column_stack([x, y, z])
-                res = self.project(wp) - pts            # (N,2)
-                jac = self.jacobian(wp)                 # (N,2,3)
+                res = self.project(wp) - pts  # (N,2)
+                jac = self.jacobian(wp)  # (N,2,3)
                 # In-plane derivatives with the sheet-tilt chain rule
                 # (dZ/dX = tan(tilt_y), dZ/dY = tan(tilt_x) -- pinhole contract).
-                d_dx = jac[:, :, 0] + jac[:, :, 2] * tan_ty   # (N,2) d(u,v)/dX
-                d_dy = jac[:, :, 1] + jac[:, :, 2] * tan_tx   # (N,2) d(u,v)/dY
+                d_dx = jac[:, :, 0] + jac[:, :, 2] * tan_ty  # (N,2) d(u,v)/dX
+                d_dy = jac[:, :, 1] + jac[:, :, 2] * tan_tx  # (N,2) d(u,v)/dY
                 det = d_dx[:, 0] * d_dy[:, 1] - d_dy[:, 0] * d_dx[:, 1]
                 det = np.where(np.abs(det) < 1e-12, np.nan, det)
                 # Cramer's rule for M @ [dx, dy] = -res.
@@ -333,7 +332,7 @@ class ScaleFactorModel:
     is a single flat plane). No ``project`` / ``jacobian`` — those are stereo only.
     """
 
-    origin_px: np.ndarray   # (2,) image-down pixel of world (0, 0)
+    origin_px: np.ndarray  # (2,) image-down pixel of world (0, 0)
     mm_per_pixel: float
     image_size: Tuple[int, int]
     swap_axes: int = 0
@@ -379,6 +378,7 @@ class ScaleFactorModel:
 # ---------------------------------------------------------------------------
 # Fitting
 # ---------------------------------------------------------------------------
+
 
 def _poly_basis(s: np.ndarray, t: np.ndarray) -> np.ndarray:
     """Build the 10-term cubic design matrix (N,10) from normalised coords s, t.
@@ -435,9 +435,17 @@ def fit_polynomial(
         rms_x = float(np.sqrt(np.mean((a @ cx - world[:, 0]) ** 2)))
         rms_y = float(np.sqrt(np.mean((a @ cy - world[:, 1]) ** 2)))
     return PolynomialModel(
-        coeffs_x=cx, coeffs_y=cy, x0=x0, sx=sx, y0=y0, sy=sy,
-        image_size=(w, h), rms_x_mm=rms_x, rms_y_mm=rms_y,
+        coeffs_x=cx,
+        coeffs_y=cy,
+        x0=x0,
+        sx=sx,
+        y0=y0,
+        sy=sy,
+        image_size=(w, h),
+        rms_x_mm=rms_x,
+        rms_y_mm=rms_y,
     )
+
 
 # --- 3D polynomial (world -> image), single datum view ---------------------
 
@@ -453,7 +461,7 @@ def _poly_basis_3d(s: np.ndarray, t: np.ndarray, r: np.ndarray) -> np.ndarray:
     ``r`` (degree-1 in z). So columns 0..9 are the in-plane cubic and 10..19 are its
     linear-in-z partners.
     """
-    base = _poly_basis(s, t)                       # (N,10)
+    base = _poly_basis(s, t)  # (N,10)
     r = np.asarray(r, dtype=np.float64).reshape(-1, 1)
     return np.concatenate([base, base * r], axis=1)  # (N,20)
 
@@ -539,14 +547,25 @@ def fit_polynomial3d(
     with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
         cu, _, _, _ = np.linalg.lstsq(a, img[:, 0], rcond=None)
         cv, _, _, _ = np.linalg.lstsq(a, img[:, 1], rcond=None)
-        sq = (a @ cu - img[:, 0]) ** 2 + (a @ cv - img[:, 1]) ** 2  # per-point du^2+dv^2
+        sq = (a @ cu - img[:, 0]) ** 2 + (
+            a @ cv - img[:, 1]
+        ) ** 2  # per-point du^2+dv^2
         rms = float(np.sqrt(np.mean(sq)))
     z_round = np.round(wp[:, 2], 6)
     plane_rms = tuple(float(np.sqrt(np.mean(sq[z_round == zv]))) for zv in zs)
     w, h = int(image_size[0]), int(image_size[1])
     return Polynomial3DModel(
-        coeffs_u=cu, coeffs_v=cv, x0=x0, sx=sx, y0=y0, sy=sy, z0=z0, sz=sz,
-        image_size=(w, h), rms_px=rms, plane_rms_px=plane_rms,
+        coeffs_u=cu,
+        coeffs_v=cv,
+        x0=x0,
+        sx=sx,
+        y0=y0,
+        sy=sy,
+        z0=z0,
+        sz=sz,
+        image_size=(w, h),
+        rms_px=rms,
+        plane_rms_px=plane_rms,
         world_z_toward_camera=float(world_z_toward_camera),
     )
 
@@ -616,8 +635,13 @@ def reprojection_rms(
     """RMS reprojection error (px) for a single (rvec, tvec)."""
     obj = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
     img = np.asarray(image_points, dtype=np.float64).reshape(-1, 2)
-    proj, _ = cv2.projectPoints(obj, np.asarray(rvec, np.float64).reshape(3),
-                                np.asarray(tvec, np.float64).reshape(3), K, dist)
+    proj, _ = cv2.projectPoints(
+        obj,
+        np.asarray(rvec, np.float64).reshape(3),
+        np.asarray(tvec, np.float64).reshape(3),
+        K,
+        dist,
+    )
     proj = proj.reshape(-1, 2)
     return float(np.sqrt(np.mean(np.sum((proj - img) ** 2, axis=1))))
 
@@ -695,7 +719,9 @@ def fit_intrinsics(
         # clear error rather than letting OpenCV throw a cryptic one when a caller passes
         # per-view subsets (partial dotboard / ChArUco). The joint solve passes the shared
         # common-core board, which satisfies this.
-        if any(o.shape != objp[0].shape or not np.allclose(o, objp[0]) for o in objp[1:]):
+        if any(
+            o.shape != objp[0].shape or not np.allclose(o, objp[0]) for o in objp[1:]
+        ):
             raise ValueError(
                 "fit_intrinsics(use_release_object=True) requires identical object points in "
                 "every view (cv2.calibrateCameraRO constraint); pass the shared common-core "
@@ -703,14 +729,25 @@ def fit_intrinsics(
             )
         i_fixed = _release_gauge_index(objp[0])
         rms, K, dist, rvecs, tvecs, new_obj = cv2.calibrateCameraRO(
-            objp, imgp, image_size, i_fixed, K0, dist0,
-            flags=flags, criteria=CRITERIA,
+            objp,
+            imgp,
+            image_size,
+            i_fixed,
+            K0,
+            dist0,
+            flags=flags,
+            criteria=CRITERIA,
         )
         released = np.asarray(new_obj, dtype=np.float64).reshape(-1, 3)
     else:
         rms, K, dist, rvecs, tvecs = cv2.calibrateCamera(
-            objp, imgp, image_size, K0, dist0,
-            flags=flags, criteria=CRITERIA,
+            objp,
+            imgp,
+            image_size,
+            K0,
+            dist0,
+            flags=flags,
+            criteria=CRITERIA,
         )
 
     dist = np.asarray(dist, dtype=np.float64).reshape(-1)
@@ -761,6 +798,7 @@ def fit_pose(
 # ---------------------------------------------------------------------------
 # World <-> pixel
 # ---------------------------------------------------------------------------
+
 
 def back_project_to_plane(
     camera: CameraModel,

@@ -16,7 +16,7 @@ Frame indexing:
 
 import logging
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 
 import numpy as np
 
@@ -198,7 +198,7 @@ def get_cine_metadata_info(file_path: str) -> dict:
         "width": metadata.biWidth,
         "height": metadata.biHeight,
         "bit_depth": metadata.biBitCount,
-        "real_bpp": getattr(metadata, 'RealBPP', metadata.biBitCount),
+        "real_bpp": getattr(metadata, "RealBPP", metadata.biBitCount),
     }
 
 

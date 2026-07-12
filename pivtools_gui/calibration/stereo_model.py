@@ -49,16 +49,20 @@ from .camera_model import CameraModel, DistortionModel, fit_intrinsics
 from .detection.base import BoardDetector, DetectionResult
 from .pipeline import Calibrator, view_diagnostics_summary
 from .record import StereoRecord, WorldFrame
-from .world_frame import apply_world_frame, resolve_world_frame, resolve_world_frame_from_grid
+from .world_frame import (
+    apply_world_frame,
+    resolve_world_frame,
+    resolve_world_frame_from_grid,
+)
 
 # Cross-camera stereo-calibration thresholds (flat same-side dotboard/charuco). A genuine
 # same-side pair shares the whole board, so most views contribute corresponding points;
 # zero usable shared views means the pair is NOT same-side (wrong pair/datum, or a
 # transmission rig that belongs to the stepped-board path) — we fail loudly rather than
 # fabricate a relative pose.
-MIN_STEREO_VIEWS = 1       # raise below this many usable shared views
-MIN_SHARED_POINTS = 6      # a view must share >= this many features to contribute
-_STEREO_VIEWS_WEAK = 3     # warn below this many shared views (pose weakly constrained)
+MIN_STEREO_VIEWS = 1  # raise below this many usable shared views
+MIN_SHARED_POINTS = 6  # a view must share >= this many features to contribute
+_STEREO_VIEWS_WEAK = 3  # warn below this many shared views (pose weakly constrained)
 
 
 def compose_stereo(
@@ -89,7 +93,9 @@ def camera_z_sign(model1, model2) -> float:
 
     Returns +1 (no change) or -1 (negate w). Leaves the in-plane u,v untouched.
     """
-    if hasattr(model1, "world_z_toward_camera") or hasattr(model2, "world_z_toward_camera"):
+    if hasattr(model1, "world_z_toward_camera") or hasattr(
+        model2, "world_z_toward_camera"
+    ):
         s1 = getattr(model1, "world_z_toward_camera", None)
         s2 = getattr(model2, "world_z_toward_camera", None)
         signs = [s for s in (s1, s2) if s is not None]
@@ -212,9 +218,11 @@ class StereoCalibrator:
 
     def _mono(self, use_release_object: Optional[bool] = None) -> Calibrator:
         return Calibrator(
-            detector=self.detector, board_type=self.board_type,
+            detector=self.detector,
+            board_type=self.board_type,
             distortion_model=self.distortion_model,
-            fix_aspect_ratio=self.fix_aspect_ratio, fix_k3=self.fix_k3,
+            fix_aspect_ratio=self.fix_aspect_ratio,
+            fix_k3=self.fix_k3,
             fix_k2=self.fix_k2,
             use_release_object=(
                 self.use_release_object
@@ -283,12 +291,21 @@ class StereoCalibrator:
         # Camera 1 defines the shared world frame (and writes its own figures).
         cam1_fig_prefix = "cam1_" if figure_dir is not None else ""
         rec1 = self._mono(use_release_object=ro1).run_mono(
-            images1, camera=cam1, clicks=clicks, datum_index=datum_index,
-            spacing_mm=spacing_mm, board_meta=board_meta,
-            figure_dir=figure_dir, figure_prefix=cam1_fig_prefix, frame_grid=frame_grid,
-            origin_mm=origin_mm, detections=det1,
+            images1,
+            camera=cam1,
+            clicks=clicks,
+            datum_index=datum_index,
+            spacing_mm=spacing_mm,
+            board_meta=board_meta,
+            figure_dir=figure_dir,
+            figure_prefix=cam1_fig_prefix,
+            frame_grid=frame_grid,
+            origin_mm=origin_mm,
+            detections=det1,
         )
-        wf = rec1.world_frame  # carries origin_mm; cam2 is labelled into this shared frame
+        wf = (
+            rec1.world_frame
+        )  # carries origin_mm; cam2 is labelled into this shared frame
         sp = spacing_mm if spacing_mm is not None else rec1.board_meta["spacing_mm"]
         K1, dist1 = rec1.camera_model.K, rec1.camera_model.dist
         R1, t1 = rec1.camera_model.R, rec1.camera_model.t
@@ -302,9 +319,12 @@ class StereoCalibrator:
         h, w = np.asarray(images2[datum_index]).shape[:2]
         image_size = (int(w), int(h))
         K2, dist2, rv2, tv2, rms2, pv2, _rel2 = fit_intrinsics(
-            objs2, imgs2, image_size,
+            objs2,
+            imgs2,
+            image_size,
             distortion_model=self.distortion_model,
-            fix_aspect_ratio=self.fix_aspect_ratio, fix_k3=self.fix_k3,
+            fix_aspect_ratio=self.fix_aspect_ratio,
+            fix_k3=self.fix_k3,
             fix_k2=self.fix_k2,
             use_release_object=ro2,
         )
@@ -314,7 +334,8 @@ class StereoCalibrator:
         datum2 = det2[datum_index]
         if frame_grid2 is not None:
             wf2 = resolve_world_frame_from_grid(
-                frame_grid2["origin"], frame_grid2["x_axis"], frame_grid2["y_axis"])
+                frame_grid2["origin"], frame_grid2["x_axis"], frame_grid2["y_axis"]
+            )
             wf2.origin_mm = wf.origin_mm
         elif clicks2 is not None:
             wf2 = resolve_world_frame(datum2.grid_indices, datum2.image_points, clicks2)
@@ -344,8 +365,7 @@ class StereoCalibrator:
         # cam2 world pose composed onto cam1's anchor: world->cam2 = (cam1->cam2) o (world->cam1).
         R2 = R_stereo @ R1
         t2 = (R_stereo @ np.asarray(t1).reshape(3, 1) + T_stereo).reshape(3, 1)
-        model2 = CameraModel(K2, dist2, R2, t2, image_size,
-                             self.distortion_model, rms2)
+        model2 = CameraModel(K2, dist2, R2, t2, image_size, self.distortion_model, rms2)
 
         meta = dict(board_meta or {})
         meta.setdefault("spacing_mm", float(sp))
@@ -374,11 +394,25 @@ class StereoCalibrator:
             # cam2's own proof figures + the stereo-only geometry/dewarp pair. Drawn
             # while cam2's per-view poses are live; nothing here reaches the record.
             from . import figures
+
             figures.write_mono_figures(
-                figure_dir, images=images2, detections=det2, used=used2,
-                K=K2, dist=dist2, rvecs=rv2, tvecs=tv2, per_view=pv2, rms=rms2,
-                cam=model2, wf=wf2, spacing=sp, board_type=self.board_type,
-                datum_index=datum_index, board_meta=meta, prefix="cam2_",
+                figure_dir,
+                images=images2,
+                detections=det2,
+                used=used2,
+                K=K2,
+                dist=dist2,
+                rvecs=rv2,
+                tvecs=tv2,
+                per_view=pv2,
+                rms=rms2,
+                cam=model2,
+                wf=wf2,
+                spacing=sp,
+                board_type=self.board_type,
+                datum_index=datum_index,
+                board_meta=meta,
+                prefix="cam2_",
             )
             # Reuse the datum detection the calibration ran on (may be cached) rather than
             # re-detecting, so the stereo figure's board overlay matches the solve exactly.
@@ -386,19 +420,30 @@ class StereoCalibrator:
                 det1[datum_index].grid_indices, sp, wf
             )
             figures.write_stereo_figures(
-                figure_dir, model1=rec1.camera_model, model2=model2,
-                R_stereo=R_stereo, T_stereo=T_stereo,
-                img1=images1[datum_index], img2=images2[datum_index],
-                datum_board_world=datum_board_world, spacing=sp,
-                cam1_num=cam1, cam2_num=cam2,
+                figure_dir,
+                model1=rec1.camera_model,
+                model2=model2,
+                R_stereo=R_stereo,
+                T_stereo=T_stereo,
+                img1=images1[datum_index],
+                img2=images2[datum_index],
+                datum_board_world=datum_board_world,
+                spacing=sp,
+                cam1_num=cam1,
+                cam2_num=cam2,
             )
 
         return StereoRecord(
-            cam1=cam1, cam2=cam2, board_type=self.board_type,
-            model1=rec1.camera_model, model2=model2,
-            R_stereo=R_stereo, T_stereo=T_stereo,
+            cam1=cam1,
+            cam2=cam2,
+            board_type=self.board_type,
+            model1=rec1.camera_model,
+            model2=model2,
+            R_stereo=R_stereo,
+            T_stereo=T_stereo,
             world_frame=wf,
-            per_view_rms1=rec1.per_view_rms, per_view_rms2=list(pv2),
+            per_view_rms1=rec1.per_view_rms,
+            per_view_rms2=list(pv2),
             board_meta=meta,
         )
 
@@ -406,6 +451,7 @@ class StereoCalibrator:
 # ---------------------------------------------------------------------------
 # 3C reconstruction
 # ---------------------------------------------------------------------------
+
 
 def reconstruct_3c_at_points(
     model1: CameraModel,
@@ -432,23 +478,30 @@ def reconstruct_3c_at_points(
     n = wp.shape[0]
     out = np.full((n, 3), np.nan, dtype=np.float64)
 
-    valid = np.isfinite(wp).all(axis=1) & np.isfinite(d1).all(axis=1) & np.isfinite(d2).all(axis=1)
+    valid = (
+        np.isfinite(wp).all(axis=1)
+        & np.isfinite(d1).all(axis=1)
+        & np.isfinite(d2).all(axis=1)
+    )
     if not valid.any():
         return out
 
     J1 = model1.jacobian(wp[valid])  # (M,2,3)
     J2 = model2.jacobian(wp[valid])
-    A = np.concatenate([J1, J2], axis=1)               # (M,4,3)
+    A = np.concatenate([J1, J2], axis=1)  # (M,4,3)
     b = np.concatenate([d1[valid], d2[valid]], axis=1)  # (M,4)
-    AtA = np.einsum("nij,nik->njk", A, A)              # (M,3,3)
-    Atb = np.einsum("nij,ni->nj", A, b)               # (M,3)
+    AtA = np.einsum("nij,nik->njk", A, A)  # (M,3,3)
+    Atb = np.einsum("nij,ni->nj", A, b)  # (M,3)
     sol = np.linalg.solve(AtA, Atb[..., None]).squeeze(-1)
     out[valid] = sol
     return out
 
 
 def _interpolate_field(
-    coords_px: np.ndarray, field: np.ndarray, query_px: np.ndarray, method: str = "linear"
+    coords_px: np.ndarray,
+    field: np.ndarray,
+    query_px: np.ndarray,
+    method: str = "linear",
 ) -> np.ndarray:
     """Interpolate a per-camera field defined on a regular pixel grid at query points.
 
@@ -474,7 +527,11 @@ def _interpolate_field(
 
     if method == "linear":
         interp = RegularGridInterpolator(
-            (y_axis, x_axis), fld, method="linear", bounds_error=False, fill_value=np.nan
+            (y_axis, x_axis),
+            fld,
+            method="linear",
+            bounds_error=False,
+            fill_value=np.nan,
         )
         q = np.column_stack([query_px[:, 1], query_px[:, 0]])
         return interp(q)
@@ -496,9 +553,10 @@ def _interpolate_field(
     fld_filled = fld[tuple(idx)]
 
     # cv2.remap requires the source laid out (Y=axis0, X=axis1).
-    assert fld_filled.shape[:2] == (len(y_axis), len(x_axis)), (
-        "remap requires (Y, X) source layout"
-    )
+    assert fld_filled.shape[:2] == (
+        len(y_axis),
+        len(x_axis),
+    ), "remap requires (Y, X) source layout"
 
     dx = (x_axis[-1] - x_axis[0]) / (len(x_axis) - 1)
     dy = (y_axis[-1] - y_axis[0]) / (len(y_axis) - 1)
@@ -518,16 +576,24 @@ def _interpolate_field(
     # This erodes the outer ~stencil-radius ring vs the bilinear path (deliberate — never
     # fabricate edge values).
     out = cv2.remap(
-        fld_filled.astype(np.float32), col2, row2, flag,
-        borderMode=cv2.BORDER_CONSTANT, borderValue=float("nan"),
+        fld_filled.astype(np.float32),
+        col2,
+        row2,
+        flag,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=float("nan"),
     ).reshape(-1)[:m]
 
     # Re-mask to the bilinear valid domain (NaN from holes / out-of-grid). cv2 quantises
     # the bilinear weights to a 1/32 fixed-point table, so a fully-valid cell can read
     # ~0.9999988 instead of 1.0; threshold at 0.99 (any NaN-touching cell reads <= 0.75).
     maskq = cv2.remap(
-        valid.astype(np.float32), col2, row2, cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT, borderValue=0.0,
+        valid.astype(np.float32),
+        col2,
+        row2,
+        cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0.0,
     ).reshape(-1)[:m]
     out = out.copy()
     out[maskq < 0.99] = np.nan
@@ -577,9 +643,9 @@ def regular_world_grid(
     worlds, steps = [], []
     for k, c in ((1, grids[0]), (2, grids[1])):
         model = model1 if k == 1 else model2
-        w = model.back_project_to_plane(
-            c.reshape(-1, 2), z_world, tilt_x, tilt_y
-        )[:, :2]
+        w = model.back_project_to_plane(c.reshape(-1, 2), z_world, tilt_x, tilt_y)[
+            :, :2
+        ]
         finite = np.isfinite(w).all(axis=1)
         if not finite.any():
             raise ValueError(
@@ -589,7 +655,9 @@ def regular_world_grid(
         # Pixel grid step per axis: x varies along axis 1, y along axis 0 of a meshgrid.
         step_x = float(np.median(np.abs(np.diff(c[..., 0], axis=1))))
         step_y = float(np.median(np.abs(np.diff(c[..., 1], axis=0))))
-        if not (np.isfinite(step_x) and step_x > 0 and np.isfinite(step_y) and step_y > 0):
+        if not (
+            np.isfinite(step_x) and step_x > 0 and np.isfinite(step_y) and step_y > 0
+        ):
             raise ValueError(
                 f"cam{k} PIV grid has a degenerate pixel step "
                 f"(x={step_x!r}, y={step_y!r})"
@@ -625,8 +693,10 @@ def regular_world_grid(
         mag_y = np.hypot(J[:, 0, 1], J[:, 1, 1])
         inside = (
             finite
-            & (w[:, 0] >= xmin) & (w[:, 0] <= xmax)
-            & (w[:, 1] >= ymin) & (w[:, 1] <= ymax)
+            & (w[:, 0] >= xmin)
+            & (w[:, 0] <= xmax)
+            & (w[:, 1] >= ymin)
+            & (w[:, 1] <= ymax)
         )
         for pitch in (step_x * mag_x[inside], step_y * mag_y[inside]):
             pooled.append(pitch[np.isfinite(pitch)])
@@ -639,7 +709,9 @@ def regular_world_grid(
 
     spacing = float(np.median(pooled))
     if not (np.isfinite(spacing) and spacing > 0):
-        raise ValueError(f"median vector-pitch grid spacing is degenerate ({spacing!r})")
+        raise ValueError(
+            f"median vector-pitch grid spacing is degenerate ({spacing!r})"
+        )
 
     # Snap the overlap box to spacing multiples; the 1e-9 guards float round-off at
     # exact multiples.
@@ -665,8 +737,14 @@ def regular_world_grid(
         "stereo regular grid: spacing {:.4g} mm (median vector pitch; min/max = "
         "{:.4g}/{:.4g} mm), grid {}x{}, overlap x=[{:.1f},{:.1f}] y=[{:.1f},{:.1f}] mm",
         spacing,
-        float(pooled.min()), float(pooled.max()),
-        ny, nx, xmin, xmax, ymin, ymax,
+        float(pooled.min()),
+        float(pooled.max()),
+        ny,
+        nx,
+        xmin,
+        xmax,
+        ymin,
+        ymax,
     )
     return X, Y, Z, spacing
 
@@ -709,9 +787,11 @@ def reconstruct_3c_field(
     X, Y, Z = world_grid
     Hg, Wg = np.asarray(X).shape
     world = np.column_stack(
-        [np.asarray(X, dtype=np.float64).ravel(),
-         np.asarray(Y, dtype=np.float64).ravel(),
-         np.asarray(Z, dtype=np.float64).ravel()]
+        [
+            np.asarray(X, dtype=np.float64).ravel(),
+            np.asarray(Y, dtype=np.float64).ravel(),
+            np.asarray(Z, dtype=np.float64).ravel(),
+        ]
     )
 
     c1 = np.asarray(coords1_px, dtype=np.float64).reshape(*ux1_px.shape, 2)
@@ -719,14 +799,18 @@ def reconstruct_3c_field(
     proj1 = model1.project(world)  # (N,2) image-down px
     proj2 = model2.project(world)
 
-    d1 = np.column_stack([
-        _interpolate_field(c1, ux1_px, proj1, method=interpolator),
-        _interpolate_field(c1, uy1_px, proj1, method=interpolator),
-    ])
-    d2 = np.column_stack([
-        _interpolate_field(c2, ux2_px, proj2, method=interpolator),
-        _interpolate_field(c2, uy2_px, proj2, method=interpolator),
-    ])
+    d1 = np.column_stack(
+        [
+            _interpolate_field(c1, ux1_px, proj1, method=interpolator),
+            _interpolate_field(c1, uy1_px, proj1, method=interpolator),
+        ]
+    )
+    d2 = np.column_stack(
+        [
+            _interpolate_field(c2, ux2_px, proj2, method=interpolator),
+            _interpolate_field(c2, uy2_px, proj2, method=interpolator),
+        ]
+    )
 
     vel_mm = reconstruct_3c_at_points(model1, model2, world, d1, d2)  # (N,3) mm/frame
     vel_ms = (vel_mm / 1000.0) / dt

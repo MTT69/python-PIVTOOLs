@@ -1,13 +1,12 @@
+import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Callable, Tuple, Optional, List
-import logging
+from typing import Callable, List, Optional
 
 import dask
 import dask.array as da
 import numpy as np
-from scipy.ndimage import convolve
 
 from ..config import Config
 from ..vector_loading import read_mask_from_mat
@@ -87,10 +86,7 @@ def read_single_frame(
         if time_resolved:
             # Single frame per entry - read just one frame
             img = read_image(
-                str(file_path),
-                camera_no=camera,
-                im_no=frame_idx,
-                time_resolved=True
+                str(file_path), camera_no=camera, im_no=frame_idx, time_resolved=True
             )
         else:
             # Pre-paired A+B in one entry - read both, return first
@@ -107,7 +103,7 @@ def read_single_frame(
             str(file_path),
             camera_no=camera,
             frames=1,
-            frames_per_camera=frames_per_camera
+            frames_per_camera=frames_per_camera,
         )
         # read_lavision_im7 returns (frames, H, W) for single frame
         if img.ndim == 3:
@@ -135,9 +131,11 @@ def create_piv_frame_reader(
     Returns a function that takes a 1-based frame index
     and returns a single (H, W) image array.
     """
+
     def read_frame(idx: int) -> np.ndarray:
         pair = read_pair(idx, camera_path, camera_num, config)
         return pair[0]
+
     return read_frame
 
 
@@ -167,7 +165,9 @@ def _detect_im7_frames_per_camera(im7_path: Path, num_cameras: int) -> int:
         raise ValueError(f"Invalid camera count {num_cameras} for {im7_path.name}")
     if size_f % num_cameras != 0:
         if size_f % 2 == 0:
-            expected = f"{size_f // 2} cameras (double-frame) or {size_f} (single-frame)"
+            expected = (
+                f"{size_f // 2} cameras (double-frame) or {size_f} (single-frame)"
+            )
         else:
             expected = f"{size_f} cameras (single-frame)"
         raise ValueError(
@@ -230,8 +230,12 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
 
         if config.time_resolved:
             # Time-resolved: read two separate frames from container
-            frame_a = read_single_frame(set_file_path, camera, frame_a_idx, image_type, time_resolved=True)
-            frame_b = read_single_frame(set_file_path, camera, frame_b_idx, image_type, time_resolved=True)
+            frame_a = read_single_frame(
+                set_file_path, camera, frame_a_idx, image_type, time_resolved=True
+            )
+            frame_b = read_single_frame(
+                set_file_path, camera, frame_b_idx, image_type, time_resolved=True
+            )
             return np.stack([frame_a, frame_b], axis=0)
         else:
             # Pre-paired: A+B frames in one entry - read directly
@@ -260,10 +264,12 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
                 # resolved files hold one frame per camera, so this resolves to 1),
                 # then extract this camera's slice.
                 fpc = _detect_im7_frames_per_camera(im7_file_a, config.camera_count)
-                frame_a = read_single_frame(im7_file_a, camera, frame_a_idx, image_type,
-                                            frames_per_camera=fpc)
-                frame_b = read_single_frame(im7_file_b, camera, frame_b_idx, image_type,
-                                            frames_per_camera=fpc)
+                frame_a = read_single_frame(
+                    im7_file_a, camera, frame_a_idx, image_type, frames_per_camera=fpc
+                )
+                frame_b = read_single_frame(
+                    im7_file_b, camera, frame_b_idx, image_type, frames_per_camera=fpc
+                )
             return np.stack([frame_a, frame_b], axis=0)
         else:
             # Non-time-resolved: each file contains A+B pair
@@ -276,8 +282,12 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
                 # (pre-paired double-frame resolves to 2), then return this
                 # camera's A+B slice.
                 fpc = _detect_im7_frames_per_camera(im7_file_path, config.camera_count)
-                return read_image(str(im7_file_path), camera_no=camera,
-                                  frames=fpc, frames_per_camera=fpc)
+                return read_image(
+                    str(im7_file_path),
+                    camera_no=camera,
+                    frames=fpc,
+                    frames_per_camera=fpc,
+                )
 
     elif image_type == "cine":
         # .cine: one video file per camera, frames extracted by index
@@ -301,14 +311,20 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
         # Read A and B concurrently — tifffile releases the GIL during I/O,
         # so two threads can decode different files in parallel.
         # Uses module-level pool to avoid per-pair thread creation overhead.
-        future_a = _read_pool.submit(read_single_frame, file_a, camera, frame_a_idx, image_type)
-        future_b = _read_pool.submit(read_single_frame, file_b, camera, frame_b_idx, image_type)
+        future_a = _read_pool.submit(
+            read_single_frame, file_a, camera, frame_a_idx, image_type
+        )
+        future_b = _read_pool.submit(
+            read_single_frame, file_b, camera, frame_b_idx, image_type
+        )
         frame_a = future_a.result()
         frame_b = future_b.result()
         return np.stack([frame_a, frame_b], axis=0)
 
 
-def _read_batch(start_idx: int, count: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
+def _read_batch(
+    start_idx: int, count: int, camera_path: Path, camera: int, config: Config
+) -> np.ndarray:
     """Read a batch of image pairs from disk.
 
     Calls read_pair() for each pair in the batch and stacks the results.
@@ -323,11 +339,15 @@ def _read_batch(start_idx: int, count: int, camera_path: Path, camera: int, conf
     Returns:
         np.ndarray of shape (count, 2, H, W)
     """
-    pairs = [read_pair(start_idx + i, camera_path, camera, config) for i in range(count)]
+    pairs = [
+        read_pair(start_idx + i, camera_path, camera, config) for i in range(count)
+    ]
     return np.stack(pairs, axis=0)
 
 
-def load_images(camera: int, config: Config, source: Path = None, batch_size: int = 1) -> da.Array:
+def load_images(
+    camera: int, config: Config, source: Path = None, batch_size: int = 1
+) -> da.Array:
     """Load images for a specific camera using lazy batch loading.
 
     Creates one delayed task per batch of image pairs. Each task is
@@ -447,12 +467,12 @@ def load_images(camera: int, config: Config, source: Path = None, batch_size: in
 def create_rectangular_mask(config: Config) -> np.ndarray:
     """
     Create a rectangular edge mask based on config settings.
-    
+
     Parameters
     ----------
     config : Config
         Configuration object containing image shape and rectangular mask settings
-        
+
     Returns
     -------
     np.ndarray
@@ -460,13 +480,13 @@ def create_rectangular_mask(config: Config) -> np.ndarray:
     """
     H, W = config.image_shape
     mask = np.zeros((H, W), dtype=bool)
-    
+
     rect_settings = config.mask_rectangular_settings
     top = rect_settings.get("top", 0)
     bottom = rect_settings.get("bottom", 0)
     left = rect_settings.get("left", 0)
     right = rect_settings.get("right", 0)
-    
+
     # Apply edge masks
     if top > 0:
         mask[:top, :] = True
@@ -476,17 +496,23 @@ def create_rectangular_mask(config: Config) -> np.ndarray:
         mask[:, :left] = True
     if right > 0:
         mask[:, -right:] = True
-    
+
     masked_pixels = np.sum(mask)
     total_pixels = mask.size
     mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
-    
+
     logging.debug(
         "Created rectangular mask: top={}, bottom={}, left={}, right={} "
         "({}/{:.0f} pixels = {:.1f}%)",
-        top, bottom, left, right, masked_pixels, total_pixels, mask_fraction * 100
+        top,
+        bottom,
+        left,
+        right,
+        masked_pixels,
+        total_pixels,
+        mask_fraction * 100,
     )
-    
+
     return mask
 
 
@@ -495,14 +521,14 @@ def load_mask_for_camera(
 ) -> Optional[np.ndarray]:
     """
     Load or create a mask for a specific camera.
-    
+
     The mask is a boolean array of shape (H, W) where True indicates
-    regions to mask out (invalid regions). 
-    
+    regions to mask out (invalid regions).
+
     Supports two modes:
     - 'file': Load mask from .mat file (created by Flask masking endpoint)
     - 'rectangular': Create mask from edge pixel specifications
-    
+
     Parameters
     ----------
     camera_num : int
@@ -511,7 +537,7 @@ def load_mask_for_camera(
         Configuration object
     source_path_idx : int, optional
         Index into source_paths list, defaults to 0
-        
+
     Returns
     -------
     Optional[np.ndarray]
@@ -521,55 +547,60 @@ def load_mask_for_camera(
     if not config.masking_enabled:
         logging.debug("Masking is disabled in config")
         return None
-    
+
     mask_mode = config.mask_mode
-    
+
     # Rectangular mode: create mask from edge specifications
     if mask_mode == "rectangular":
         logging.debug("Using rectangular edge masking")
         return create_rectangular_mask(config)
-    
+
     # File mode: load from .mat file
     elif mask_mode == "file":
         try:
             mask_path = config.get_mask_path(camera_num, source_path_idx)
-            
+
             if not mask_path.exists():
                 logging.warning(
                     "Mask file not found for Cam%s at %s. Proceeding without mask.",
-                    camera_num, mask_path
+                    camera_num,
+                    mask_path,
                 )
                 return None
 
             logging.debug("Loading mask for Cam%s from %s", camera_num, mask_path)
             mask, polygons = read_mask_from_mat(str(mask_path))
-            
+
             # Ensure mask is boolean
             mask = np.asarray(mask, dtype=bool)
-            
+
             # Log mask statistics
             masked_pixels = np.sum(mask)
             total_pixels = mask.size
             mask_fraction = masked_pixels / total_pixels if total_pixels > 0 else 0
-            
+
             logging.debug(
                 "Mask loaded: {}/{} pixels masked ({:.1f}%)",
-                masked_pixels, total_pixels, mask_fraction * 100
+                masked_pixels,
+                total_pixels,
+                mask_fraction * 100,
             )
-            
+
             return mask
-            
+
         except Exception as e:
             logging.error(
                 "Failed to load mask for Cam{}: {}. Proceeding without mask.",
-                camera_num, e
+                camera_num,
+                e,
             )
             return None
-    
+
     else:
         logging.warning(
             "Unknown mask mode '{}'. Must be 'file' or 'rectangular'. "
-            "Proceeding without mask.", mask_mode
+            "Proceeding without mask.",
+            mask_mode,
         )
         return None
 
@@ -641,6 +672,7 @@ def compute_vector_mask(
             f"Resizing mask to match image dimensions."
         )
         from scipy.ndimage import zoom
+
         zoom_factors = (H / pixel_mask.shape[0], W / pixel_mask.shape[1])
         # Use order=0 (nearest neighbor) to preserve binary nature of mask
         pixel_mask = zoom(pixel_mask.astype(np.float32), zoom_factors, order=0) > 0.5
@@ -654,8 +686,10 @@ def compute_vector_mask(
         is_ensemble = ensemble
     else:
         # Fall back to config flag (should be set correctly by caller)
-        is_ensemble = hasattr(config, 'ensemble_piv') and config.ensemble_piv
-    logging.debug(f"compute_vector_mask: is_ensemble={is_ensemble} (explicit={ensemble}, config.ensemble_piv={getattr(config, 'ensemble_piv', None)})")
+        is_ensemble = hasattr(config, "ensemble_piv") and config.ensemble_piv
+    logging.debug(
+        f"compute_vector_mask: is_ensemble={is_ensemble} (explicit={ensemble}, config.ensemble_piv={getattr(config, 'ensemble_piv', None)})"
+    )
 
     if is_ensemble:
         num_passes = len(config.ensemble_window_sizes)
@@ -671,17 +705,17 @@ def compute_vector_mask(
         else:
             win_y, win_x = config.window_sizes[pass_idx]
             overlap = config.overlap[pass_idx]
-            runtype = 'standard'
+            runtype = "standard"
 
         # Use centralized window center computation
-        if runtype == 'single':
+        if runtype == "single":
             # Single mode: use sum window for positioning
             result = compute_window_centers_single_mode(
                 image_shape=(H, W),
                 window_size=(win_y, win_x),
                 sum_window=tuple(config.ensemble_sum_window),
                 overlap=overlap,
-                validate=True
+                validate=True,
             )
         else:
             # Standard mode
@@ -689,7 +723,7 @@ def compute_vector_mask(
                 image_shape=(H, W),
                 window_size=(win_y, win_x),
                 overlap=overlap,
-                validate=True
+                validate=True,
             )
 
         win_ctrs_x = result.win_ctrs_x
@@ -725,7 +759,9 @@ def compute_vector_mask(
                 x_max_clip = min(W, x_max + 1)
 
                 if y_max_clip > y_min_clip and x_max_clip > x_min_clip:
-                    window_region = pixel_mask[y_min_clip:y_max_clip, x_min_clip:x_max_clip]
+                    window_region = pixel_mask[
+                        y_min_clip:y_max_clip, x_min_clip:x_max_clip
+                    ]
                     overlap_fraction = np.sum(window_region) / (win_y * win_x)
                     b_mask_pass[iy, ix] = overlap_fraction > threshold
 
@@ -744,15 +780,16 @@ def compute_vector_mask(
 
         # Find which rows are masked for debugging
         masked_rows_y = np.any(b_mask_pass, axis=1)  # Which Y indices have any masks
-        masked_row_indices = np.where(masked_rows_y)[0]
+        np.where(masked_rows_y)[0]
 
         logging.debug(
             "Pass {}: {}/{} vectors masked ({:.1f}%), window size: ({}, {})",
-            pass_idx + 1, masked_vectors, total_vectors,
-            mask_fraction * 100, win_y, win_x
+            pass_idx + 1,
+            masked_vectors,
+            total_vectors,
+            mask_fraction * 100,
+            win_y,
+            win_x,
         )
 
-
-
-    
     return vector_masks

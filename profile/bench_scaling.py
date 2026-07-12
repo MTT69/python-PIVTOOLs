@@ -123,7 +123,9 @@ def thread_sweep(total_cores: int) -> list[dict[str, Any]]:
 
 
 def worker_sweep(
-    total_cores: int, max_workers: int, threads: int,
+    total_cores: int,
+    max_workers: int,
+    threads: int,
     extra_workers: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Fixed ``threads``/worker, vary workers — the cleanest strong-scaling axis.
@@ -168,7 +170,10 @@ def oversub_sweep(total_cores: int, max_workers: int) -> list[dict[str, Any]]:
 
 
 def build_config_list(
-    sweep: str, total_cores: int, max_workers: int, worker_sweep_threads: int = 2,
+    sweep: str,
+    total_cores: int,
+    max_workers: int,
+    worker_sweep_threads: int = 2,
     extra_workers: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Build the deduplicated config list for the requested sweep(s)."""
@@ -176,7 +181,9 @@ def build_config_list(
     if sweep in ("threads", "all"):
         configs.extend(thread_sweep(total_cores))
     if sweep in ("workers", "all"):
-        configs.extend(worker_sweep(total_cores, max_workers, worker_sweep_threads, extra_workers))
+        configs.extend(
+            worker_sweep(total_cores, max_workers, worker_sweep_threads, extra_workers)
+        )
     if sweep in ("matrix", "all"):
         configs.extend(matrix_sweep(total_cores, max_workers))
     if sweep in ("oversub", "all"):

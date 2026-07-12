@@ -1,12 +1,10 @@
-import sys
-from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
 
-from pivtools_core.config import Config
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
 from pivtools_cli.piv.piv_backend.gpu_instantaneous import InstantaneousCorrelatorGPU
+from pivtools_core.config import Config
 
 # Global cache for correlator instances to avoid redundant caching
 _correlator_cache = {}
@@ -35,6 +33,7 @@ def make_correlator_backend(
         # Import here to avoid circular imports and surface a clear build error
         try:
             from pivtools_cli.piv.piv_backend.cpu_ensemble import EnsembleCorrelatorCPU
+
             return EnsembleCorrelatorCPU(
                 config=config,
                 precomputed_cache=precomputed_cache,
@@ -50,7 +49,9 @@ def make_correlator_backend(
             raise RuntimeError(f"Failed to import ensemble correlator: {e}")
 
     if backend == "cpu":
-        return InstantaneousCorrelatorCPU(config=config, precomputed_cache=precomputed_cache)
+        return InstantaneousCorrelatorCPU(
+            config=config, precomputed_cache=precomputed_cache
+        )
     elif backend == "gpu":
         return InstantaneousCorrelatorGPU()
     else:

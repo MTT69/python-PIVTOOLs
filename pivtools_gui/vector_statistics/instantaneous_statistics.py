@@ -13,20 +13,18 @@ Pattern matches: planar_calibration_production.py
 
 import concurrent.futures
 import logging
-import os
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Tuple
-
-from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io
 from scipy.io import savemat
+
+from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 matplotlib.use("Agg")
 
@@ -81,7 +79,9 @@ SAVE_FIGURES = True
 USE_CONFIG_DIRECTLY = True
 
 # LOGGING SETUP
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -327,7 +327,11 @@ class VectorStatisticsProcessor:
         "mean_vorticity": ["vorticity"],
         "mean_divergence": ["divergence"],
         "mean_tke": ["tke"],
-        "mean_stresses": ["uu", "vv", "uv"],  # Full stress tensor (+ ww, uw, vw for stereo)
+        "mean_stresses": [
+            "uu",
+            "vv",
+            "uv",
+        ],  # Full stress tensor (+ ww, uw, vw for stereo)
         "mean_peak_height": ["mean_peak_height"],
         # Instantaneous (per-frame) statistics
         "inst_velocity": ["ux", "uy"],  # Per-frame velocity
@@ -520,14 +524,23 @@ class VectorStatisticsProcessor:
             # Keep original requested names for logging, but also track normalized names
             if requested_statistics is None or len(requested_statistics) == 0:
                 # Try config-based defaults first
-                if self._config is not None and hasattr(self._config, 'statistics_enabled_list') and self._config.statistics_enabled_list:
+                if (
+                    self._config is not None
+                    and hasattr(self._config, "statistics_enabled_list")
+                    and self._config.statistics_enabled_list
+                ):
                     requested_statistics = list(self._config.statistics_enabled_list)
-                    logger.info(f"[Statistics] Using config-based statistics: {requested_statistics}")
+                    logger.info(
+                        f"[Statistics] Using config-based statistics: {requested_statistics}"
+                    )
                 else:
                     # Hardcoded fallback when config is unavailable
                     requested_statistics = [
-                        "mean_velocity", "mean_vorticity", "mean_divergence",
-                        "mean_stresses", "mean_tke"
+                        "mean_velocity",
+                        "mean_vorticity",
+                        "mean_divergence",
+                        "mean_stresses",
+                        "mean_tke",
                     ]
 
             # Keep original names for reference
@@ -544,20 +557,31 @@ class VectorStatisticsProcessor:
 
             # Check data directory exists
             if not self.data_dir.exists():
-                return {"success": False, "error": f"Data directory not found: {self.data_dir}"}
+                return {
+                    "success": False,
+                    "error": f"Data directory not found: {self.data_dir}",
+                }
 
             # Find valid runs using centralized utility
             first_file = self.data_dir / (self.vector_format % 1)
             if not first_file.exists():
-                return {"success": False, "error": f"No vector files found in {self.data_dir}"}
+                return {
+                    "success": False,
+                    "error": f"No vector files found in {self.data_dir}",
+                }
 
             validation_result = find_valid_piv_runs(first_file, one_based=True)
             valid_runs = validation_result.valid_runs
 
             if not valid_runs:
-                return {"success": False, "error": f"No valid runs found in {self.data_dir}"}
+                return {
+                    "success": False,
+                    "error": f"No valid runs found in {self.data_dir}",
+                }
 
-            logger.info(f"[Statistics] Found {len(valid_runs)} valid runs: {valid_runs}")
+            logger.info(
+                f"[Statistics] Found {len(valid_runs)} valid runs: {valid_runs}"
+            )
 
             if progress_callback:
                 progress_callback(10)
@@ -615,7 +639,9 @@ class VectorStatisticsProcessor:
                 progress_callback(85)
 
             # Phase 4: Save results to mat file
-            output_file = self._save_results(valid_runs, mean_results, coords_x_list, coords_y_list)
+            output_file = self._save_results(
+                valid_runs, mean_results, coords_x_list, coords_y_list
+            )
 
             if progress_callback:
                 progress_callback(100)
@@ -653,8 +679,12 @@ class VectorStatisticsProcessor:
         calc_second_moments = calc_stresses or calc_mean_tke
 
         # Mean vorticity/divergence - check both new and legacy names
-        calc_mean_vorticity = "mean_vorticity" in active_stats or "vorticity" in active_stats
-        calc_mean_divergence = "mean_divergence" in active_stats or "divergence" in active_stats
+        calc_mean_vorticity = (
+            "mean_vorticity" in active_stats or "vorticity" in active_stats
+        )
+        calc_mean_divergence = (
+            "mean_divergence" in active_stats or "divergence" in active_stats
+        )
 
         # Instantaneous statistics - check both new and legacy names
         save_inst_velocity = "inst_velocity" in active_stats
@@ -743,7 +773,9 @@ class VectorStatisticsProcessor:
         total_runs = len(valid_runs)
 
         for idx, run_num in enumerate(valid_runs):
-            logger.info(f"[Statistics] Processing run {run_num} ({idx + 1}/{total_runs})")
+            logger.info(
+                f"[Statistics] Processing run {run_num} ({idx + 1}/{total_runs})"
+            )
 
             cx = coords_x_list[idx] if idx < len(coords_x_list) else None
             cy = coords_y_list[idx] if idx < len(coords_y_list) else None
@@ -862,7 +894,9 @@ class VectorStatisticsProcessor:
 
             for file_path in frame_files:
                 try:
-                    mat_data = scipy.io.loadmat(str(file_path), squeeze_me=True, struct_as_record=False)
+                    mat_data = scipy.io.loadmat(
+                        str(file_path), squeeze_me=True, struct_as_record=False
+                    )
                     if "piv_result" not in mat_data:
                         continue
                     piv_result_data = mat_data["piv_result"]
@@ -893,8 +927,10 @@ class VectorStatisticsProcessor:
                     continue
 
             if peak_sum is not None and peak_count_arr is not None:
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    result["mean_peak_height"] = np.where(peak_count_arr > 0, peak_sum / peak_count_arr, np.nan)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    result["mean_peak_height"] = np.where(
+                        peak_count_arr > 0, peak_sum / peak_count_arr, np.nan
+                    )
 
         return result
 
@@ -939,7 +975,9 @@ class VectorStatisticsProcessor:
         frame_files = sorted(list(self.data_dir.glob(glob_pattern)))
 
         if not frame_files:
-            logger.warning("[Statistics] No frame files found for instantaneous processing")
+            logger.warning(
+                "[Statistics] No frame files found for instantaneous processing"
+            )
             return
 
         n_frames = len(frame_files)
@@ -950,11 +988,18 @@ class VectorStatisticsProcessor:
         if self.use_threading:
             executor_class = concurrent.futures.ThreadPoolExecutor
             executor_kwargs = {"max_workers": min(8, n_frames)}
-            logger.info(f"[Statistics] Using ThreadPoolExecutor with {executor_kwargs['max_workers']} workers")
+            logger.info(
+                f"[Statistics] Using ThreadPoolExecutor with {executor_kwargs['max_workers']} workers"
+            )
         else:
             executor_class = concurrent.futures.ProcessPoolExecutor
-            executor_kwargs = {"max_workers": get_max_workers(len(frame_files)), "initializer": worker_initializer}
-            logger.info(f"[Statistics] Using ProcessPoolExecutor with {executor_kwargs['max_workers']} workers")
+            executor_kwargs = {
+                "max_workers": get_max_workers(len(frame_files)),
+                "initializer": worker_initializer,
+            }
+            logger.info(
+                f"[Statistics] Using ProcessPoolExecutor with {executor_kwargs['max_workers']} workers"
+            )
 
         with executor_class(**executor_kwargs) as executor:
             futures = {}
@@ -995,7 +1040,10 @@ class VectorStatisticsProcessor:
         active_stats: set,
     ):
         """Save visualization figures for mean statistics."""
-        from pivtools_gui.plotting.plot_maker import make_scalar_settings, plot_scalar_field
+        from pivtools_gui.plotting.plot_maker import (
+            make_scalar_settings,
+            plot_scalar_field,
+        )
 
         logger.info("[Statistics] Generating figures...")
 
@@ -1047,36 +1095,95 @@ class VectorStatisticsProcessor:
                     save_field(res["mean_uz"], "Mean_Uz", "m/s", symmetric=True)
 
             if "mean_vorticity" in active_stats and "vorticity" in res:
-                save_field(res["vorticity"], "Mean_Vorticity", "1/s", cmap="seismic", symmetric=True)
+                save_field(
+                    res["vorticity"],
+                    "Mean_Vorticity",
+                    "1/s",
+                    cmap="seismic",
+                    symmetric=True,
+                )
 
             if "mean_divergence" in active_stats and "divergence" in res:
-                save_field(res["divergence"], "Mean_Divergence", "1/s", cmap="seismic", symmetric=True)
+                save_field(
+                    res["divergence"],
+                    "Mean_Divergence",
+                    "1/s",
+                    cmap="seismic",
+                    symmetric=True,
+                )
 
             if "mean_tke" in active_stats and "tke" in res:
-                save_field(res["tke"], "Mean_TKE", "m^2/s^2", cmap="viridis", symmetric=False)
+                save_field(
+                    res["tke"], "Mean_TKE", "m^2/s^2", cmap="viridis", symmetric=False
+                )
 
             # Full stress tensor - new combined option or legacy names
-            if ("mean_stresses" in active_stats or "reynolds_stress" in active_stats
-                    or "normal_stress" in active_stats):
+            if (
+                "mean_stresses" in active_stats
+                or "reynolds_stress" in active_stats
+                or "normal_stress" in active_stats
+            ):
                 # Normal stresses (diagonal)
                 if "uu" in res:
-                    save_field(res["uu"], "Stress_uu", "m^2/s^2", cmap="viridis", symmetric=False)
+                    save_field(
+                        res["uu"],
+                        "Stress_uu",
+                        "m^2/s^2",
+                        cmap="viridis",
+                        symmetric=False,
+                    )
                 if "vv" in res:
-                    save_field(res["vv"], "Stress_vv", "m^2/s^2", cmap="viridis", symmetric=False)
+                    save_field(
+                        res["vv"],
+                        "Stress_vv",
+                        "m^2/s^2",
+                        cmap="viridis",
+                        symmetric=False,
+                    )
                 # Shear stress (off-diagonal)
                 if "uv" in res:
-                    save_field(res["uv"], "Stress_uv", "m^2/s^2", cmap="seismic", symmetric=True)
+                    save_field(
+                        res["uv"],
+                        "Stress_uv",
+                        "m^2/s^2",
+                        cmap="seismic",
+                        symmetric=True,
+                    )
                 # 3D stress components for stereo
                 if res.get("stereo"):
                     if "ww" in res:
-                        save_field(res["ww"], "Stress_ww", "m^2/s^2", cmap="viridis", symmetric=False)
+                        save_field(
+                            res["ww"],
+                            "Stress_ww",
+                            "m^2/s^2",
+                            cmap="viridis",
+                            symmetric=False,
+                        )
                     if "uw" in res:
-                        save_field(res["uw"], "Stress_uw", "m^2/s^2", cmap="seismic", symmetric=True)
+                        save_field(
+                            res["uw"],
+                            "Stress_uw",
+                            "m^2/s^2",
+                            cmap="seismic",
+                            symmetric=True,
+                        )
                     if "vw" in res:
-                        save_field(res["vw"], "Stress_vw", "m^2/s^2", cmap="seismic", symmetric=True)
+                        save_field(
+                            res["vw"],
+                            "Stress_vw",
+                            "m^2/s^2",
+                            cmap="seismic",
+                            symmetric=True,
+                        )
 
             if "mean_peak_height" in active_stats and "mean_peak_height" in res:
-                save_field(res["mean_peak_height"], "Mean_Peak_Height", "-", cmap="viridis", symmetric=False)
+                save_field(
+                    res["mean_peak_height"],
+                    "Mean_Peak_Height",
+                    "-",
+                    cmap="viridis",
+                    symmetric=False,
+                )
 
     def _save_results(
         self,
@@ -1107,12 +1214,14 @@ class VectorStatisticsProcessor:
             ("mean_peak_height", object),
         ]
         if stereo:
-            dt_fields.extend([
-                ("uz", object),
-                ("uw", object),
-                ("vw", object),
-                ("ww", object),
-            ])
+            dt_fields.extend(
+                [
+                    ("uz", object),
+                    ("uw", object),
+                    ("vw", object),
+                    ("ww", object),
+                ]
+            )
 
         dt = np.dtype(dt_fields)
         piv_result = np.empty((max_run,), dtype=dt)
@@ -1132,7 +1241,15 @@ class VectorStatisticsProcessor:
             piv_result[idx]["uy"] = res["mean_uy"]
             piv_result[idx]["b_mask"] = res["b_mask"]
 
-            for field in ["uu", "uv", "vv", "tke", "divergence", "vorticity", "mean_peak_height"]:
+            for field in [
+                "uu",
+                "uv",
+                "vv",
+                "tke",
+                "divergence",
+                "vorticity",
+                "mean_peak_height",
+            ]:
                 if field in res and res[field] is not None:
                     piv_result[idx][field] = res[field]
 
@@ -1168,11 +1285,14 @@ class VectorStatisticsProcessor:
 
         # Save
         out_file = self.mean_stats_dir / "mean_stats.mat"
-        savemat(out_file, {
-            "piv_result": piv_result,
-            "coordinates": coordinates,
-            "meta": meta_dict,
-        })
+        savemat(
+            out_file,
+            {
+                "piv_result": piv_result,
+                "coordinates": coordinates,
+                "meta": meta_dict,
+            },
+        )
 
         logger.info(f"[Statistics] Saved to {out_file}")
         return out_file
@@ -1275,8 +1395,12 @@ def _process_frame_parallel(
                 gamma_radius = calc_flags.get("gamma_radius", 5)
 
                 # Need gradients for vorticity, divergence, or gamma
-                need_grads = (calc_inst_vorticity or calc_inst_divergence or
-                              calc_gamma1 or calc_gamma2)
+                need_grads = (
+                    calc_inst_vorticity
+                    or calc_inst_divergence
+                    or calc_gamma1
+                    or calc_gamma2
+                )
 
                 if need_grads and isinstance(u_t, np.ndarray):
                     # Build coordinates if not provided
@@ -1311,10 +1435,14 @@ def _process_frame_parallel(
 
                     # Gamma functions for vortex identification
                     if calc_gamma1:
-                        run_data["gamma1"] = gamma1(cx_local, cy_local, u_t, v_t, d=gamma_radius)
+                        run_data["gamma1"] = gamma1(
+                            cx_local, cy_local, u_t, v_t, d=gamma_radius
+                        )
 
                     if calc_gamma2:
-                        run_data["gamma2"] = gamma2(cx_local, cy_local, u_t, v_t, d=gamma_radius)
+                        run_data["gamma2"] = gamma2(
+                            cx_local, cy_local, u_t, v_t, d=gamma_radius
+                        )
 
             results_list.append(run_data)
 
@@ -1422,12 +1550,15 @@ if __name__ == "__main__":
                         f"output: {result['output_file']}"
                     )
                 else:
-                    logger.error(f"Camera {camera_num} failed: {result.get('error', 'Unknown error')}")
+                    logger.error(
+                        f"Camera {camera_num} failed: {result.get('error', 'Unknown error')}"
+                    )
                     failed_sources.append(f"Cam{camera_num}")
 
             except Exception as e:
                 logger.error(f"Camera {camera_num} failed: {str(e)}")
                 import traceback
+
                 traceback.print_exc()
                 failed_sources.append(f"Cam{camera_num}")
     else:
@@ -1469,12 +1600,15 @@ if __name__ == "__main__":
                     f"output: {result['output_file']}"
                 )
             else:
-                logger.error(f"Merged data failed: {result.get('error', 'Unknown error')}")
+                logger.error(
+                    f"Merged data failed: {result.get('error', 'Unknown error')}"
+                )
                 failed_sources.append("Merged")
 
         except Exception as e:
             logger.error(f"Merged data failed: {str(e)}")
             import traceback
+
             traceback.print_exc()
             failed_sources.append("Merged")
     else:

@@ -13,16 +13,15 @@ Key patterns:
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import dask.array as da
 import numpy as np
 from dask.distributed import Client
 from scipy.io import savemat
 
-from pivtools_core.config import Config
 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-
+from pivtools_core.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +29,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # INTERMEDIATE FILTER OUTPUT SAVING
 # =============================================================================
+
 
 def _save_intermediate_frame(
     block: np.ndarray,
@@ -55,8 +55,12 @@ def _save_intermediate_frame(
     frame_B = block[0, 1, :, :].astype(np.float32)
 
     # Save as .mat files
-    savemat(save_dir / f"{filename_prefix}_A.mat", {"frame": frame_A}, do_compression=True)
-    savemat(save_dir / f"{filename_prefix}_B.mat", {"frame": frame_B}, do_compression=True)
+    savemat(
+        save_dir / f"{filename_prefix}_A.mat", {"frame": frame_A}, do_compression=True
+    )
+    savemat(
+        save_dir / f"{filename_prefix}_B.mat", {"frame": frame_B}, do_compression=True
+    )
 
     logger.debug(f"Saved intermediate frames to {save_dir / filename_prefix}_*.mat")
 
@@ -65,7 +69,7 @@ def _save_intermediate_frame(
 # FILTER HELPERS
 # =============================================================================
 
-TEMPORAL_FILTERS = {'time', 'pod'}
+TEMPORAL_FILTERS = {"time", "pod"}
 
 
 def get_filter_specs(config: Config) -> List[dict]:
@@ -81,11 +85,10 @@ def get_filter_specs(config: Config) -> List[dict]:
     return config.filters or []
 
 
-
-
 # =============================================================================
 # DASK PIPELINE FUNCTIONS
 # =============================================================================
+
 
 def apply_all_filters_slim(
     block: np.ndarray,
@@ -121,7 +124,10 @@ def apply_all_filters_slim(
     Returns:
         Filtered block of same shape
     """
-    from pivtools_cli.preprocessing.pod_filter import pod_filter_batch, time_filter_batch
+    from pivtools_cli.preprocessing.pod_filter import (
+        pod_filter_batch,
+        time_filter_batch,
+    )
 
     if filter_specs is None:
         filter_specs = []
@@ -136,20 +142,25 @@ def apply_all_filters_slim(
 
     # Determine if we should save intermediate outputs
     save_intermediate = (
-        save_intermediate_base is not None and
-        num_frame_pairs is not None and
-        block_id is not None and
-        (filter_specs or pixel_mask is not None)
+        save_intermediate_base is not None
+        and num_frame_pairs is not None
+        and block_id is not None
+        and (filter_specs or pixel_mask is not None)
     )
 
     if save_intermediate:
         batch_no = block_id[0]  # First dimension is the batch index
-        save_dir = Path(save_intermediate_base) / "basic_filters" / str(num_frame_pairs) / f"batch_{batch_no:04d}"
+        save_dir = (
+            Path(save_intermediate_base)
+            / "basic_filters"
+            / str(num_frame_pairs)
+            / f"batch_{batch_no:04d}"
+        )
         logger.debug(f"Saving intermediate filter outputs to {save_dir}")
 
     # Single copy at start - all subsequent operations modify in-place
     # This avoids multiple copies if both mask and filters are applied
-    needs_copy = (pixel_mask is not None or filter_specs)
+    needs_copy = pixel_mask is not None or filter_specs
     if needs_copy:
         block = block.copy()
 
@@ -165,33 +176,39 @@ def apply_all_filters_slim(
             block[:, :, pixel_mask] = 0
             logger.debug(f"Applied pixel mask: {np.sum(pixel_mask)} pixels zeroed")
             if save_intermediate:
-                _save_intermediate_frame(block, save_dir, f"{filter_idx:02d}_after_pixel_mask")
+                _save_intermediate_frame(
+                    block, save_dir, f"{filter_idx:02d}_after_pixel_mask"
+                )
                 filter_idx += 1
         else:
-            logger.warning(f"Pixel mask shape {pixel_mask.shape} != image shape ({H}, {W})")
+            logger.warning(
+                f"Pixel mask shape {pixel_mask.shape} != image shape ({H}, {W})"
+            )
 
     # 2. Apply filters in user-defined order (spatial and temporal interleaved)
     for spec in filter_specs:
-        filter_type = spec.get('type')
+        filter_type = spec.get("type")
 
         if filter_type in TEMPORAL_FILTERS:
             # Temporal filter (needs full batch)
-            if filter_type == 'pod':
-                eps_auto_psi = spec.get('eps_auto_psi', 0.01)
-                eps_auto_sigma = spec.get('eps_auto_sigma', 0.01)
+            if filter_type == "pod":
+                eps_auto_psi = spec.get("eps_auto_psi", 0.01)
+                eps_auto_sigma = spec.get("eps_auto_sigma", 0.01)
                 block = pod_filter_batch(
                     block,
                     eps_auto_psi=eps_auto_psi,
                     eps_auto_sigma=eps_auto_sigma,
                 )
-            elif filter_type == 'time':
+            elif filter_type == "time":
                 block = time_filter_batch(block)
         else:
             # Spatial filter (element-wise)
             block = _apply_spatial_filters_numpy(block, [spec])
 
         if save_intermediate:
-            _save_intermediate_frame(block, save_dir, f"{filter_idx:02d}_after_{filter_type}")
+            _save_intermediate_frame(
+                block, save_dir, f"{filter_idx:02d}_after_{filter_type}"
+            )
             filter_idx += 1
 
     return block
@@ -217,7 +234,7 @@ def _gaussian_kernel_1d(size: int, sigma: float) -> np.ndarray:
     """Build a 1-D Gaussian kernel matching MATLAB's fspecial('gaussian')."""
     half = (size - 1) / 2.0
     x = np.arange(size) - half
-    k = np.exp(-x ** 2 / (2.0 * sigma ** 2))
+    k = np.exp(-(x**2) / (2.0 * sigma**2))
     k /= k.sum()
     return k
 
@@ -238,40 +255,40 @@ def _apply_spatial_filters_numpy(
     Returns:
         Filtered block
     """
-    from scipy.ndimage import (
-        correlate as scipy_correlate,
-        median_filter as scipy_median,
-        maximum_filter as scipy_maximum,
-        minimum_filter as scipy_minimum,
-        uniform_filter as scipy_uniform,
-    )
+    from scipy.ndimage import correlate as scipy_correlate
+    from scipy.ndimage import maximum_filter as scipy_maximum
+    from scipy.ndimage import median_filter as scipy_median
+    from scipy.ndimage import minimum_filter as scipy_minimum
+    from scipy.ndimage import uniform_filter as scipy_uniform
 
     # In-place arithmetic below requires floating-point dtype
     if not np.issubdtype(block.dtype, np.floating):
         block = block.astype(np.float32)
 
     for spec in filter_specs:
-        filter_type = spec.get('type')
+        filter_type = spec.get("type")
 
-        if filter_type == 'gaussian':
+        if filter_type == "gaussian":
             # FIR Gaussian kernel matching MATLAB fspecial('gaussian', size, sigma).
             # Uses explicit kernel + correlation (not scipy IIR gaussian_filter).
-            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
-            sigma = spec.get('sigma', 1.0)
+            size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
+            sigma = spec.get("sigma", 1.0)
             ky = _gaussian_kernel_1d(size[0], sigma)
             kx = _gaussian_kernel_1d(size[1], sigma)
             kernel_2d = np.outer(ky, kx).astype(np.float32)
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
-                    block[i, j] = scipy_correlate(block[i, j], kernel_2d, mode='constant')
+                    block[i, j] = scipy_correlate(
+                        block[i, j], kernel_2d, mode="constant"
+                    )
 
-        elif filter_type == 'median':
-            size = _normalize_kernel_size(spec.get('size'), default=(5, 5))
+        elif filter_type == "median":
+            size = _normalize_kernel_size(spec.get("size"), default=(5, 5))
             block = scipy_median(block, size=(1, 1) + size)
 
-        elif filter_type == 'norm':
-            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
-            max_gain = spec.get('max_gain', 1.0)
+        elif filter_type == "norm":
+            size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
+            max_gain = spec.get("max_gain", 1.0)
             gain_floor = 1.0 / max_gain
             # Per-frame to avoid 3x block-size memory allocation
             for i in range(block.shape[0]):
@@ -284,60 +301,66 @@ def _apply_spatial_filters_numpy(
                     frame -= local_min
                     frame /= local_range
 
-        elif filter_type == 'maxnorm':
+        elif filter_type == "maxnorm":
             # Background normalization: divides by a smoothed local minimum
             # (local background level), with a maximum gain limit. Equalizes
             # illumination gradients while preserving particle contrast.
             # Name kept as 'maxnorm' for config backward compatibility.
             # Matches MATLAB filter_maxnorm (minmaxfiltnd single-output = min).
-            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
-            max_gain = spec.get('max_gain', 1.0)
+            size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
+            max_gain = spec.get("max_gain", 1.0)
             gain_floor = 1.0 / max_gain
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    local_min = scipy_minimum(frame, size=size, mode='nearest')
-                    scipy_uniform(local_min, size=size, output=local_min, mode='constant')
+                    local_min = scipy_minimum(frame, size=size, mode="nearest")
+                    scipy_uniform(
+                        local_min, size=size, output=local_min, mode="constant"
+                    )
                     np.maximum(local_min, gain_floor, out=local_min)
                     np.maximum(frame, 0, out=frame)
                     frame /= local_min
 
-        elif filter_type == 'norm2':
+        elif filter_type == "norm2":
             # Smoothed range normalization: like 'norm' but box-smooths both
             # the min and max envelopes before subtracting/dividing. Gives a
             # more stable normalization that's less sensitive to single-pixel
             # noise spikes. Matches MATLAB filter_norm2.
-            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
-            max_gain = spec.get('max_gain', 1.0)
+            size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
+            max_gain = spec.get("max_gain", 1.0)
             gain_floor = 1.0 / max_gain
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    local_min = scipy_minimum(frame, size=size, mode='nearest')
-                    local_max = scipy_maximum(frame, size=size, mode='nearest')
-                    scipy_uniform(local_min, size=size, output=local_min, mode='constant')
-                    scipy_uniform(local_max, size=size, output=local_max, mode='constant')
+                    local_min = scipy_minimum(frame, size=size, mode="nearest")
+                    local_max = scipy_maximum(frame, size=size, mode="nearest")
+                    scipy_uniform(
+                        local_min, size=size, output=local_min, mode="constant"
+                    )
+                    scipy_uniform(
+                        local_max, size=size, output=local_max, mode="constant"
+                    )
                     local_max -= local_min
                     np.maximum(local_max, gain_floor, out=local_max)
                     frame -= local_min
                     frame /= local_max
 
-        elif filter_type == 'ssmin':
+        elif filter_type == "ssmin":
             # Sliding minimum background subtraction: median-smooths the
             # image first (removes noise), then extracts the local minimum
             # (background envelope), box-smooths it, and subtracts. Output
             # is clipped to >= 0. Matches MATLAB filter_ssmin.
-            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
+            size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    bg = scipy_median(frame, size=(3, 3), mode='constant')
-                    bg = scipy_minimum(bg, size=size, mode='nearest')
-                    scipy_uniform(bg, size=size, output=bg, mode='constant')
+                    bg = scipy_median(frame, size=(3, 3), mode="constant")
+                    bg = scipy_minimum(bg, size=size, mode="nearest")
+                    scipy_uniform(bg, size=size, output=bg, mode="constant")
                     frame -= bg
                     np.maximum(frame, 0, out=frame)
 
-        elif filter_type == 'meannorm':
+        elif filter_type == "meannorm":
             # Per-frame mean normalization: divide every frame by its own
             # spatial mean intensity, equalizing pair-to-pair brightness
             # (laser energy drift). Kills the brightness-covariance pedestal
@@ -355,27 +378,34 @@ def _apply_spatial_filters_numpy(
                         )
                     frame /= frame_mean
 
-        elif filter_type == 'lmax':
-            size = _normalize_kernel_size(spec.get('size'), default=(7, 7))
+        elif filter_type == "lmax":
+            size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
             block = scipy_maximum(block, size=(1, 1) + size)
 
-        elif filter_type == 'invert':
+        elif filter_type == "invert":
             img_max = block.max(axis=(-2, -1), keepdims=True)
             np.subtract(img_max, block, out=block)
 
-        elif filter_type == 'clahe':
+        elif filter_type == "clahe":
             import cv2
-            clip_limit = spec.get('clip_limit', 2.0)
-            tile_size = _normalize_kernel_size(spec.get('tile_grid_size'), default=(8, 8))
+
+            clip_limit = spec.get("clip_limit", 2.0)
+            tile_size = _normalize_kernel_size(
+                spec.get("tile_grid_size"), default=(8, 8)
+            )
             clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
                     fmin, fmax = frame.min(), frame.max()
                     if fmax > fmin:
-                        norm = ((frame - fmin) / (fmax - fmin) * 65535).astype(np.uint16)
+                        norm = ((frame - fmin) / (fmax - fmin) * 65535).astype(
+                            np.uint16
+                        )
                         result = clahe.apply(norm)
-                        block[i, j] = result.astype(np.float32) / 65535.0 * (fmax - fmin) + fmin
+                        block[i, j] = (
+                            result.astype(np.float32) / 65535.0 * (fmax - fmin) + fmin
+                        )
 
         else:
             logger.warning(f"Unknown spatial filter type: {filter_type}")
@@ -416,7 +446,9 @@ def create_filter_pipeline(
     if pixel_mask is not None:
         logger.debug(f"  Pixel mask: {np.sum(pixel_mask)} masked pixels")
     if save_intermediate_base is not None:
-        logger.debug(f"  Saving intermediate outputs to: {save_intermediate_base}/basic_filters/...")
+        logger.debug(
+            f"  Saving intermediate outputs to: {save_intermediate_base}/basic_filters/..."
+        )
 
     # If no filters and no mask, return unchanged
     if not filter_specs and pixel_mask is None:
@@ -424,8 +456,12 @@ def create_filter_pipeline(
         return images
 
     # Prepare intermediate saving parameters
-    save_base_str = str(save_intermediate_base) if save_intermediate_base is not None else None
-    num_frame_pairs = config.num_frame_pairs if save_intermediate_base is not None else None
+    save_base_str = (
+        str(save_intermediate_base) if save_intermediate_base is not None else None
+    )
+    num_frame_pairs = (
+        config.num_frame_pairs if save_intermediate_base is not None else None
+    )
 
     # Apply filters via map_blocks using the slim version
     # This only serializes the filter specs (small dicts), not the full config
@@ -446,6 +482,7 @@ def create_filter_pipeline(
 # =============================================================================
 # DATA SCATTERING
 # =============================================================================
+
 
 def scatter_immutable_data(
     client: Client,
@@ -478,9 +515,9 @@ def scatter_immutable_data(
     scattered_cache = client.scatter(correlator_cache, broadcast=True)
 
     cache_size = sum(
-        v.nbytes if hasattr(v, 'nbytes') else 0
+        v.nbytes if hasattr(v, "nbytes") else 0
         for v in correlator_cache.values()
-        if hasattr(v, 'nbytes')
+        if hasattr(v, "nbytes")
     )
     logger.info(f"  Scattered correlator cache (~{cache_size / 1024:.1f} KB)")
 
@@ -492,14 +529,15 @@ def scatter_immutable_data(
         logger.info(f"  Scattered vector masks ({mask_size:.1f} KB)")
 
     return {
-        'cache': scattered_cache,
-        'masks': scattered_masks,
+        "cache": scattered_cache,
+        "masks": scattered_masks,
     }
 
 
 # =============================================================================
 # CORRELATION HELPERS
 # =============================================================================
+
 
 def correlate_and_save_batch(
     batch: np.ndarray,
@@ -535,16 +573,16 @@ def correlate_and_save_batch(
     saved_paths = []
 
     saved_paths = _process_and_save_batch(
-            batch,
-            start_img_idx,
-            config,
-            scattered_masks,
-            scattered_cache,
-            output_path,
-            runs_to_save,
-            vector_format,
-        )
-    #saved_paths.append(path)
+        batch,
+        start_img_idx,
+        config,
+        scattered_masks,
+        scattered_cache,
+        output_path,
+        runs_to_save,
+        vector_format,
+    )
+    # saved_paths.append(path)
 
     return saved_paths
 
@@ -565,8 +603,16 @@ def reduce_ensemble_results(r1: dict, r2: dict) -> dict:
         Combined result with summed arrays
     """
     # Keep first-pair images from whichever result has them (only one should)
-    first_pair_A = r1.get("first_pair_A") if r1.get("first_pair_A") is not None else r2.get("first_pair_A")
-    first_pair_B = r1.get("first_pair_B") if r1.get("first_pair_B") is not None else r2.get("first_pair_B")
+    first_pair_A = (
+        r1.get("first_pair_A")
+        if r1.get("first_pair_A") is not None
+        else r2.get("first_pair_A")
+    )
+    first_pair_B = (
+        r1.get("first_pair_B")
+        if r1.get("first_pair_B") is not None
+        else r2.get("first_pair_B")
+    )
 
     return {
         "corr_AA_sum": r1["corr_AA_sum"] + r2["corr_AA_sum"],
@@ -641,6 +687,7 @@ def _log_worker_memory(label, pass_idx, batch_idx=-1):
     """Log worker RSS using psutil (zero-cost if psutil not available)."""
     try:
         import psutil
+
         proc = psutil.Process()
         rss_mb = proc.memory_info().rss / (1024 * 1024)
         logger.debug(
@@ -654,7 +701,7 @@ def _deep_dict_nbytes(d):
     """Sum .nbytes of all numpy arrays in a dict."""
     total = 0
     for v in d.values():
-        if hasattr(v, 'nbytes'):
+        if hasattr(v, "nbytes"):
             total += v.nbytes
     return total
 
@@ -701,15 +748,20 @@ def correlate_worker_batches(
     images = None
     if batch_images is None:
         from pivtools_core.image_handling.load_images import load_images
+
         images = load_images(
-            camera_num, config, source=Path(source_path),
+            camera_num,
+            config,
+            source=Path(source_path),
             batch_size=config.batch_size,
         )
         images = create_filter_pipeline(images, config, pixel_mask)
 
     # Create ONE correlator for all batches
     correlator = EnsembleCorrelatorCPU(
-        config, precomputed_cache=cache, vector_masks=masks,
+        config,
+        precomputed_cache=cache,
+        vector_masks=masks,
         active_pass_idx=pass_idx,
     )
 
@@ -718,6 +770,7 @@ def correlate_worker_batches(
     if progress_var_name:
         try:
             from distributed import Variable, get_client
+
             progress_var = Variable(progress_var_name, get_client())
         except Exception:
             pass
@@ -733,15 +786,16 @@ def correlate_worker_batches(
         if batch_images is not None:
             batch_data = batch_images[i]
         else:
-            batch_data = images.blocks[batch_idx].compute(scheduler='synchronous')
+            batch_data = images.blocks[batch_idx].compute(scheduler="synchronous")
 
-        is_first = (batch_idx == 0)
+        is_first = batch_idx == 0
         diag_path = output_path if is_first else None
 
         if warp_sums_only:
             # Phase A of the 'image' method: warp sums only, no correlation
             lightweight = correlator.compute_warp_sums_only(
-                batch_data, config,
+                batch_data,
+                config,
                 pass_idx=pass_idx,
                 predictor_field=predictor_field,
             )
@@ -749,12 +803,15 @@ def correlate_worker_batches(
             # Phase B of the 'image' method: correlate mean-subtracted images
             A_mean, B_mean = mean_images
             lightweight = correlator.correlate_mean_subtracted_batch(
-                batch_data, config,
+                batch_data,
+                config,
                 pass_idx=pass_idx,
                 A_mean=A_mean,
                 B_mean=B_mean,
                 predictor_field=predictor_field,
-                save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
+                save_diagnostics=(
+                    config.ensemble_save_diagnostics if is_first else False
+                ),
                 output_path=diag_path,
                 is_first_batch=is_first,
             )
@@ -770,11 +827,14 @@ def correlate_worker_batches(
         else:
             # Production path: accumulate into correlator's internal C buffers
             lightweight = correlator.correlate_batch_for_accumulation(
-                batch_data, config,
+                batch_data,
+                config,
                 pass_idx=pass_idx,
                 predictor_field=predictor_field,
                 is_first_batch=is_first,
-                save_diagnostics=config.ensemble_save_diagnostics if is_first else False,
+                save_diagnostics=(
+                    config.ensemble_save_diagnostics if is_first else False
+                ),
                 output_path=diag_path,
                 clear_buffers=(i == 0),
                 copy_result=False,
@@ -792,8 +852,15 @@ def correlate_worker_batches(
         n_total += lightweight["n_images"]
 
         # Capture metadata from first batch that has it
-        for key in ["smoothed_predictor", "padded_predictor", "vector_mask",
-                     "n_pre", "n_post", "first_pair_A", "first_pair_B"]:
+        for key in [
+            "smoothed_predictor",
+            "padded_predictor",
+            "vector_mask",
+            "n_pre",
+            "n_post",
+            "first_pair_A",
+            "first_pair_B",
+        ]:
             if metadata.get(key) is None and lightweight.get(key) is not None:
                 metadata[key] = lightweight[key]
 

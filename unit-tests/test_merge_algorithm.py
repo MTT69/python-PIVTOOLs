@@ -27,6 +27,7 @@ from pivtools_gui.vector_merging.vector_merger import VectorMerger
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_grid(ny, nx, dx=1.0):
     """Create 2D coordinate grids with uniform spacing."""
     x = np.arange(nx, dtype=np.float64) * dx
@@ -93,9 +94,9 @@ def _split_L_shape_3cam(X, Y, ux, uy, overlap_frac=0.15):
         }
 
     return {
-        1: _cam(0, c1_ye, 0, c1_xe),           # bottom-left
-        2: _cam(0, c1_ye, c2_xs, nx),           # bottom-right
-        3: _cam(c3_ys, ny, 0, c1_xe),           # top-left
+        1: _cam(0, c1_ye, 0, c1_xe),  # bottom-left
+        2: _cam(0, c1_ye, c2_xs, nx),  # bottom-right
+        3: _cam(c3_ys, ny, 0, c1_xe),  # top-left
     }
 
 
@@ -108,8 +109,11 @@ def _interpolate_to_merged(X_orig, Y_orig, field, X_merged, Y_merged):
         field = np.flipud(field)
 
     interp = RegularGridInterpolator(
-        (y_vec, x_vec), field,
-        method="cubic", bounds_error=False, fill_value=np.nan,
+        (y_vec, x_vec),
+        field,
+        method="cubic",
+        bounds_error=False,
+        fill_value=np.nan,
     )
     pts = np.stack([Y_merged.ravel(), X_merged.ravel()], axis=-1)
     return interp(pts).reshape(X_merged.shape)
@@ -140,6 +144,7 @@ def _make_turbulent_field(ny, nx, dx=1.0, rng=None):
 # ---------------------------------------------------------------------------
 # Test classes
 # ---------------------------------------------------------------------------
+
 
 class TestMergeUniform:
     """Merge uniform fields — exact ground truth."""
@@ -189,11 +194,11 @@ class TestMergeTurbulence:
 
         # Interpolate reference to merged grid
         ux_ref = _interpolate_to_merged(X, Y, ux, Xm, Ym)
-        uy_ref = _interpolate_to_merged(X, Y, uy, Xm, Ym)
+        _interpolate_to_merged(X, Y, uy, Xm, Ym)
 
         valid = ~np.isnan(uxm) & ~np.isnan(ux_ref)
         rms = np.sqrt(np.nanmean(ux**2))
-        rmse_ux = np.sqrt(np.mean((uxm[valid] - ux_ref[valid])**2))
+        rmse_ux = np.sqrt(np.mean((uxm[valid] - ux_ref[valid]) ** 2))
 
         assert rmse_ux < 0.01 * rms, f"RMSE {rmse_ux:.4f} > 1% of RMS {rms:.4f}"
 
@@ -213,7 +218,7 @@ class TestMergeTurbulence:
         ux_ref = _interpolate_to_merged(X, Y, ux, Xm, Ym)
         valid = ~np.isnan(uxm) & ~np.isnan(ux_ref)
         rms = np.sqrt(np.nanmean(ux**2))
-        rmse = np.sqrt(np.mean((uxm[valid] - ux_ref[valid])**2))
+        rmse = np.sqrt(np.mean((uxm[valid] - ux_ref[valid]) ** 2))
 
         assert rmse < 0.01 * rms, f"RMSE {rmse:.4f} > 1% of RMS {rms:.4f}"
 
@@ -232,9 +237,9 @@ class TestMergeMasks:
 
         # Mask a block in cam1's overlap region (right side of cam1)
         cam1_nx = cam_data[1]["ux"].shape[1]
-        cam_data[1]["mask"][:, cam1_nx - 5:] = True
-        cam_data[1]["ux"][:, cam1_nx - 5:] = np.nan
-        cam_data[1]["uy"][:, cam1_nx - 5:] = np.nan
+        cam_data[1]["mask"][:, cam1_nx - 5 :] = True
+        cam_data[1]["ux"][:, cam1_nx - 5 :] = np.nan
+        cam_data[1]["uy"][:, cam1_nx - 5 :] = np.nan
 
         Xm, Ym, uxm, uym, uzm = VectorMerger.merge_n_camera_fields(cam_data)
 
@@ -265,8 +270,9 @@ class TestMergeMasks:
         y_masked_min = Y[25, 0]
         y_masked_max = Y[34, 0]
         row_mask = (Ym[:, 0] >= y_masked_min) & (Ym[:, 0] <= y_masked_max)
-        assert np.all(np.isnan(uxm[row_mask, :])), \
-            "Fully-masked rows should be NaN in merged output"
+        assert np.all(
+            np.isnan(uxm[row_mask, :])
+        ), "Fully-masked rows should be NaN in merged output"
 
     def test_mask_at_boundary(self):
         """Mask at cam1 left edge (non-overlap) → NaN at edge, rest valid."""
@@ -315,14 +321,20 @@ class TestDiagnosticFigures:
         axes[0, 0].set_title("Original ux")
 
         axes[0, 1].pcolormesh(
-            cam_data[1]["x"], cam_data[1]["y"], cam_data[1]["ux"],
-            vmin=vmin, vmax=vmax,
+            cam_data[1]["x"],
+            cam_data[1]["y"],
+            cam_data[1]["ux"],
+            vmin=vmin,
+            vmax=vmax,
         )
         axes[0, 1].set_title("Cam 1")
 
         axes[0, 2].pcolormesh(
-            cam_data[2]["x"], cam_data[2]["y"], cam_data[2]["ux"],
-            vmin=vmin, vmax=vmax,
+            cam_data[2]["x"],
+            cam_data[2]["y"],
+            cam_data[2]["ux"],
+            vmin=vmin,
+            vmax=vmax,
         )
         axes[0, 2].set_title("Cam 2")
 

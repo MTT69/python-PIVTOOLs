@@ -13,6 +13,7 @@ Supports:
 
 Reference: LaVision DaVis 10.x .set recording format
 """
+
 import struct
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -21,14 +22,15 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class IMSIndexEntry:
     """One entry in a Frame{N}-0.ims index file."""
+
     flag: int
     offset: int
     size: int
@@ -37,10 +39,11 @@ class IMSIndexEntry:
 @dataclass
 class IMSFrameInfo:
     """Metadata for one frame stream (one Frame{N} set of files)."""
-    frame_idx: int          # 0-based frame number
-    data_path: Path         # Frame{N}-1.ims
-    index_path: Path        # Frame{N}-0.ims
-    decoder: str            # e.g. "mono-12p", "mono-16"
+
+    frame_idx: int  # 0-based frame number
+    data_path: Path  # Frame{N}-1.ims
+    index_path: Path  # Frame{N}-0.ims
+    decoder: str  # e.g. "mono-12p", "mono-16"
     width: int
     height: int
     n_entries: int
@@ -53,14 +56,16 @@ class IMSFrameInfo:
 @dataclass
 class SetInfo:
     """Parsed .set container metadata."""
+
     set_dir: Path
     frames: List[IMSFrameInfo]
-    n_entries: int          # number of images (same across all frames)
+    n_entries: int  # number of images (same across all frames)
 
 
 # ---------------------------------------------------------------------------
 # Index parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_ims_index(index_path: Path) -> Tuple[int, int, int, List[IMSIndexEntry]]:
     """Parse a Frame{N}-0.ims index file.
@@ -106,6 +111,7 @@ def _parse_ims_index(index_path: Path) -> Tuple[int, int, int, List[IMSIndexEntr
 # Decoder detection
 # ---------------------------------------------------------------------------
 
+
 def _read_decoder(decoder_path: Path) -> str:
     """Read pixel format from Frame{N}-decoder.xml."""
     if not decoder_path.exists():
@@ -121,6 +127,7 @@ def _read_decoder(decoder_path: Path) -> str:
 # ---------------------------------------------------------------------------
 # Scale parsing
 # ---------------------------------------------------------------------------
+
 
 def _read_scales(scales_path: Path) -> Tuple[float, float, str]:
     """Read intensity scale from FrameScales{N}.scales XML."""
@@ -140,6 +147,7 @@ def _read_scales(scales_path: Path) -> Tuple[float, float, str]:
 # ---------------------------------------------------------------------------
 # Pixel decoding
 # ---------------------------------------------------------------------------
+
 
 def _decode_mono12p(raw: bytes, width: int, height: int) -> np.ndarray:
     """Decode Mono12Packed (GigE Vision) bytes to uint16 array.
@@ -179,6 +187,7 @@ def _decode_pixels(raw: bytes, decoder: str, width: int, height: int) -> np.ndar
 # Set container parsing
 # ---------------------------------------------------------------------------
 
+
 def _parse_set(set_path: Union[str, Path]) -> SetInfo:
     """Parse a .set container, returning metadata for all frame streams.
 
@@ -194,10 +203,12 @@ def _parse_set(set_path: Union[str, Path]) -> SetInfo:
         raise FileNotFoundError(f"Companion directory not found: {set_dir}")
 
     # Discover frame streams from files on disk
-    frame_indices = sorted({
-        int(p.name.split("-")[0].replace("Frame", ""))
-        for p in set_dir.glob("Frame*-1.ims")
-    })
+    frame_indices = sorted(
+        {
+            int(p.name.split("-")[0].replace("Frame", ""))
+            for p in set_dir.glob("Frame*-1.ims")
+        }
+    )
 
     if not frame_indices:
         raise FileNotFoundError(f"No Frame*-1.ims data files in {set_dir}")
@@ -226,19 +237,21 @@ def _parse_set(set_path: Union[str, Path]) -> SetInfo:
                 f"has {n_entries}"
             )
 
-        frames.append(IMSFrameInfo(
-            frame_idx=fi,
-            data_path=data_path,
-            index_path=index_path,
-            decoder=decoder,
-            width=width,
-            height=height,
-            n_entries=n_ent,
-            scale_slope=slope,
-            scale_offset=offset,
-            scale_unit=unit,
-            entries=entries,
-        ))
+        frames.append(
+            IMSFrameInfo(
+                frame_idx=fi,
+                data_path=data_path,
+                index_path=index_path,
+                decoder=decoder,
+                width=width,
+                height=height,
+                n_entries=n_ent,
+                scale_slope=slope,
+                scale_offset=offset,
+                scale_unit=unit,
+                entries=entries,
+            )
+        )
 
     return SetInfo(set_dir=set_dir, frames=frames, n_entries=n_entries)
 
@@ -246,6 +259,7 @@ def _parse_set(set_path: Union[str, Path]) -> SetInfo:
 # ---------------------------------------------------------------------------
 # Single-image reader (one entry from one frame stream)
 # ---------------------------------------------------------------------------
+
 
 def _read_single_image(
     frame_info: IMSFrameInfo,
@@ -266,9 +280,7 @@ def _read_single_image(
         Image array (H, W) uint16.
     """
     if entry_idx < 0 or entry_idx >= frame_info.n_entries:
-        raise IndexError(
-            f"Entry {entry_idx} out of range [0, {frame_info.n_entries})"
-        )
+        raise IndexError(f"Entry {entry_idx} out of range [0, {frame_info.n_entries})")
 
     entry = frame_info.entries[entry_idx]
     with open(frame_info.data_path, "rb") as f:
@@ -281,13 +293,13 @@ def _read_single_image(
             f"got {len(raw)}. File may be truncated."
         )
 
-    return _decode_pixels(raw, frame_info.decoder,
-                          frame_info.width, frame_info.height)
+    return _decode_pixels(raw, frame_info.decoder, frame_info.width, frame_info.height)
 
 
 # ---------------------------------------------------------------------------
 # Scale helpers
 # ---------------------------------------------------------------------------
+
 
 def _apply_scale_inplace(arr: np.ndarray, fi: IMSFrameInfo) -> None:
     """Apply intensity scale (slope/offset) in-place on a float32 array."""
@@ -300,6 +312,7 @@ def _apply_scale_inplace(arr: np.ndarray, fi: IMSFrameInfo) -> None:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def read_set_info(set_path: Union[str, Path]) -> SetInfo:
     """Parse .set metadata without reading any pixel data.

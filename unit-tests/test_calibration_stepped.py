@@ -28,8 +28,8 @@ FIG_DIR = Path(__file__).resolve().parent.parent / "figures" / "debug"
 SPACING_MM = 15.0
 STEP_MM = 3.0
 OFFSET_MM = SPACING_MM / 2.0
-PEAK_COLS, PEAK_ROWS = 9, 9          # 81 peak dots
-TROUGH_COLS, TROUGH_ROWS = 8, 8      # 64 trough dots
+PEAK_COLS, PEAK_ROWS = 9, 9  # 81 peak dots
+TROUGH_COLS, TROUGH_ROWS = 8, 8  # 64 trough dots
 
 
 def _board_points_m():
@@ -56,8 +56,8 @@ def _render_stepped(W=1200, H=1200, rvec=(0.16, 0.10, 0.02)):
     rvec = np.asarray(rvec, np.float64)
     R, _ = cv2.Rodrigues(rvec)
     board_w = (PEAK_COLS - 1) * SPACING_MM / 1000.0
-    Z = fx * board_w / (0.70 * W)                 # ~70% frame fill
-    tvec = np.array([0.0, 0.0, Z]) - R @ centre   # centre the board on the optical axis
+    Z = fx * board_w / (0.70 * W)  # ~70% frame fill
+    tvec = np.array([0.0, 0.0, Z]) - R @ centre  # centre the board on the optical axis
 
     dist = np.zeros(5)
     proj, _ = cv2.projectPoints(allpts, rvec, tvec, cam, dist)
@@ -90,7 +90,9 @@ def stepped_render():
 
 def test_stepped_detector_separates_and_stitches(stepped_render, request):
     img, px, n_peak, _pose = stepped_render
-    det = SteppedDetector(SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM))
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
     res = det.detect(img)
 
     assert res.success, res.diagnostics.get("error")
@@ -104,14 +106,16 @@ def test_stepped_detector_separates_and_stitches(stepped_render, request):
     nb = len(res.level_data["b"]["centers"])
     assert na >= 0.75 * (PEAK_COLS * PEAK_ROWS), f"level A short: {na}"
     assert nb >= 0.75 * (TROUGH_COLS * TROUGH_ROWS), f"level B short: {nb}"
-    assert res.n >= 0.78 * (PEAK_COLS * PEAK_ROWS + TROUGH_COLS * TROUGH_ROWS), (
-        f"too few points: {res.n} of {PEAK_COLS*PEAK_ROWS + TROUGH_COLS*TROUGH_ROWS}"
-    )
+    assert res.n >= 0.78 * (
+        PEAK_COLS * PEAK_ROWS + TROUGH_COLS * TROUGH_ROWS
+    ), f"too few points: {res.n} of {PEAK_COLS*PEAK_ROWS + TROUGH_COLS*TROUGH_ROWS}"
 
     # Stitch produced a genuine two-level frame (not a degraded single level).
     meta = res.diagnostics["stitch"]
     assert not meta["degraded_single_level"]
-    assert meta["consensus_pct"] > 80.0, f"low stitch consensus: {meta['consensus_pct']}"
+    assert (
+        meta["consensus_pct"] > 80.0
+    ), f"low stitch consensus: {meta['consensus_pct']}"
 
     # board_local carries exactly the two physical Z planes (neutral 0 / -step).
     zs = np.unique(np.round(res.board_local_points[:, 2], 6))
@@ -126,7 +130,11 @@ def test_stepped_detector_separates_and_stitches(stepped_render, request):
     assert np.allclose(np.mod(oth[:, 1] - OFFSET_MM, SPACING_MM), 0.0, atol=1e-6)
 
     # image_points / grid_indices / board_local are aligned and image-down pixels.
-    assert res.image_points.shape[0] == res.board_local_points.shape[0] == res.grid_indices.shape[0]
+    assert (
+        res.image_points.shape[0]
+        == res.board_local_points.shape[0]
+        == res.grid_indices.shape[0]
+    )
     assert res.image_points[:, 0].min() >= 0 and res.image_points[:, 1].min() >= 0
 
     if request.config.getoption("--make-figures", default=False):
@@ -134,7 +142,9 @@ def test_stepped_detector_separates_and_stitches(stepped_render, request):
 
 
 def test_stepped_detector_fails_cleanly_on_blank():
-    det = SteppedDetector(SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM))
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
     res = det.detect(np.zeros((400, 400), np.uint8))
     assert not res.success
     assert res.image_points.shape == (0, 2)
@@ -154,14 +164,32 @@ def _make_figure(img, res):
     fig, ax = plt.subplots(1, 2, figsize=(13, 6))
     ax[0].imshow(img, cmap="gray", origin="upper")
     a = labels == "A"
-    ax[0].scatter(ip[a, 0], ip[a, 1], s=14, facecolors="none", edgecolors="tab:blue", label="level A")
-    ax[0].scatter(ip[~a, 0], ip[~a, 1], s=14, facecolors="none", edgecolors="tab:red", label="level B")
+    ax[0].scatter(
+        ip[a, 0],
+        ip[a, 1],
+        s=14,
+        facecolors="none",
+        edgecolors="tab:blue",
+        label="level A",
+    )
+    ax[0].scatter(
+        ip[~a, 0],
+        ip[~a, 1],
+        s=14,
+        facecolors="none",
+        edgecolors="tab:red",
+        label="level B",
+    )
     ax[0].set_title("stepped detection overlay (image-down px)")
-    ax[0].set_xlabel("x [px]"); ax[0].set_ylabel("y [px]"); ax[0].legend(loc="upper right")
+    ax[0].set_xlabel("x [px]")
+    ax[0].set_ylabel("y [px]")
+    ax[0].legend(loc="upper right")
 
     sc = ax[1].scatter(bl[:, 0], bl[:, 1], c=bl[:, 2], cmap="coolwarm", s=22)
     ax[1].set_title("board-local points (colour = z mm)")
-    ax[1].set_xlabel("X [mm]"); ax[1].set_ylabel("Y [mm]"); ax[1].set_aspect("equal")
+    ax[1].set_xlabel("X [mm]")
+    ax[1].set_ylabel("Y [mm]")
+    ax[1].set_aspect("equal")
     ax[1].invert_yaxis()
     fig.colorbar(sc, ax=ax[1], label="z [mm]")
     fig.tight_layout()

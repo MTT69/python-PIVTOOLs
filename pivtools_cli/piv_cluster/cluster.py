@@ -1,18 +1,18 @@
 import logging
 import os
-import sys
 import warnings
 from collections import defaultdict
-from pathlib import Path
 from typing import List, Tuple
 
 from dask.distributed import Client, LocalCluster
 from dask_jobqueue import SLURMCluster
+
 from pivtools_core.config import Config
 
 
 class _DaskNoiseFilter(logging.Filter):
     """Filter out noisy Dask worker messages."""
+
     _SUPPRESSED = (
         "Event loop was unresponsive",
         "Unmanaged memory use is high",
@@ -48,7 +48,9 @@ def _suppress_dask_verbose_logging():
     logging.getLogger("distributed").addFilter(_DaskNoiseFilter())
 
     # Suppress "Sending large graph" UserWarning from distributed.client
-    warnings.filterwarnings("ignore", message="Sending large graph", category=UserWarning)
+    warnings.filterwarnings(
+        "ignore", message="Sending large graph", category=UserWarning
+    )
 
 
 def make_cluster(
@@ -78,7 +80,7 @@ def make_cluster(
                 "distributed.comm.timeouts.connect": "60s",  # Default: 30s
                 "distributed.comm.timeouts.tcp": "600s",  # Default: 30s
             },
-            dashboard_address=":8788"
+            dashboard_address=":8788",
         )
         client = Client(cluster)
         logging.info(f"Local Dask cluster started with {len(cluster.workers)} workers.")
@@ -87,14 +89,18 @@ def make_cluster(
         if not hasattr(config, "n_nodes"):
             raise ValueError("config.n_nodes must be set for Slurm cluster")
         import socket
+
         import dask
+
         # Set heartbeat tolerance for long-running C calls on SLURM too
-        dask.config.set({
-            "distributed.scheduler.worker-ttl": "30m",
-            "distributed.worker.heartbeat": "5s",
-            "distributed.comm.timeouts.connect": "60s",
-            "distributed.comm.timeouts.tcp": "600s",
-        })
+        dask.config.set(
+            {
+                "distributed.scheduler.worker-ttl": "30m",
+                "distributed.worker.heartbeat": "5s",
+                "distributed.comm.timeouts.connect": "60s",
+                "distributed.comm.timeouts.tcp": "600s",
+            }
+        )
         cluster = SLURMCluster(
             queue=config.slurm_partition,
             walltime=config.slurm_walltime,
@@ -114,8 +120,6 @@ def make_cluster(
             return cluster, client
     else:
         raise ValueError(f"Unknown cluster_type: {config.cluster_type}")
-    
-
 
 
 def group_workers_by_host(client: Client) -> dict[str, List[str]]:
@@ -155,7 +159,7 @@ def start_cluster(
 
     try:
         cluster, client = make_cluster(
-            config= config#n_workers_per_node=n_workers_per_node,
+            config=config  # n_workers_per_node=n_workers_per_node,
         )
         client.run(
             setup_worker_logging,
@@ -163,7 +167,7 @@ def start_cluster(
             log_file=config.log_file if hasattr(config, "log_file") else None,
             log_console=True,
         )
-        
+
         if worker_omp_threads is not None:
             client.run(set_worker_omp_threads, omp_threads=worker_omp_threads)
 
@@ -219,7 +223,6 @@ def set_worker_omp_threads(omp_threads: str):
     are additionally capped via threadpoolctl, but these env vars are the
     defence-in-depth set, honoured by libraries that read them at import).
     """
-    import os
     for var in (
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
@@ -227,4 +230,6 @@ def set_worker_omp_threads(omp_threads: str):
         "NUMEXPR_NUM_THREADS",
     ):
         os.environ[var] = omp_threads
-    logging.debug(f"Set OMP/BLAS/MKL/NumExpr threads to {omp_threads} in worker process")
+    logging.debug(
+        f"Set OMP/BLAS/MKL/NumExpr threads to {omp_threads} in worker process"
+    )

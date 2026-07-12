@@ -51,10 +51,13 @@ from typing import Optional
 import numpy as np
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
-    compute_noise_psd_2d, frac_distance,
+    compute_noise_psd_2d,
+    frac_distance,
 )
 from pivtools_cli.piv.piv_backend.kspace_common import (
-    _fft_planes, _kgrids, _get_threadpool_controller,
+    _fft_planes,
+    _get_threadpool_controller,
+    _kgrids,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,28 +69,30 @@ logger = logging.getLogger(__name__)
 # survives". Deriving it per-run from the measured c was investigated (manual_tools/kspace/
 # derive_ring.py) and REJECTED: it just moves the magic to the threshold X, which is less
 # robust across passes than this fixed k. _RING_HI is the Nyquist edge (not a tuned value).
-_RING_LO = 0.40          # ~6% particle-signal threshold (see note above)
-_RING_HI = 0.50          # high-k ring outer radius (= Nyquist)
-_TRUST_KMAX = 0.35       # magnitude-fit trust radius (model valid near the peak)
+_RING_LO = 0.40  # ~6% particle-signal threshold (see note above)
+_RING_HI = 0.50  # high-k ring outer radius (= Nyquist)
+_TRUST_KMAX = 0.35  # magnitude-fit trust radius (model valid near the peak)
 _TRUST_FLOOR_MARGIN = 1.5  # require refc > margin * floor (signal clear of the floor)
-_TRUST_TMIN = 1e-3       # |T| sanity bounds
+_TRUST_TMIN = 1e-3  # |T| sanity bounds
 _TRUST_TMAX = 1.3
-_PHASE_KMAX = 0.25       # phase-slope fit trust radius (avoid high-k wrap)
-_PNOISE_GUARD = 1e-3     # clip P_noise away from zero (half-integer-shift dead-end guard)
-_MIN_TRUST_PTS = 6       # minimum trusted points for a determined 4-param fit
-_AUTOCROSS_KMAX = 0.15   # autocross floor: low-k band for the k->0 intercept fit
+_PHASE_KMAX = 0.25  # phase-slope fit trust radius (avoid high-k wrap)
+_PNOISE_GUARD = 1e-3  # clip P_noise away from zero (half-integer-shift dead-end guard)
+_MIN_TRUST_PTS = 6  # minimum trusted points for a determined 4-param fit
+_AUTOCROSS_KMAX = 0.15  # autocross floor: low-k band for the k->0 intercept fit
 # autofit floor: marginalised particle-envelope width grid (px^2) for the auto-only S+N fit
 _AUTOFIT_CGRID = np.linspace(0.15, 4.0, 28)
-_AUTOFIT_KMAX = 0.49     # fit refn = A*exp(-2pi^2 c k^2) + N over k in (0, this)
+_AUTOFIT_KMAX = 0.49  # fit refn = A*exp(-2pi^2 c k^2) + N over k in (0, this)
 # joint floor: particle-autocorr sigma grid (px, per axis) for the beta-free joint fit
 _JOINT_SIG_GRID = np.linspace(0.45, 1.7, 12)
-_KURT_KMAX = 0.0         # kurtosis-mode fit band cap (cycles/px); 0 = OFF (the validated default).
+_KURT_KMAX = (
+    0.0  # kurtosis-mode fit band cap (cycles/px); 0 = OFF (the validated default).
+)
 #                          TESTED + REJECTED: the trust band is already floor-limited to ~0.2, so a
 #                          cap >=0.22 is non-binding and a cap <=0.15 lowers Sigma GLOBALLY (hurts the
 #                          log region too) -- it cannot selectively fix the centerline over-fit, which
 #                          is a curvature-IDENTIFIABILITY problem (low Sigma -> straight ln|T|), not a
 #                          high-k-noise problem. Kept as an off-by-default knob to document the test.
-_KURT_RIDGE = 0.10       # shape_mode='kurtosis_reg': Gaussian-prior ridge on the k^4 coeffs.
+_KURT_RIDGE = 0.10  # shape_mode='kurtosis_reg': Gaussian-prior ridge on the k^4 coeffs.
 #                          Dimensionless (scaled to the k^4 columns' reference-band norm). The
 #                          k^4 term is free where the trusted band supports it (log region) and
 #                          shrinks to 0 where it does not (centerline) -> SNR-gated, y+-free.
@@ -113,14 +118,14 @@ def _batched_wls(feat, W, y, n_unknowns, ridge_diag=None):
     M = np.empty((N, K, K), dtype=np.float64)
     for i in range(K):
         for j in range(i, K):
-            g_ij = feat[:, i] * feat[:, j]          # (P,)
-            M[:, i, j] = W @ g_ij                   # (N,)
+            g_ij = feat[:, i] * feat[:, j]  # (P,)
+            M[:, i, j] = W @ g_ij  # (N,)
             if j != i:
                 M[:, j, i] = M[:, i, j]
-    Z = W * y                                       # (N, P)
-    b = Z @ feat                                    # (N, K)
+    Z = W * y  # (N, P)
+    b = Z @ feat  # (N, K)
 
-    if ridge_diag is not None:                      # Gaussian prior toward coeff=0 (SNR-gating)
+    if ridge_diag is not None:  # Gaussian prior toward coeff=0 (SNR-gating)
         idx = np.arange(K)
         M[:, idx, idx] += ridge_diag[None, :]
 
@@ -134,7 +139,7 @@ def _batched_wls(feat, W, y, n_unknowns, ridge_diag=None):
         diag = np.einsum("nii->ni", Mok)
         ridge = 1e-12 * np.maximum(diag.max(axis=1, keepdims=True), 1e-30)
         Mok = Mok + ridge[:, :, None] * np.eye(K)[None]
-        bok = b[ok][..., None]                  # (n_ok, K, 1) stacked RHS vectors (numpy>=2)
+        bok = b[ok][..., None]  # (n_ok, K, 1) stacked RHS vectors (numpy>=2)
         try:
             sol = np.linalg.solve(Mok, bok)[..., 0]
         except np.linalg.LinAlgError:
@@ -162,20 +167,20 @@ def _autocross_intercept(diff, KR):
     """
     n = diff.shape[0]
     band = (KR > 0) & (KR <= _AUTOCROSS_KMAX)
-    kr_b = KR[band]                                   # (P,)
+    kr_b = KR[band]  # (P,)
     if kr_b.size < 6:
         return np.full(n, np.nan)
     k2 = kr_b * kr_b
-    X = np.stack([np.ones_like(k2), k2, k2 * k2], axis=1)   # (P, 3)
-    w = 1.0 / kr_b                                          # equal-per-radius weighting
-    M = X.T @ (X * w[:, None])                              # (3, 3) shared across windows
+    X = np.stack([np.ones_like(k2), k2, k2 * k2], axis=1)  # (P, 3)
+    w = 1.0 / kr_b  # equal-per-radius weighting
+    M = X.T @ (X * w[:, None])  # (3, 3) shared across windows
     M = M + 1e-12 * np.trace(M) * np.eye(3)
     try:
-        Minv0 = np.linalg.inv(M)[0]                         # first row -> intercept solver
+        Minv0 = np.linalg.inv(M)[0]  # first row -> intercept solver
     except np.linalg.LinAlgError:
         return np.full(n, np.nan)
-    b = (diff[:, band] * w[None]) @ X                       # (n, 3) per-window RHS
-    return b @ Minv0                                        # (n,) intercept a
+    b = (diff[:, band] * w[None]) @ X  # (n, 3) per-window RHS
+    return b @ Minv0  # (n,) intercept a
 
 
 def _autofit_floor(refn, KR):
@@ -195,24 +200,24 @@ def _autofit_floor(refn, KR):
     is absent from the additive auto floor, so ref - |F_AB| ~ S(1 - D|T|) + N is dominated by
     the decorrelation term, not the floor. The floor lives in the auto-spectra alone.
     """
-    two_pi2 = 2.0 * np.pi ** 2
+    two_pi2 = 2.0 * np.pi**2
     n = refn.shape[0]
     krf = KR.ravel()
     m = (krf > 0) & (krf < _AUTOFIT_KMAX)
     k2 = krf[m] ** 2
-    Y = refn.reshape(n, -1)[:, m]                       # (n, P)
+    Y = refn.reshape(n, -1)[:, m]  # (n, P)
     best_N = np.full(n, np.nan)
     best_ss = np.full(n, np.inf)
     for c in _AUTOFIT_CGRID:
-        g = np.exp(-two_pi2 * c * k2)                   # (P,)
-        X = np.stack([g, np.ones_like(g)], axis=1)      # (P, 2) shared across windows
+        g = np.exp(-two_pi2 * c * k2)  # (P,)
+        X = np.stack([g, np.ones_like(g)], axis=1)  # (P, 2) shared across windows
         M = X.T @ X
         try:
             Minv = np.linalg.inv(M)
         except np.linalg.LinAlgError:
             continue
-        coef = (Y @ X) @ Minv                           # (n, 2): [A, N]
-        resid = Y - coef @ X.T                          # (n, P)
+        coef = (Y @ X) @ Minv  # (n, 2): [A, N]
+        resid = Y - coef @ X.T  # (n, P)
         ss = np.einsum("np,np->n", resid, resid)
         better = ss < best_ss
         best_ss = np.where(better, ss, best_ss)
@@ -232,25 +237,28 @@ def _joint_floor(refn, P, KX, KY):
     Returns N0 (n,); the caller forms the coloured floor N0*P.
     """
     n = refn.shape[0]
-    two_pi2 = 2.0 * np.pi ** 2
+    two_pi2 = 2.0 * np.pi**2
     KX2 = (KX * KX).ravel()
     KY2 = (KY * KY).ravel()
     Pf = (P[0] if P.ndim == 3 else P).ravel()
-    band = (KX2 + KY2) > 0                              # exclude DC (normalisation pins it)
+    band = (KX2 + KY2) > 0  # exclude DC (normalisation pins it)
     Pb = Pf[band]
-    Y = refn.reshape(n, -1)[:, band]                   # (n, Pb)
+    Y = refn.reshape(n, -1)[:, band]  # (n, Pb)
     best_N = np.full(n, np.nan)
     best_ss = np.full(n, np.inf)
     for sx in _JOINT_SIG_GRID:
         for sy in _JOINT_SIG_GRID:
             G = np.exp(-two_pi2 * (sx * sx * KX2[band] + sy * sy * KY2[band]))
-            c1 = G * Pb                                # A column
-            c2 = Pb                                    # N0 column
-            S11 = c1 @ c1; S12 = c1 @ c2; S22 = c2 @ c2
+            c1 = G * Pb  # A column
+            c2 = Pb  # N0 column
+            S11 = c1 @ c1
+            S12 = c1 @ c2
+            S22 = c2 @ c2
             det = S11 * S22 - S12 * S12
             if abs(det) < 1e-30:
                 continue
-            b1 = Y @ c1; b2 = Y @ c2                    # (n,)
+            b1 = Y @ c1
+            b2 = Y @ c2  # (n,)
             A = (S22 * b1 - S12 * b2) / det
             N0 = (S11 * b2 - S12 * b1) / det
             pred = A[:, None] * c1[None] + N0[:, None] * c2[None]
@@ -262,8 +270,21 @@ def _joint_floor(refn, P, KX, KY):
     return best_N
 
 
-def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
-               weight_mode="refc", shape_mode="gauss"):
+def _fit_chunk(
+    R_AA,
+    R_BB,
+    R_AB,
+    KX,
+    KY,
+    KR,
+    cy,
+    cx,
+    f_xy,
+    kernel,
+    floor_mode,
+    weight_mode="refc",
+    shape_mode="gauss",
+):
     """Fit one chunk of windows. Returns Sigma (n,3), mu (n,2), amps (n,3), status (n)."""
     n = R_AA.shape[0]
     corr_h, corr_w = KX.shape
@@ -276,13 +297,13 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     amp_B = R_BB.reshape(n, corr_h, corr_w)[:, cy, cx]
     amp_AB = R_AB.reshape(n, corr_h, corr_w)[:, cy, cx]
 
-    ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))             # (n, h, w)
+    ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))  # (n, h, w)
     ref_dc = ref[:, cy, cx][:, None, None]
-    refn = ref / np.maximum(ref_dc, 1e-30)                 # DC-normalised reference
+    refn = ref / np.maximum(ref_dc, 1e-30)  # DC-normalised reference
 
     fab_mag = np.abs(F_AB)
     fab_dc = fab_mag[:, cy, cx][:, None, None]
-    fabn = fab_mag / np.maximum(fab_dc, 1e-30)             # DC-normalised |T| numerator
+    fabn = fab_mag / np.maximum(fab_dc, 1e-30)  # DC-normalised |T| numerator
 
     # --- noise floor --------------------------------------------------------------------
     # The autocorrelation floor has two physical parts: a WHITE +2*sigma^2 pedestal (camera
@@ -298,10 +319,10 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     #   'coloured2' floor = a + b*P_noise, (a,b) from a 2-param linear LS over the high-k
     #               band -- separates the white pedestal (a) from the coloured warp (b).
     #               Reduces to flat when f=0 (P==1). The principled analytic attempt.
-    band = (KR >= _RING_LO - 0.10) & (KR <= _RING_HI)      # wider band so P varies for a/b
+    band = (KR >= _RING_LO - 0.10) & (KR <= _RING_HI)  # wider band so P varies for a/b
     ring = (KR >= _RING_LO) & (KR <= _RING_HI)
     if floor_mode == "none":
-        floor = np.zeros((refn.shape[0], 1, 1))            # no floor (e.g. pre-removed at source)
+        floor = np.zeros((refn.shape[0], 1, 1))  # no floor (e.g. pre-removed at source)
     elif floor_mode == "flat":
         floor = np.median(refn[:, ring], axis=1)[:, None, None]
     elif floor_mode == "autofit":
@@ -314,7 +335,7 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
         # on real PIV the cross decorrelation D<1 swamps the floor -- use 'autofit' instead.
         diff = (ref - fab_mag) / np.maximum(ref_dc, 1e-30)
         a = _autocross_intercept(diff, KR)
-        floor = np.maximum(a, 0.0)[:, None, None]          # guard against a slightly-neg fit
+        floor = np.maximum(a, 0.0)[:, None, None]  # guard against a slightly-neg fit
     else:
         P = compute_noise_psd_2d(KX, KY, f_xy[0], f_xy[1], kernel=kernel)
         P = np.maximum(P, _PNOISE_GUARD)[None]
@@ -325,11 +346,14 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
             floor = np.maximum(N0, 0.0)[:, None, None] * P
         elif floor_mode == "coloured2":
             # per-window 2x2 normal equations for refn = a + b*P over the band
-            Pb = np.broadcast_to(P, refn.shape)[:, band]   # (n, nb)
-            rb = refn[:, band]                             # (n, nb)
+            Pb = np.broadcast_to(P, refn.shape)[:, band]  # (n, nb)
+            rb = refn[:, band]  # (n, nb)
             one = np.ones_like(Pb)
-            S11 = one.sum(1); S1P = Pb.sum(1); SPP = (Pb * Pb).sum(1)
-            T1 = rb.sum(1); TP = (rb * Pb).sum(1)
+            S11 = one.sum(1)
+            S1P = Pb.sum(1)
+            SPP = (Pb * Pb).sum(1)
+            T1 = rb.sum(1)
+            TP = (rb * Pb).sum(1)
             det = S11 * SPP - S1P * S1P
             det = np.where(np.abs(det) < 1e-30, np.nan, det)
             a = (T1 * SPP - TP * S1P) / det
@@ -345,7 +369,7 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
         T_mag = fabn / refc
         lnT = np.log(T_mag)
 
-    two_pi2 = 2.0 * np.pi ** 2
+    two_pi2 = 2.0 * np.pi**2
     # common sanity mask (no hard k cap); the weighting decides what high-k modes contribute
     sane = (refc > 0) & (T_mag > _TRUST_TMIN) & (T_mag < _TRUST_TMAX) & np.isfinite(lnT)
     lnT_flat = np.where(sane, lnT, 0.0).reshape(n, -1)
@@ -354,7 +378,8 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     # shape_mode='kurtosis' adds the 4th-order even terms [kx^4, ky^4, 2 kx^2 ky^2] so a
     # non-Gaussian (kurtotic) PDF's k^4 curvature is absorbed by nuisance coeffs instead of
     # biasing the k^2 (Sigma) slope. Still one linear LS; Sigma is always coeffs[1..3].
-    KX2f = (KX * KX).ravel(); KY2f = (KY * KY).ravel()
+    KX2f = (KX * KX).ravel()
+    KY2f = (KY * KY).ravel()
     cols = [np.ones(corr_h * corr_w), KX2f, KY2f, (2.0 * KX * KY).ravel()]
     if shape_mode in ("kurtosis", "kurtosis_reg"):
         cols += [KX2f * KX2f, KY2f * KY2f, 2.0 * KX2f * KY2f]
@@ -374,7 +399,7 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     ridge = None
     if shape_mode == "kurtosis_reg" and K >= 7:
         refband = KR.ravel() < _TRUST_KMAX
-        S0 = (feat_mag[refband] ** 2).sum(axis=0)   # (K,) unit-weight column norms
+        S0 = (feat_mag[refband] ** 2).sum(axis=0)  # (K,) unit-weight column norms
         ridge = np.zeros(K)
         ridge[4:7] = _KURT_RIDGE * S0[4:7]
 
@@ -387,12 +412,14 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
         refc_f = refc.reshape(n, -1)
         floor_b = np.broadcast_to(floor, refc.shape).reshape(n, -1)
         w_snr = np.where(sane_f, refc_f / np.maximum(floor_b, 1e-6), 0.0)
-        W = np.where(sane_f, np.maximum(refc_f, 0.0), 0.0)        # seed = refc weighting
+        W = np.where(sane_f, np.maximum(refc_f, 0.0), 0.0)  # seed = refc weighting
         coeffs, ok_mag = _batched_wls(feat_mag, W, lnT_flat, K, ridge_diag=ridge)
         for _ in range(2):
             Sxx = np.maximum(-coeffs[:, 1] / two_pi2, 0.0)
             Syy = np.maximum(-coeffs[:, 2] / two_pi2, 0.0)
-            w_soft = np.exp(-two_pi2 * (Sxx[:, None] * KX2f[None] + Syy[:, None] * KY2f[None]))
+            w_soft = np.exp(
+                -two_pi2 * (Sxx[:, None] * KX2f[None] + Syy[:, None] * KY2f[None])
+            )
             W = w_snr * w_soft
             coeffs, ok_mag = _batched_wls(feat_mag, W, lnT_flat, K, ridge_diag=ridge)
     elif weight_mode == "invvar":
@@ -403,9 +430,14 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     else:  # 'refc' -- original hard-cap trust region + refc weighting
         # kurtosis modes use a tighter band cap: the k^4 term is only identifiable below ~0.25,
         # so fitting it (and Sigma) past that just feeds high-k noise into the shape coeffs.
-        kmax_trust = (_KURT_KMAX if (shape_mode in ("kurtosis", "kurtosis_reg",
-                                                    "kurtosis_decoupled") and _KURT_KMAX > 0)
-                      else _TRUST_KMAX)
+        kmax_trust = (
+            _KURT_KMAX
+            if (
+                shape_mode in ("kurtosis", "kurtosis_reg", "kurtosis_decoupled")
+                and _KURT_KMAX > 0
+            )
+            else _TRUST_KMAX
+        )
         trust = sane & (KR[None] < kmax_trust) & (refc > _TRUST_FLOOR_MARGIN * floor)
         W = np.maximum(np.where(trust, refc, 0.0).reshape(n, -1), 0.0)
         coeffs, ok_mag = _batched_wls(feat_mag, W, lnT_flat, K, ridge_diag=ridge)
@@ -420,9 +452,9 @@ def _fit_chunk(R_AA, R_BB, R_AB, KX, KY, KR, cy, cx, f_xy, kernel, floor_mode,
     # --- status ---------------------------------------------------------------------------
     status = np.zeros(n, dtype=np.int32)
     neg_var = (Sigma_xx < 0) | (Sigma_yy < 0)
-    status[~ok_mag] = 1                         # underdetermined / singular magnitude fit
-    status[neg_var & ok_mag] = 5                # negative variance
-    status[(~ok_phase) & (status == 0)] = 4     # singular phase solve: mu is integer-only
+    status[~ok_mag] = 1  # underdetermined / singular magnitude fit
+    status[neg_var & ok_mag] = 5  # negative variance
+    status[(~ok_phase) & (status == 0)] = 4  # singular phase solve: mu is integer-only
     # clamp negative variances to zero (matches downstream max(.,0) for UU/VV)
     Sigma_xx = np.maximum(Sigma_xx, 0.0)
     Sigma_yy = np.maximum(Sigma_yy, 0.0)
@@ -443,26 +475,33 @@ def _fit_phase(F_AB, refc, KX, KY, KR, cy, cx):
     """
     n, corr_h, corr_w = F_AB.shape
     # integer displacement from the cross-correlation peak (per window)
-    R_AB = np.abs(np.fft.fftshift(
-        np.fft.ifft2(np.fft.ifftshift(F_AB, axes=(1, 2)), axes=(1, 2)), axes=(1, 2)))
+    R_AB = np.abs(
+        np.fft.fftshift(
+            np.fft.ifft2(np.fft.ifftshift(F_AB, axes=(1, 2)), axes=(1, 2)), axes=(1, 2)
+        )
+    )
     flat_idx = R_AB.reshape(n, -1).argmax(axis=1)
     pj, pi = np.unravel_index(flat_idx, (corr_h, corr_w))
-    d_int_x = (pi - cx).astype(np.float64)     # integer dx (px)
-    d_int_y = (pj - cy).astype(np.float64)     # integer dy (px)
+    d_int_x = (pi - cx).astype(np.float64)  # integer dx (px)
+    d_int_y = (pj - cy).astype(np.float64)  # integer dy (px)
 
     # de-ramp: remove the linear phase of the integer shift so the residual never wraps
-    ramp = np.exp(2j * np.pi * (KX[None] * d_int_x[:, None, None]
-                                + KY[None] * d_int_y[:, None, None]))
+    ramp = np.exp(
+        2j
+        * np.pi
+        * (KX[None] * d_int_x[:, None, None] + KY[None] * d_int_y[:, None, None])
+    )
     F_deramped = F_AB * ramp
-    phase = np.angle(F_deramped)               # small residual phase (n, h, w)
+    phase = np.angle(F_deramped)  # small residual phase (n, h, w)
 
     trust = (KR[None] < _PHASE_KMAX) & (KR[None] > 0) & (refc > 0)
     W = np.where(trust, np.maximum(refc, 0.0), 0.0).reshape(n, -1)
     y = np.where(trust, phase, 0.0).reshape(n, -1)
 
     # model: phase = -2*pi (kx mu_sx + ky mu_sy)  ->  design [-2pi kx, -2pi ky]
-    feat = np.stack([(-2.0 * np.pi * KX).ravel(),
-                     (-2.0 * np.pi * KY).ravel()], axis=1)  # (P, 2)
+    feat = np.stack(
+        [(-2.0 * np.pi * KX).ravel(), (-2.0 * np.pi * KY).ravel()], axis=1
+    )  # (P, 2)
     coeffs, ok = _batched_wls(feat, W, y, 2)
     d_sub = np.where(np.isfinite(coeffs), coeffs, 0.0)
     mu_x = d_int_x + d_sub[:, 0]
@@ -508,16 +547,25 @@ def fit_windows_kspace_linear(
     # floor_mode resolves the floor model; use_pnoise kept for back-compat (True->'coloured')
     if floor_mode is None:
         floor_mode = "coloured" if use_pnoise else "flat"
-    if floor_mode not in ("flat", "autofit", "autocross", "joint",
-                          "coloured", "coloured2", "none"):
+    if floor_mode not in (
+        "flat",
+        "autofit",
+        "autocross",
+        "joint",
+        "coloured",
+        "coloured2",
+        "none",
+    ):
         raise ValueError(
             f"floor_mode must be flat|autofit|autocross|joint|coloured|coloured2|none, "
-            f"got {floor_mode!r}")
+            f"got {floor_mode!r}"
+        )
     if weight_mode not in ("refc", "invvar", "soft"):
         raise ValueError(f"weight_mode must be refc|invvar|soft, got {weight_mode!r}")
     if shape_mode not in ("gauss", "kurtosis", "kurtosis_reg", "kurtosis_decoupled"):
         raise ValueError(
-            f"shape_mode must be gauss|kurtosis|kurtosis_reg|kurtosis_decoupled, got {shape_mode!r}")
+            f"shape_mode must be gauss|kurtosis|kurtosis_reg|kurtosis_decoupled, got {shape_mode!r}"
+        )
 
     corr_h, corr_w = corr_size
     n_windows = len(mask_flat)
@@ -529,16 +577,26 @@ def fit_windows_kspace_linear(
             f"(n_windows={n_windows}, corr_size={corr_size})"
         )
 
-    R_AA = np.ascontiguousarray(R_AA, dtype=np.float64).reshape(n_windows, corr_h, corr_w)
-    R_BB = np.ascontiguousarray(R_BB, dtype=np.float64).reshape(n_windows, corr_h, corr_w)
-    R_AB = np.ascontiguousarray(R_AB, dtype=np.float64).reshape(n_windows, corr_h, corr_w)
+    R_AA = np.ascontiguousarray(R_AA, dtype=np.float64).reshape(
+        n_windows, corr_h, corr_w
+    )
+    R_BB = np.ascontiguousarray(R_BB, dtype=np.float64).reshape(
+        n_windows, corr_h, corr_w
+    )
+    R_AB = np.ascontiguousarray(R_AB, dtype=np.float64).reshape(
+        n_windows, corr_h, corr_w
+    )
     mask = np.asarray(mask_flat, dtype=bool)
 
     KX, KY, KR = _kgrids(corr_h, corr_w)
-    cy, cx = corr_h // 2, corr_w // 2          # DC / peak index after fftshift
+    cy, cx = corr_h // 2, corr_w // 2  # DC / peak index after fftshift
 
     # per-window fractional displacement for P_noise (warp splits the shift A/B -> pred/2)
-    if predictor_displacements is not None and floor_mode not in ("flat", "autofit", "autocross"):
+    if predictor_displacements is not None and floor_mode not in (
+        "flat",
+        "autofit",
+        "autocross",
+    ):
         pred = np.asarray(predictor_displacements, dtype=np.float64).reshape(-1, 2)
         # A real multipass predictor carries NaN at invalid/edge windows. A NaN
         # fractional shift is meaningless for the noise PSD AND would break the
@@ -554,12 +612,14 @@ def fit_windows_kspace_linear(
     status_flat = np.full(n_windows, -1, dtype=np.int32)
     initial_guess_flat = np.zeros((n_windows, 16), dtype=np.float64)
 
-    center_x = corr_w / 2.0 + 1.0              # 1-based centre (matches C + velocity extract)
+    center_x = corr_w / 2.0 + 1.0  # 1-based centre (matches C + velocity extract)
     center_y = corr_h / 2.0 + 1.0
 
     proc = np.where(~mask)[0]
     if proc.size == 0:
-        logger.info(f"Pass {pass_idx + 1}: k-space-linear, all {n_windows} windows masked")
+        logger.info(
+            f"Pass {pass_idx + 1}: k-space-linear, all {n_windows} windows masked"
+        )
         if return_diagnostics:
             return gauss_flat, status_flat, initial_guess_flat, None
         return gauss_flat, status_flat, initial_guess_flat
@@ -590,14 +650,25 @@ def fit_windows_kspace_linear(
             f_xy = (float(fkey_sorted[start, 0]), float(fkey_sorted[start, 1]))
 
             Sigma, mu, amps, status = _fit_chunk(
-                R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, KR, cy, cx,
-                f_xy, interp_kernel, floor_mode, weight_mode, shape_mode,
+                R_AA[idx],
+                R_BB[idx],
+                R_AB[idx],
+                KX,
+                KY,
+                KR,
+                cy,
+                cx,
+                f_xy,
+                interp_kernel,
+                floor_mode,
+                weight_mode,
+                shape_mode,
             )
 
             gauss_flat[idx, 0:3] = amps
             gauss_flat[idx, 3:6] = 0.0
-            gauss_flat[idx, 6:9] = np.nan      # particle-size slots -> NaN (UU=Sigma_xx)
-            gauss_flat[idx, 9] = Sigma[:, 0]   # Sigma_xx
+            gauss_flat[idx, 6:9] = np.nan  # particle-size slots -> NaN (UU=Sigma_xx)
+            gauss_flat[idx, 9] = Sigma[:, 0]  # Sigma_xx
             gauss_flat[idx, 10] = Sigma[:, 1]  # Sigma_yy
             gauss_flat[idx, 11] = Sigma[:, 2]  # Sigma_xy
             gauss_flat[idx, 12] = center_x
@@ -607,7 +678,7 @@ def fit_windows_kspace_linear(
             status_flat[idx] = status
             start = end
 
-    initial_guess_flat[:] = gauss_flat         # closed-form: no separate initial guess
+    initial_guess_flat[:] = gauss_flat  # closed-form: no separate initial guess
 
     n_valid = int(proc.size)
     n_ok = int(np.sum(status_flat == 0))

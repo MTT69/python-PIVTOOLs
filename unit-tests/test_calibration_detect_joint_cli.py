@@ -36,14 +36,31 @@ _STEREO_CHARUCO = _SYN / "stereo_charuco"
 
 def test_spec_from_cfg_parses_datum_and_cross_camera_anchor():
     gg = {
-        "datum_camera": 1, "datum_view": 0,
-        "datum_clicks": {"origin": [10.0, 20.0], "x_axis": [110.0, 20.0],
-                         "y_axis": [10.0, 120.0], "origin_mm": [5.0, -3.0]},
+        "datum_camera": 1,
+        "datum_view": 0,
+        "datum_clicks": {
+            "origin": [10.0, 20.0],
+            "x_axis": [110.0, 20.0],
+            "y_axis": [10.0, 120.0],
+            "origin_mm": [5.0, -3.0],
+        },
         "anchors": [
-            {"camera": 2, "view": 0, "correspondences": [
-                {"pixel": [50.0, 60.0], "same_as": [1, 0], "ref_pixel": [200.0, 210.0]},
-                {"pixel": [80.0, 60.0], "same_as": [1, 0], "ref_pixel": [240.0, 210.0]},
-            ]},
+            {
+                "camera": 2,
+                "view": 0,
+                "correspondences": [
+                    {
+                        "pixel": [50.0, 60.0],
+                        "same_as": [1, 0],
+                        "ref_pixel": [200.0, 210.0],
+                    },
+                    {
+                        "pixel": [80.0, 60.0],
+                        "same_as": [1, 0],
+                        "ref_pixel": [240.0, 210.0],
+                    },
+                ],
+            },
         ],
     }
     spec = cli._global_grid_spec_from_cfg(gg)
@@ -62,12 +79,21 @@ def test_spec_from_cfg_parses_datum_and_cross_camera_anchor():
 
 def test_spec_from_cfg_handles_origin_literal_and_no_ref_pixel():
     gg = {
-        "datum_camera": 1, "datum_view": 0,
-        "datum_clicks": {"origin": [0.0, 0.0], "x_axis": [1.0, 0.0], "y_axis": [0.0, 1.0]},
+        "datum_camera": 1,
+        "datum_view": 0,
+        "datum_clicks": {
+            "origin": [0.0, 0.0],
+            "x_axis": [1.0, 0.0],
+            "y_axis": [0.0, 1.0],
+        },
         "anchors": [
-            {"camera": 1, "view": 1, "correspondences": [
-                {"pixel": [5.0, 6.0], "same_as": "origin"},
-            ]},
+            {
+                "camera": 1,
+                "view": 1,
+                "correspondences": [
+                    {"pixel": [5.0, 6.0], "same_as": "origin"},
+                ],
+            },
         ],
     }
     spec = cli._global_grid_spec_from_cfg(gg)
@@ -79,8 +105,11 @@ def test_spec_from_cfg_handles_origin_literal_and_no_ref_pixel():
 
 
 def test_spec_from_cfg_raises_on_missing_datum_click():
-    gg = {"datum_camera": 1, "datum_view": 0,
-          "datum_clicks": {"origin": None, "x_axis": [1.0, 0.0], "y_axis": [0.0, 1.0]}}
+    gg = {
+        "datum_camera": 1,
+        "datum_view": 0,
+        "datum_clicks": {"origin": None, "x_axis": [1.0, 0.0], "y_axis": [0.0, 1.0]},
+    }
     with pytest.raises(SystemExit, match="datum_clicks.origin"):
         cli._global_grid_spec_from_cfg(gg)
 
@@ -109,8 +138,14 @@ class _FakeConfig:
             "fix_aspect_ratio": True,
             "use_camera_subfolders": True,
             "camera_subfolders": ["cam1", "cam2"],
-            "charuco": {"squares_h": 10, "squares_v": 7, "square_size": 0.030,
-                        "marker_ratio": 0.5, "aruco_dict": "DICT_4X4_1000", "min_corners": 6},
+            "charuco": {
+                "squares_h": 10,
+                "squares_v": 7,
+                "square_size": 0.030,
+                "marker_ratio": 0.5,
+                "aruco_dict": "DICT_4X4_1000",
+                "min_corners": 6,
+            },
         }
 
     def get_calibration_camera_folder(self, camera_num: int) -> str:
@@ -123,8 +158,16 @@ class _FakeConfig:
 
 
 def _args(source, **overrides):
-    base = dict(source=str(source), board=None, cameras=None, image_format=None,
-                n_views=None, model_type=None, distortion=None, board_release=None)
+    base = dict(
+        source=str(source),
+        board=None,
+        cameras=None,
+        image_format=None,
+        n_views=None,
+        model_type=None,
+        distortion=None,
+        board_release=None,
+    )
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -147,7 +190,9 @@ def _tmp_source(tmp_path):
     return src
 
 
-@pytest.mark.skipif(not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent")
+@pytest.mark.skipif(
+    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
+)
 def test_detect_joint_charuco_end_to_end(tmp_path, monkeypatch):
     cfg = _FakeConfig()
     _install(monkeypatch, cfg)
@@ -161,7 +206,9 @@ def test_detect_joint_charuco_end_to_end(tmp_path, monkeypatch):
     assert rec.board_type == "charuco"
     assert rec.board_release == "full3d"
     # One shared board: every camera agrees on it by construction.
-    assert rec.board_meta["cross_camera_board_agreement_mm"] == pytest.approx(0.0, abs=1e-9)
+    assert rec.board_meta["cross_camera_board_agreement_mm"] == pytest.approx(
+        0.0, abs=1e-9
+    )
     # Synthetic data -> the joint solve should reproject tightly for both cameras.
     assert np.isfinite(rec.rms_px) and rec.rms_px < 2.0
     for c in (1, 2):
@@ -173,7 +220,9 @@ def test_detect_joint_charuco_end_to_end(tmp_path, monkeypatch):
     assert len(rec.board) > 40
 
 
-@pytest.mark.skipif(not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent")
+@pytest.mark.skipif(
+    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
+)
 def test_detect_joint_polynomial_writes_per_camera_records(tmp_path, monkeypatch):
     """model_type=polynomial fits a per-camera single-plane map in the shared global frame."""
     cfg = _FakeConfig()
@@ -191,7 +240,9 @@ def test_detect_joint_polynomial_writes_per_camera_records(tmp_path, monkeypatch
         assert mono.camera_model.rms_x_mm < 1.0 and mono.camera_model.rms_y_mm < 1.0
 
 
-@pytest.mark.skipif(not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent")
+@pytest.mark.skipif(
+    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
+)
 def test_detect_joint_cameras_override_from_cli(tmp_path, monkeypatch):
     """``--cameras`` selects the rig; a single camera still solves (degenerate rig)."""
     cfg = _FakeConfig()
@@ -246,7 +297,9 @@ def test_detect_joint_rejects_bad_board_release(tmp_path, monkeypatch):
         )
 
 
-@pytest.mark.skipif(not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent")
+@pytest.mark.skipif(
+    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
+)
 def test_detect_joint_drops_failed_view(tmp_path, monkeypatch):
     """One bad (non-datum) frame is dropped, not fatal — the rest of the rig still calibrates.
 
@@ -273,7 +326,9 @@ def test_detect_joint_drops_failed_view(tmp_path, monkeypatch):
     assert np.isfinite(rec.rms_px)
 
 
-@pytest.mark.skipif(not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent")
+@pytest.mark.skipif(
+    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
+)
 def test_detect_joint_blank_camera_fails_loudly(tmp_path, monkeypatch):
     """A camera that detects NOTHING in any image is fatal (almost always a wrong path/format)."""
     src = tmp_path / "src"

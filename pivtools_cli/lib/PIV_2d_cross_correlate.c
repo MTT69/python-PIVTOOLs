@@ -69,8 +69,12 @@ static void instant_postprocess_lane(
         for (i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
     }
 
-    /* Copy correlation plane to output - only needed for ensemble mode */
-    if (bEnsemble && fCorrelPlane_Out != NULL) {
+    /* Copy correlation plane to output (ensemble accumulation, or the
+     * instantaneous debug dump). In the instantaneous path this runs AFTER
+     * the fCorrelWeight weighting above, so the dumped plane is the exact
+     * surface the peak fitter sees. NULL (the instantaneous default) skips
+     * the copy entirely. */
+    if (fCorrelPlane_Out != NULL) {
         memcpy(&fCorrelPlane_Out[(size_t)idx * nPxPerWindow], plane, nPxPerWindow * sizeof(float));
     }
 
@@ -144,6 +148,14 @@ static void instant_flush_batch(
             int i;
             #pragma omp simd
             for (i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
+        }
+
+        /* Debug plane dump (instantaneous): mirrors the copy-out in
+         * instant_postprocess_lane — post-weighting, same idx layout. */
+        if (fCorrelPlane_Out != NULL) {
+            for (int l = 0; l < L_real; ++l)
+                memcpy(&fCorrelPlane_Out[(size_t)lane_idx[l] * nPxPerWindow],
+                       &packC[(size_t)l * numel], nPxPerWindow * sizeof(float));
         }
 
         if (g_kernel_timing) {

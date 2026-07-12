@@ -69,7 +69,12 @@ def extract_coordinate_bounds(
         >>> ax.set_xlim(xmin, xmax)
     """
     x, y = extract_coordinates(coords, run)
-    return float(np.nanmin(x)), float(np.nanmax(x)), float(np.nanmin(y)), float(np.nanmax(y))
+    return (
+        float(np.nanmin(x)),
+        float(np.nanmax(x)),
+        float(np.nanmin(y)),
+        float(np.nanmax(y)),
+    )
 
 
 def get_num_coordinate_runs(coords: np.ndarray) -> int:

@@ -1,10 +1,10 @@
-from pathlib import Path
-from typing import List, Optional, Tuple
 import logging
 import os
 import re
 import shutil
 import time
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 import yaml
 
@@ -52,13 +52,13 @@ class Config:
             #     file_path = source_path / camera_folder / (self.image_format[0] % 1)
             # img = tifffile.imread(file_path) # bye bye
             # self.image_dtype = img.dtype
-        
+
         # Cache for auto-detected image shape
         self._detected_image_shape = None
-        
+
         # Cache for auto-computed parameters
         self._auto_compute_cache = None
-        
+
         # Setup logging only once globally
         self._setup_logging()
 
@@ -94,11 +94,11 @@ class Config:
             if fmt_raw:
                 fmt = fmt_raw[0] if isinstance(fmt_raw, (list, tuple)) else fmt_raw
                 fmt_lower = fmt.lower()
-                if '.cine' in fmt_lower:
+                if ".cine" in fmt_lower:
                     image_type_val = "cine"
-                elif '.set' in fmt_lower:
+                elif ".set" in fmt_lower:
                     image_type_val = "lavision_set"
-                elif '.im7' in fmt_lower or '.ims' in fmt_lower:
+                elif ".im7" in fmt_lower or ".ims" in fmt_lower:
                     image_type_val = "lavision_im7"
                 else:
                     image_type_val = "standard"
@@ -162,8 +162,10 @@ class Config:
         logging.info(
             "Migrated pairing config: start_index=%s, frame_stride=%s, "
             "pair_stride=%s, preset=%s",
-            images["start_index"], images["frame_stride"],
-            images["pair_stride"], images["pairing_preset"]
+            images["start_index"],
+            images["frame_stride"],
+            images["pair_stride"],
+            images["pairing_preset"],
         )
 
         # Auto-save so migration doesn't re-run
@@ -177,7 +179,7 @@ class Config:
         """
         self._normalize_calibration_block()
         tmp_path = str(self._config_path) + ".tmp"
-        with open(tmp_path, 'w') as f:
+        with open(tmp_path, "w") as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
         # Retry os.replace to handle transient locks from OneDrive/cloud sync
         for attempt in range(5):
@@ -190,7 +192,9 @@ class Config:
                 else:
                     raise
 
-    def save_timestamped_copy(self, destination_dir: Path, timestamp: str = None) -> Path:
+    def save_timestamped_copy(
+        self, destination_dir: Path, timestamp: str = None
+    ) -> Path:
         """Save a timestamped copy of the config file for traceability.
 
         Args:
@@ -219,7 +223,7 @@ class Config:
             shutil.copy2(self._config_path, dest_path)
         else:
             # Fallback: save current state if original file doesn't exist
-            with open(dest_path, 'w') as f:
+            with open(dest_path, "w") as f:
                 yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
 
         return dest_path
@@ -237,8 +241,12 @@ class Config:
 
     # Calibration method keys to filter from snapshots (only active method is saved)
     _CALIBRATION_METHOD_KEYS = {
-        "scale_factor", "dotboard", "charuco", "polynomial",
-        "stereo_dotboard", "stereo_charuco",
+        "scale_factor",
+        "dotboard",
+        "charuco",
+        "polynomial",
+        "stereo_dotboard",
+        "stereo_charuco",
     }
 
     def save_calibration_snapshot(self, base_path: Path) -> Path:
@@ -304,18 +312,14 @@ class Config:
         snapshot_dir = Path(base_path) / "calibration"
 
         # Find dated snapshots (sorted descending = newest first)
-        dated_files = sorted(
-            snapshot_dir.glob("calibration_*.yaml"), reverse=True
-        )
+        dated_files = sorted(snapshot_dir.glob("calibration_*.yaml"), reverse=True)
         if dated_files:
             snapshot_path = dated_files[0]
         else:
             # Fallback to legacy filename
             snapshot_path = snapshot_dir / "calibration.yaml"
             if not snapshot_path.exists():
-                raise FileNotFoundError(
-                    f"No calibration snapshot in {snapshot_dir}"
-                )
+                raise FileNotFoundError(f"No calibration snapshot in {snapshot_dir}")
 
         with open(snapshot_path, "r") as f:
             return yaml.safe_load(f)
@@ -380,11 +384,11 @@ class Config:
     def _get_config_path(self):
         """Get the path to the config file in the current working directory."""
         # Always use current working directory (like CLI)
-        cwd_config_path = Path.cwd() / 'config.yaml'
-        
+        cwd_config_path = Path.cwd() / "config.yaml"
+
         # If config doesn't exist, copy from package default or create programmatically
         if not cwd_config_path.exists():
-            package_default = Path(__file__).parent / 'config.yaml'
+            package_default = Path(__file__).parent / "config.yaml"
             if package_default.exists():
                 shutil.copy2(package_default, cwd_config_path)
             else:
@@ -493,6 +497,7 @@ instantaneous_piv:
   peak_finder: gauss3
   secondary_peak: false
   predictor_smoothing: false
+  dump_correlation_planes: false
 ensemble_piv:
   window_size:
   - - 128
@@ -630,9 +635,9 @@ video:
   include_merged: false
 
 """
-                with open(cwd_config_path, 'w') as f:
+                with open(cwd_config_path, "w") as f:
                     f.write(default_config.strip())
-        
+
         return cwd_config_path
 
     @property
@@ -741,13 +746,13 @@ video:
     def _detect_image_type(self) -> str:
         """Auto-detect image type from format string."""
         fmt = self.image_format[0].lower()
-        if '.cine' in fmt:
+        if ".cine" in fmt:
             return "cine"
-        elif '.set' in fmt:
+        elif ".set" in fmt:
             return "lavision_set"
-        elif '.im7' in fmt:
+        elif ".im7" in fmt:
             return "lavision_im7"
-        elif '.ims' in fmt:
+        elif ".ims" in fmt:
             return "lavision_im7"  # .ims treated same as .im7
         else:
             return "standard"
@@ -844,13 +849,15 @@ video:
         would silently flip to single-camera mode for the rest of the process.
         """
         max_allowed = self.camera_count
-        env_cam = os.environ.get('PIV_CAMERA')
+        env_cam = os.environ.get("PIV_CAMERA")
         if env_cam:
             numbers = [int(env_cam)]  # non-int raises ValueError — intentional
         else:
             numbers = self.data["paths"]["camera_numbers"]
         if any(n > max_allowed or n < 1 for n in numbers):
-            raise ValueError(f"Camera numbers {numbers} must be between 1 and {max_allowed}")
+            raise ValueError(
+                f"Camera numbers {numbers} must be between 1 and {max_allowed}"
+            )
         return numbers
 
     # ===================== STEREO PAIR PROPERTIES =====================
@@ -984,7 +991,7 @@ video:
         name = source_path.name
 
         # Find the LAST number in the name (avoids matching "30degree", "250hz", etc.)
-        matches = list(re.finditer(r'(\d+)', name))
+        matches = list(re.finditer(r"(\d+)", name))
         if not matches:
             raise ValueError(f"Cannot detect loop number in: {name}")
 
@@ -999,7 +1006,7 @@ video:
         else:
             new_number_str = str(new_number)
 
-        new_name = name[:match.start(1)] + new_number_str + name[match.end(1):]
+        new_name = name[: match.start(1)] + new_number_str + name[match.end(1) :]
         return source_path.parent / new_name
 
     def resolve_loop_for_pair(self, global_pair_1based: int) -> tuple:
@@ -1071,21 +1078,21 @@ video:
     def image_shape(self):
         """
         Return image shape (H, W).
-        
+
         If shape is specified in config, use that.
         Otherwise, auto-detect from first image and cache the result.
         """
         # First check if explicitly set in config
         if "shape" in self.data.get("images", {}):
             return tuple(self.data["images"]["shape"])
-        
+
         # Otherwise, auto-detect and cache
         if self._detected_image_shape is None:
             self._detected_image_shape = self._detect_image_shape()
             logging.info("Auto-detected image shape: %s", self._detected_image_shape)
-        
+
         return self._detected_image_shape
-    
+
     def _detect_image_shape(self) -> tuple:
         """
         Detect image shape by reading the first image.
@@ -1105,7 +1112,9 @@ video:
         image_format = self.image_format
         img_type = self.image_type
 
-        logging.debug(f"_detect_image_shape: image_format = {image_format}, image_type = {img_type}")
+        logging.debug(
+            f"_detect_image_shape: image_format = {image_format}, image_type = {img_type}"
+        )
         logging.debug(f"Source path: {source_path}, Camera: {camera_num}")
 
         format_str = image_format[0]  # Always tuple now
@@ -1231,7 +1240,9 @@ video:
             return first
         logging.getLogger(__name__).warning(
             "Invalid vector_format %r in config (no printf integer specifier); "
-            "falling back to %r", vf, default
+            "falling back to %r",
+            vf,
+            default,
         )
         return default
 
@@ -1280,7 +1291,6 @@ video:
             "normal_stress": "mean_stresses",
             "inst_fluctuations": "inst_stresses",
         }
-        migrated = False
         for old_key, new_key in legacy_map.items():
             if old_key in methods:
                 # Carry over enabled state (True wins if either legacy key was True)
@@ -1289,7 +1299,6 @@ video:
                 elif methods[old_key] and new_key in methods:
                     methods[new_key] = methods[new_key] or methods[old_key]
                 del methods[old_key]
-                migrated = True
 
         # Ensure all canonical keys are present with defaults
         for key, default_val in default_methods.items():
@@ -1631,13 +1640,13 @@ video:
     def _detect_calibration_image_type(self) -> str:
         """Auto-detect calibration image type from format string."""
         fmt = self.calibration_image_format.lower()
-        if '.cine' in fmt:
+        if ".cine" in fmt:
             return "cine"
-        elif '.set' in fmt:
+        elif ".set" in fmt:
             return "lavision_set"
-        elif '.im7' in fmt:
+        elif ".im7" in fmt:
             return "lavision_im7"
-        elif '.ims' in fmt:
+        elif ".ims" in fmt:
             return "lavision_im7"
         else:
             return "standard"
@@ -1790,7 +1799,9 @@ video:
 
         return ""
 
-    def get_calibration_image_path(self, camera: int, index: int, source_path_idx: int = 0) -> Path:
+    def get_calibration_image_path(
+        self, camera: int, index: int, source_path_idx: int = 0
+    ) -> Path:
         """Build full path to a calibration image.
 
         Uses calibration_sources for the base path, then applies camera subfolders
@@ -1810,7 +1821,9 @@ video:
         Path
             Full path to the calibration image file
         """
-        from pivtools_core.image_handling.path_utils import build_calibration_camera_path
+        from pivtools_core.image_handling.path_utils import (
+            build_calibration_camera_path,
+        )
 
         camera_path = build_calibration_camera_path(self, source_path_idx, camera)
         image_type = self.calibration_image_type
@@ -1919,7 +1932,14 @@ video:
 
     def set_active_calibration_method(self, method: str):
         """Set the active calibration method."""
-        if method in ["scale_factor", "dotboard", "stereo_dotboard", "charuco", "polynomial", "stereo_charuco"]:
+        if method in [
+            "scale_factor",
+            "dotboard",
+            "stereo_dotboard",
+            "charuco",
+            "polynomial",
+            "stereo_charuco",
+        ]:
             self.data["calibration"]["active"] = method
         else:
             raise ValueError(f"Unknown calibration method: {method}")
@@ -2001,9 +2021,15 @@ video:
             if pairs and self.base_paths:
                 cam1, cam2 = pairs[0]
                 base = Path(str(self.base_paths[0]))
-                sc_path = base / "calibration" / f"stereo_cam{cam1}_cam{cam2}" / "self_calibration.yaml"
+                sc_path = (
+                    base
+                    / "calibration"
+                    / f"stereo_cam{cam1}_cam{cam2}"
+                    / "self_calibration.yaml"
+                )
                 if sc_path.exists():
                     import yaml
+
                     with open(sc_path) as f:
                         data = yaml.safe_load(f) or {}
                     return data
@@ -2169,7 +2195,7 @@ video:
         """
         Auto-detect optimal compute parameters based on system resources.
         Results are cached to avoid repeated detection.
-        
+
         Returns
         -------
         dict
@@ -2179,28 +2205,29 @@ video:
         # Return cached result if available
         if self._auto_compute_cache is not None:
             return self._auto_compute_cache
-        
-        import psutil
+
         import os
-        
+
+        import psutil
+
         # Get number of CPU cores
         cpu_count = os.cpu_count() or 4
-        
+
         # Get total system memory in GB
         total_memory_gb = psutil.virtual_memory().total / (1024**3)
-        
+
         # Workers per node = number of CPUs
         workers_per_node = cpu_count
-        
+
         # OMP threads = 2 (as requested)
         omp_threads = 2
-        
+
         # Dask memory = (total memory - 10%) / cpu_count
         # Reserve 10% for system overhead
         available_memory_gb = total_memory_gb * 0.9
         memory_per_worker_gb = available_memory_gb / cpu_count
         dask_memory_limit = f"{memory_per_worker_gb:.2f}GB"
-        
+
         logging.info("Auto-detected compute parameters:")
         logging.info("  CPU cores: %d", cpu_count)
         logging.info("  Total memory: %.2f GB", total_memory_gb)
@@ -2214,7 +2241,7 @@ video:
             "dask_workers_per_node": workers_per_node,
             "dask_memory_limit": dask_memory_limit,
         }
-        
+
         return self._auto_compute_cache
 
     @property
@@ -2297,7 +2324,9 @@ video:
     @property
     def peak_finder(self):
         """Return peak finder method (converted to numeric code)."""
-        peak_finder = self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss6").lower()
+        peak_finder = (
+            self.data.get("instantaneous_piv", {}).get("peak_finder", "gauss6").lower()
+        )
         if peak_finder == "gauss3":
             return 3
         elif peak_finder == "gauss4":
@@ -2389,7 +2418,9 @@ video:
     @property
     def ensemble_peak_finder(self):
         """Return peak finder method for ensemble PIV (converted to numeric code)."""
-        peak_finder = self.data.get("ensemble_piv", {}).get("peak_finder", "gauss6").lower()
+        peak_finder = (
+            self.data.get("ensemble_piv", {}).get("peak_finder", "gauss6").lower()
+        )
         if peak_finder == "gauss3":
             return 3
         elif peak_finder == "gauss4":
@@ -2420,7 +2451,7 @@ video:
 
         # Validate sum_window if single mode is used
         ensemble_types = self.ensemble_type
-        if 'single' in ensemble_types:
+        if "single" in ensemble_types:
             if sum_window is None:
                 raise ValueError(
                     "ensemble_sum_window must be defined when using 'single' mode in ensemble_type"
@@ -2431,7 +2462,7 @@ video:
                 )
             # Validate sum_window is larger than all window sizes for single-mode passes
             for pass_idx, pass_type in enumerate(ensemble_types):
-                if pass_type == 'single':
+                if pass_type == "single":
                     win_size = self.ensemble_window_sizes[pass_idx]
                     if sum_window[0] < win_size[0] or sum_window[1] < win_size[1]:
                         raise ValueError(
@@ -2508,7 +2539,7 @@ video:
         types = self.data.get("ensemble_piv", {}).get("type", default_types)
 
         # Validate ensemble types
-        valid_types = {'std', 'standard', 'single'}
+        valid_types = {"std", "standard", "single"}
         for pass_idx, pass_type in enumerate(types):
             if pass_type not in valid_types:
                 raise ValueError(
@@ -2517,7 +2548,7 @@ video:
                 )
 
         # Normalize 'standard' to 'std' for consistency
-        types = ['std' if t == 'standard' else t for t in types]
+        types = ["std" if t == "standard" else t for t in types]
 
         # Validate list length matches number of passes
         if len(types) != self.ensemble_num_passes:
@@ -2605,7 +2636,7 @@ video:
         in old workspace configs is ignored.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
-        valid_methods = {'kspace', 'kspace_linear'}
+        valid_methods = {"kspace", "kspace_linear"}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_fit_method '{method}'. Must be one of "
@@ -2667,7 +2698,7 @@ video:
         method = self.data.get("ensemble_piv", {}).get(
             "image_warp_interpolation", "cubic"
         )
-        valid_methods = {'cubic', 'lanczos'}
+        valid_methods = {"cubic", "lanczos"}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_image_warp_interpolation '{method}'. "
@@ -2691,7 +2722,9 @@ video:
 
         Default: False
         """
-        return self.data.get("ensemble_piv", {}).get("skip_background_subtraction", False)
+        return self.data.get("ensemble_piv", {}).get(
+            "skip_background_subtraction", False
+        )
 
     @property
     def ensemble_background_subtraction_method(self) -> str:
@@ -2722,7 +2755,7 @@ video:
         method = self.data.get("ensemble_piv", {}).get(
             "background_subtraction_method", "correlation"
         )
-        valid_methods = {'correlation', 'image', 'window_mean'}
+        valid_methods = {"correlation", "image", "window_mean"}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_background_subtraction_method '{method}'. "
@@ -2753,28 +2786,25 @@ video:
     def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
         return self.data.get("outlier_detection", {}).get("enabled", True)
-    
+
     @property
     def outlier_detection_methods(self):
         """Return list of outlier detection methods with their parameters."""
         return self.data.get("outlier_detection", {}).get("methods", [])
-    
+
     @property
     def infilling_mid_pass(self):
         """Return mid-pass infilling configuration."""
-        return self.data.get("infilling", {}).get("mid_pass", {
-            "method": "nearest",
-            "parameters": {}
-        })
+        return self.data.get("infilling", {}).get(
+            "mid_pass", {"method": "nearest", "parameters": {}}
+        )
 
     @property
     def infilling_final_pass(self):
         """Return final-pass infilling configuration."""
-        return self.data.get("infilling", {}).get("final_pass", {
-            "enabled": True,
-            "method": "biharmonic",
-            "parameters": {}
-        })
+        return self.data.get("infilling", {}).get(
+            "final_pass", {"enabled": True, "method": "biharmonic", "parameters": {}}
+        )
 
     # --- Ensemble-specific outlier detection and infilling ---
     @property
@@ -2790,19 +2820,16 @@ video:
     @property
     def ensemble_infilling_mid_pass(self) -> dict:
         """Return ensemble mid-pass infilling configuration."""
-        return self.data.get("ensemble_infilling", {}).get("mid_pass", {
-            "method": "nearest",
-            "parameters": {}
-        })
+        return self.data.get("ensemble_infilling", {}).get(
+            "mid_pass", {"method": "nearest", "parameters": {}}
+        )
 
     @property
     def ensemble_infilling_final_pass(self) -> dict:
         """Return ensemble final-pass infilling configuration."""
-        return self.data.get("ensemble_infilling", {}).get("final_pass", {
-            "enabled": True,
-            "method": "biharmonic",
-            "parameters": {}
-        })
+        return self.data.get("ensemble_infilling", {}).get(
+            "final_pass", {"enabled": True, "method": "biharmonic", "parameters": {}}
+        )
 
     @property
     def ensemble_gradient_correction(self) -> bool:
@@ -2889,9 +2916,7 @@ video:
 
         Default: [] (no BCs, backward-compatible)
         """
-        raw = self.data.get("ensemble_piv", {}).get(
-            "predictor_boundary_conditions", []
-        )
+        raw = self.data.get("ensemble_piv", {}).get("predictor_boundary_conditions", [])
         if not raw:
             return []
         validated = []
@@ -2907,12 +2932,14 @@ video:
                     f"predictor_boundary_conditions[{i}].edge must be "
                     f"'bottom' or 'top', got {edge!r}"
                 )
-            validated.append({
-                "y_position": int(y_pos),
-                "ux": float(bc.get("ux", 0.0)),
-                "uy": float(bc.get("uy", 0.0)),
-                "edge": edge,
-            })
+            validated.append(
+                {
+                    "y_position": int(y_pos),
+                    "ux": float(bc.get("ux", 0.0)),
+                    "uy": float(bc.get("uy", 0.0)),
+                    "edge": edge,
+                }
+            )
         return validated
 
     @property
@@ -2944,7 +2971,7 @@ video:
         method = self.data.get("instantaneous_piv", {}).get(
             "image_warp_interpolation", "cubic"
         )
-        valid_methods = {'cubic', 'lanczos'}
+        valid_methods = {"cubic", "lanczos"}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid instantaneous_image_warp_interpolation '{method}'. "
@@ -2963,11 +2990,10 @@ video:
         Default: 'minimal'
         """
         mode = self.data.get("instantaneous_piv", {}).get("save_mode", "minimal")
-        valid = {'full', 'minimal'}
+        valid = {"full", "minimal"}
         if mode not in valid:
             raise ValueError(
-                f"Invalid instantaneous save_mode '{mode}'. "
-                f"Must be one of {valid}"
+                f"Invalid instantaneous save_mode '{mode}'. " f"Must be one of {valid}"
             )
         return mode
 
@@ -2986,6 +3012,21 @@ video:
     def secondary_peak(self):
         """Return True if secondary peak detection is enabled."""
         return self.data.get("instantaneous_piv", {}).get("secondary_peak", False)
+
+    @property
+    def dump_correlation_planes(self) -> bool:
+        """Return True if instantaneous correlation planes are dumped for debugging.
+
+        Debug-only (CPU backend). Dumps the weighted correlation planes of EVERY
+        image pair to <output>/debug_corr_planes/*_corrplanes.npz — roughly
+        N_pairs x n_windows x win_h x win_w x 4 bytes per pass, so run it on a
+        dataset restricted to the pair(s) of interest.
+
+        Default: False
+        """
+        return self.data.get("instantaneous_piv", {}).get(
+            "dump_correlation_planes", False
+        )
 
     # --- Logging properties ---
     @property
@@ -3006,18 +3047,18 @@ video:
     def _setup_logging(self):
         """Setup logging based on configuration. Only runs once globally."""
         global _LOGGING_INITIALIZED
-        
+
         if _LOGGING_INITIALIZED:
             return
-        
+
         _LOGGING_INITIALIZED = True
-        
+
         log_level = getattr(logging, self.log_level, logging.INFO)
-        
+
         # Get root logger
         root_logger = logging.getLogger()
         root_logger.setLevel(log_level)
-        
+
         # Clear any existing handlers to avoid duplicates
         root_logger.handlers.clear()
 
@@ -3029,6 +3070,7 @@ video:
             def filter(self, record):
                 if record.exc_info and record.exc_info[0] is not None:
                     import asyncio
+
                     if issubclass(record.exc_info[0], asyncio.CancelledError):
                         return False
                 return True
@@ -3041,7 +3083,7 @@ video:
         file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         file_handler.setFormatter(file_formatter)
         root_logger.addHandler(file_handler)
-        
+
         # Add console handler if requested
         if self.log_console:
             console_handler = logging.StreamHandler()
@@ -3060,6 +3102,7 @@ video:
     def image_dtype(self):
         """Return image data type as numpy dtype."""
         import numpy as np
+
         dtype_str = self.data.get("images", {}).get("dtype", "float32")
         return np.dtype(dtype_str)
 
@@ -3078,7 +3121,7 @@ video:
     def mask_mode(self):
         """
         Return masking mode: 'file' or 'rectangular'.
-        
+
         Returns
         -------
         str
@@ -3090,7 +3133,7 @@ video:
     def mask_rectangular_settings(self):
         """
         Return rectangular masking settings (pixels to mask from each edge).
-        
+
         Returns
         -------
         dict
@@ -3103,13 +3146,13 @@ video:
     def mask_threshold(self):
         """
         Return mask threshold for vector masking.
-        
+
         This threshold determines when a vector is masked based on the fraction
         of masked pixels within its interrogation window:
         - 0.0: mask vector if any pixel in window is masked
         - 0.01: mask vector if >1% of pixels in window are masked (default)
         - 1.0: only mask vector if all pixels in window are masked
-        
+
         Returns
         -------
         float
@@ -3173,10 +3216,10 @@ video:
             List of 0-indexed path indices to process
         """
         # Check environment variable override (from GUI)
-        env_paths = os.environ.get('PIV_ACTIVE_PATHS')
+        env_paths = os.environ.get("PIV_ACTIVE_PATHS")
         if env_paths:
             try:
-                indices = [int(i) for i in env_paths.split(',') if i.strip()]
+                indices = [int(i) for i in env_paths.split(",") if i.strip()]
                 # Validate indices
                 max_idx = len(self.source_paths) - 1
                 return [i for i in indices if 0 <= i <= max_idx]
@@ -3260,7 +3303,9 @@ video:
             If image_type is not lavision_set
         """
         if self.image_type != "lavision_set":
-            raise ValueError("get_set_file_path() only valid for lavision_set image_type")
+            raise ValueError(
+                "get_set_file_path() only valid for lavision_set image_type"
+            )
         return self.source_paths[source_path_idx]
 
     # --- Transform properties ---
@@ -3282,8 +3327,10 @@ video:
         """
         cameras = self.transforms.get("cameras", {})
         # Normalize keys to integers and extract operations
-        return {int(k): v.get("operations", []) if isinstance(v, dict) else v
-                for k, v in cameras.items()}
+        return {
+            int(k): v.get("operations", []) if isinstance(v, dict) else v
+            for k, v in cameras.items()
+        }
 
     def get_camera_transforms(self, camera: int) -> list:
         """Get transform operations for a specific camera.
@@ -3459,10 +3506,15 @@ video:
         """
         allowed = self.get_allowed_endpoints(tool)
         if endpoint not in allowed:
-            return False, f"Source endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}"
+            return (
+                False,
+                f"Source endpoint '{endpoint}' not allowed for {tool}. Allowed: {allowed}",
+            )
         return True, ""
 
-    def validate_type_name_for_tool(self, tool: str, type_name: str) -> Tuple[bool, str]:
+    def validate_type_name_for_tool(
+        self, tool: str, type_name: str
+    ) -> Tuple[bool, str]:
         """Validate that a type name is allowed for a tool.
 
         Parameters
@@ -3480,9 +3532,12 @@ video:
         """
         allowed = self.get_allowed_type_names(tool)
         if type_name not in allowed:
-            return False, f"Type name '{type_name}' not allowed for {tool}. Allowed: {allowed}"
+            return (
+                False,
+                f"Type name '{type_name}' not allowed for {tool}. Allowed: {allowed}",
+            )
         return True, ""
-    
+
     @property
     def cluster_type(self):
         cluster_type = (
@@ -3495,7 +3550,9 @@ video:
     @property
     def n_nodes(self):
         if self.cluster_type == "slurm":
-            n_nodes = self.data.get("processing", {}).get("slurm", {}).get("nnodes", None)
+            n_nodes = (
+                self.data.get("processing", {}).get("slurm", {}).get("nnodes", None)
+            )
             if n_nodes is None:
                 raise ValueError("n_nodes must be set for Slurm cluster")
             return int(n_nodes)
@@ -3505,14 +3562,23 @@ video:
     @property
     def slurm_walltime(self):
         if self.cluster_type == "slurm":
-            walltime = self.data.get("processing", {}).get("slurm", {}).get("walltime", "01:00:00")
+            walltime = (
+                self.data.get("processing", {})
+                .get("slurm", {})
+                .get("walltime", "01:00:00")
+            )
             return walltime
         else:
             return None
+
     @property
     def slurm_memory_limit(self):
         if self.cluster_type == "slurm":
-            mem_limit = self.data.get("processing", {}).get("slurm", {}).get("memory_limit", "100GB")
+            mem_limit = (
+                self.data.get("processing", {})
+                .get("slurm", {})
+                .get("memory_limit", "100GB")
+            )
             return mem_limit
         else:
             return None
@@ -3520,33 +3586,46 @@ video:
     @property
     def slurm_partition(self):
         if self.cluster_type == "slurm":
-            partition = self.data.get("processing", {}).get("slurm", {}).get("partition", "normal")
+            partition = (
+                self.data.get("processing", {})
+                .get("slurm", {})
+                .get("partition", "normal")
+            )
             return partition
         else:
             return None
+
     @property
     def slurm_interface(self):
         if self.cluster_type == "slurm":
-            interface = self.data.get("processing", {}).get("slurm", {}).get("interface", "ib0")
+            interface = (
+                self.data.get("processing", {}).get("slurm", {}).get("interface", "ib0")
+            )
             return interface
         else:
             return None
+
     @property
     def slurm_job_extra(self):
         if self.cluster_type == "slurm":
-            job_extra = self.data.get("processing", {}).get("slurm", {}).get("job_extra", [])
+            job_extra = (
+                self.data.get("processing", {}).get("slurm", {}).get("job_extra", [])
+            )
             return job_extra
         else:
             return None
-        
+
     @property
     def slurm_job_prologue(self):
         if self.cluster_type == "slurm":
-            prologue = self.data.get("processing", {}).get("slurm", {}).get("prologue", [])
+            prologue = (
+                self.data.get("processing", {}).get("slurm", {}).get("prologue", [])
+            )
             return prologue
         else:
             return None
-        
+
+
 def get_config(refresh: bool = False) -> Config:
     """Return shared Config instance. Pass refresh=True to reload from disk."""
     global _CONFIG

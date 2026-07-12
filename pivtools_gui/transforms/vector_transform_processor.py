@@ -14,7 +14,6 @@ Usage (CLI):
         --camera 1
 """
 
-import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -24,11 +23,9 @@ import numpy as np
 from loguru import logger
 
 from pivtools_core.config import Config, get_config
-from pivtools_core.coordinate_utils import extract_coordinates
-
-from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import is_run_valid
+from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 from .transform_operations import (
     COORDINATES_FILENAME,
@@ -112,9 +109,12 @@ class VectorTransformProcessor:
                 raise ValueError(error)
 
         # Validate config has required keys
-        if not hasattr(self.config, 'vector_format') or not self.config.vector_format:
+        if not hasattr(self.config, "vector_format") or not self.config.vector_format:
             raise ValueError("Config missing required 'vector_format'")
-        if not hasattr(self.config, 'num_frame_pairs') or self.config.num_frame_pairs <= 0:
+        if (
+            not hasattr(self.config, "num_frame_pairs")
+            or self.config.num_frame_pairs <= 0
+        ):
             raise ValueError("Config missing or invalid 'num_frame_pairs'")
 
     def _get_data_paths(self, camera: int) -> Dict:
@@ -177,7 +177,9 @@ class VectorTransformProcessor:
             - pending_transformations: list of applied transformations
             - error: str (if failed)
         """
-        trans = transformation or (self.transformations[0] if self.transformations else None)
+        trans = transformation or (
+            self.transformations[0] if self.transformations else None
+        )
         if not trans:
             return {"success": False, "error": "No transformation specified"}
 
@@ -197,7 +199,10 @@ class VectorTransformProcessor:
             mat = load_mat_for_transform(mat_file)
             piv_result_key = self._get_piv_result_key()
             if piv_result_key not in mat:
-                return {"success": False, "error": f"'{piv_result_key}' not found in {mat_file.name}"}
+                return {
+                    "success": False,
+                    "error": f"'{piv_result_key}' not found in {mat_file.name}",
+                }
             piv_result = mat[piv_result_key]
 
             # Load coordinates if they exist
@@ -224,7 +229,9 @@ class VectorTransformProcessor:
                         mat["pending_transformations"] = [str(item)] if item else []
                     else:
                         # Multi-element array
-                        mat["pending_transformations"] = [str(x) for x in pt.flatten().tolist()]
+                        mat["pending_transformations"] = [
+                            str(x) for x in pt.flatten().tolist()
+                        ]
                 elif isinstance(pt, str):
                     # Single string
                     mat["pending_transformations"] = [pt]
@@ -234,7 +241,9 @@ class VectorTransformProcessor:
 
             mat["pending_transformations"].append(trans)
             # Simplify the transformation list (e.g., rotate_90_cw + rotate_90_ccw = [])
-            mat["pending_transformations"] = simplify_transformations(mat["pending_transformations"])
+            mat["pending_transformations"] = simplify_transformations(
+                mat["pending_transformations"]
+            )
 
             # Apply transformation to all non-empty runs in piv_result
             if isinstance(piv_result, np.ndarray) and piv_result.dtype == object:
@@ -243,7 +252,9 @@ class VectorTransformProcessor:
                     pr = piv_result[run_idx]
                     try:
                         # Use centralized validation from vector_loading
-                        if is_run_valid(pr, fields=("ux",), require_2d=False, reject_all_nan=True):
+                        if is_run_valid(
+                            pr, fields=("ux",), require_2d=False, reject_all_nan=True
+                        ):
                             apply_transformation_to_piv_result(pr, trans)
                             if coords is not None:
                                 apply_transformation_to_coordinates(
@@ -305,7 +316,10 @@ class VectorTransformProcessor:
             mat = load_mat_for_transform(mat_file)
 
             if not has_original_backup(mat):
-                return {"success": False, "error": "No original backup found for this frame"}
+                return {
+                    "success": False,
+                    "error": "No original backup found for this frame",
+                }
 
             # Load coordinates if they exist
             coords_file = data_dir / COORDINATES_FILENAME
@@ -355,7 +369,10 @@ class VectorTransformProcessor:
             # Load the mat file (handles ensemble vs instantaneous)
             mat_file = self._get_mat_file_path(data_dir, frame)
             if not mat_file.exists():
-                return {"success": False, "error": f"Data file not found: {mat_file.name}"}
+                return {
+                    "success": False,
+                    "error": f"Data file not found: {mat_file.name}",
+                }
 
             mat = load_mat_for_transform(mat_file)
 
@@ -421,13 +438,19 @@ class VectorTransformProcessor:
             source_mat_file = self._get_mat_file_path(source_data_dir, source_frame)
 
             if not source_mat_file.exists():
-                return {"success": False, "error": f"Source data file not found: {source_mat_file}"}
+                return {
+                    "success": False,
+                    "error": f"Source data file not found: {source_mat_file}",
+                }
 
             source_mat = load_mat_for_transform(source_mat_file)
 
             # Get pending transformations
             if "pending_transformations" not in source_mat:
-                return {"success": False, "error": "No pending transformations found on source frame"}
+                return {
+                    "success": False,
+                    "error": "No pending transformations found on source frame",
+                }
 
             transformations = source_mat["pending_transformations"]
             if isinstance(transformations, np.ndarray):
@@ -461,7 +484,9 @@ class VectorTransformProcessor:
                 coords_mat = load_mat_for_transform(source_coords_file)
                 if "coordinates_original" in coords_mat:
                     del coords_mat["coordinates_original"]
-                    save_mat_from_transform(source_coords_file, coords_mat_to_saveable(coords_mat))
+                    save_mat_from_transform(
+                        source_coords_file, coords_mat_to_saveable(coords_mat)
+                    )
 
             # Get cameras to process
             if cameras:
@@ -484,7 +509,9 @@ class VectorTransformProcessor:
                 if self.type_name == "ensemble":
                     # Ensemble has a single file - only process other cameras
                     if cam != source_camera:
-                        mat_file = self._get_mat_file_path(data_dir, 1)  # frame ignored for ensemble
+                        mat_file = self._get_mat_file_path(
+                            data_dir, 1
+                        )  # frame ignored for ensemble
                         if mat_file.exists():
                             vector_files.append((1, mat_file))
                 else:
@@ -520,14 +547,18 @@ class VectorTransformProcessor:
             processed_cameras = 0
 
             if progress_callback:
-                progress_callback({
-                    "progress": int((processed_frames / total_frames_to_process) * 100),
-                    "processed_frames": processed_frames,
-                    "total_frames": total_frames_to_process,
-                    "processed_cameras": 0,
-                    "total_cameras": len(all_cameras),
-                    "current_camera": all_cameras[0],
-                })
+                progress_callback(
+                    {
+                        "progress": int(
+                            (processed_frames / total_frames_to_process) * 100
+                        ),
+                        "processed_frames": processed_frames,
+                        "total_frames": total_frames_to_process,
+                        "processed_cameras": 0,
+                        "total_cameras": len(all_cameras),
+                        "current_camera": all_cameras[0],
+                    }
+                )
 
             # Process each camera
             for cam in all_cameras:
@@ -552,7 +583,9 @@ class VectorTransformProcessor:
                         num_coord_runs = coords.size
                         for run_idx in range(num_coord_runs):
                             for trans in transformations:
-                                apply_transformation_to_coordinates(coords, run_idx + 1, trans)
+                                apply_transformation_to_coordinates(
+                                    coords, run_idx + 1, trans
+                                )
                     else:
                         for trans in transformations:
                             apply_transformation_to_coordinates(coords, 1, trans)
@@ -563,7 +596,9 @@ class VectorTransformProcessor:
                 # Process frames in parallel
                 num_workers = get_max_workers(len(vector_files))
 
-                with ProcessPoolExecutor(max_workers=num_workers, initializer=worker_initializer) as executor:
+                with ProcessPoolExecutor(
+                    max_workers=num_workers, initializer=worker_initializer
+                ) as executor:
                     futures = [
                         executor.submit(
                             process_frame_worker,
@@ -580,18 +615,24 @@ class VectorTransformProcessor:
                         processed_frames += 1
 
                         if progress_callback:
-                            progress = int((processed_frames / total_frames_to_process) * 100)
-                            progress_callback({
-                                "progress": progress,
-                                "processed_frames": processed_frames,
-                                "total_frames": total_frames_to_process,
-                                "processed_cameras": processed_cameras,
-                                "total_cameras": len(all_cameras),
-                                "current_camera": cam,
-                            })
+                            progress = int(
+                                (processed_frames / total_frames_to_process) * 100
+                            )
+                            progress_callback(
+                                {
+                                    "progress": progress,
+                                    "processed_frames": processed_frames,
+                                    "total_frames": total_frames_to_process,
+                                    "processed_cameras": processed_cameras,
+                                    "total_cameras": len(all_cameras),
+                                    "current_camera": cam,
+                                }
+                            )
 
                 processed_cameras += 1
-                logger.info(f"Completed camera {cam} ({processed_cameras}/{len(all_cameras)})")
+                logger.info(
+                    f"Completed camera {cam} ({processed_cameras}/{len(all_cameras)})"
+                )
 
             elapsed_time = time.time() - start_time
             logger.info(
@@ -669,7 +710,11 @@ if __name__ == "__main__":
         processed = info.get("processed_frames", 0)
         total = info.get("total_frames", 0)
         camera = info.get("current_camera", "?")
-        print(f"\rCamera {camera}: {progress}% ({processed}/{total} frames)", end="", flush=True)
+        print(
+            f"\rCamera {camera}: {progress}% ({processed}/{total} frames)",
+            end="",
+            flush=True,
+        )
 
     print("PIVTools Vector Transformation")
     print(f"Base path: {args.base_path}")
@@ -690,7 +735,9 @@ if __name__ == "__main__":
     # First apply transformations to frame 1 to set up pending list
     print("Applying to initial frame...")
     for trans in args.transformations:
-        result = processor.transform_single_frame(frame=1, camera=args.camera or 1, transformation=trans)
+        result = processor.transform_single_frame(
+            frame=1, camera=args.camera or 1, transformation=trans
+        )
         if not result["success"]:
             print(f"Error: {result['error']}")
             sys.exit(1)

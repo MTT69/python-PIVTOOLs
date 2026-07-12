@@ -34,21 +34,20 @@ from pathlib import Path
 import cv2
 import numpy as np
 import tifffile
-
 from synthetic_piv import render_particles
 
 # ---------------------------------------------------------------------------
 # Physical velocity field
 # ---------------------------------------------------------------------------
-U_MAX = 0.833     # m/s peak centreline velocity (~12.5 px at 15 px/mm, dt=1ms)
-DT = 1e-3         # seconds between frames
+U_MAX = 0.833  # m/s peak centreline velocity (~12.5 px at 15 px/mm, dt=1ms)
+DT = 1e-3  # seconds between frames
 
 # ---------------------------------------------------------------------------
 # Image & particle parameters
 # ---------------------------------------------------------------------------
-IMAGE_SHAPE = (1000, 1000)   # (H, W), 1 MP
+IMAGE_SHAPE = (1000, 1000)  # (H, W), 1 MP
 NUM_PARTICLES = 40_000
-PARTICLE_DIAMETER = 3.0      # px (FWHM)
+PARTICLE_DIAMETER = 3.0  # px (FWHM)
 SIGMA = PARTICLE_DIAMETER / 2.355
 NUM_PAIRS = 1
 SEED = 42
@@ -60,8 +59,8 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "poiseuille_cam_model" / "Cam1"
 # ---------------------------------------------------------------------------
 FX = FY = 5000.0
 CX, CY = 500.0, 500.0
-TZ = FX / (15.0 * 1000)   # 0.333 m  → ~15 px/mm
-K1 = -0.15                 # barrel distortion (negative = barrel)
+TZ = FX / (15.0 * 1000)  # 0.333 m  → ~15 px/mm
+K1 = -0.15  # barrel distortion (negative = barrel)
 
 
 def _normalize_uint16(img):
@@ -120,11 +119,14 @@ def _pixel_to_world(pts_px, camera_matrix, dist_coeffs, rvec, tvec):
 
 
 def main():
-    camera_matrix = np.array([
-        [FX,  0, CX],
-        [ 0, FY, CY],
-        [ 0,  0,  1],
-    ], dtype=np.float64)
+    camera_matrix = np.array(
+        [
+            [FX, 0, CX],
+            [0, FY, CY],
+            [0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
     dist_coeffs = np.array([K1, 0, 0, 0, 0], dtype=np.float64)
     rvec = np.zeros(3, dtype=np.float64)
     tvec = np.array([0.0, 0.0, TZ], dtype=np.float64)
@@ -135,7 +137,7 @@ def main():
 
     # Physical FOV: the world region visible in the image
     # For frontal camera centred on origin: spans [-fov/2, +fov/2] in both axes
-    H_phys = fov_mm / 1000.0   # physical channel height in metres
+    H_phys = fov_mm / 1000.0  # physical channel height in metres
     print(f"Camera: fx={FX}, tz={TZ:.4f} m, {px_per_mm:.1f} px/mm, FOV={fov_mm:.1f} mm")
     print(f"Distortion: k1={K1}")
     print(f"Physical channel height: {H_phys*1000:.1f} mm")
@@ -159,12 +161,12 @@ def main():
         # Map to normalised channel coord: y_norm = y_world / (H_phys/2)
         # u_x(y_norm) = u_max * (1 - y_norm^2)
         y_norm = world_pts[:, 1] / (H_phys / 2.0)
-        ux_phys = U_MAX * (1.0 - y_norm ** 2)  # m/s, rightward
-        uy_phys = np.zeros_like(ux_phys)        # m/s
+        ux_phys = U_MAX * (1.0 - y_norm**2)  # m/s, rightward
+        uy_phys = np.zeros_like(ux_phys)  # m/s
 
         # Physical displacement over dt (metres)
-        dx_world_m = ux_phys * DT          # rightward in world x
-        dy_world_m = -uy_phys * DT         # world y-down convention (negated)
+        dx_world_m = ux_phys * DT  # rightward in world x
+        dy_world_m = -uy_phys * DT  # world y-down convention (negated)
 
         # Displace in world and project back to pixels
         displaced_world = world_pts.copy()
@@ -172,26 +174,39 @@ def main():
         displaced_world[:, 1] += dy_world_m
 
         displaced_px, _ = cv2.projectPoints(
-            displaced_world, rvec, tvec, camera_matrix, dist_coeffs,
+            displaced_world,
+            rvec,
+            tvec,
+            camera_matrix,
+            dist_coeffs,
         )
         displaced_px = displaced_px.reshape(-1, 2)
 
         dx_px = displaced_px[:, 0] - x_pos
         dy_px = displaced_px[:, 1] - y_pos
 
-        print(f"  Pair {pair_idx}: pixel displacement range: "
-              f"dx=[{np.min(dx_px):.3f}, {np.max(dx_px):.3f}], "
-              f"dy=[{np.min(dy_px):.3f}, {np.max(dy_px):.3f}] px")
-        print(f"  Physical velocity range: "
-              f"ux=[{np.min(ux_phys):.3f}, {np.max(ux_phys):.3f}] m/s")
+        print(
+            f"  Pair {pair_idx}: pixel displacement range: "
+            f"dx=[{np.min(dx_px):.3f}, {np.max(dx_px):.3f}], "
+            f"dy=[{np.min(dy_px):.3f}, {np.max(dy_px):.3f}] px"
+        )
+        print(
+            f"  Physical velocity range: "
+            f"ux=[{np.min(ux_phys):.3f}, {np.max(ux_phys):.3f}] m/s"
+        )
 
         # Render frames
         img_a = render_particles(IMAGE_SHAPE, x_pos, y_pos, intensities, SIGMA)
-        img_b = render_particles(IMAGE_SHAPE, x_pos + dx_px, y_pos + dy_px,
-                                 intensities, SIGMA)
+        img_b = render_particles(
+            IMAGE_SHAPE, x_pos + dx_px, y_pos + dy_px, intensities, SIGMA
+        )
 
-        tifffile.imwrite(OUTPUT_DIR / f"B{pair_idx:05d}_A.tif", _normalize_uint16(img_a))
-        tifffile.imwrite(OUTPUT_DIR / f"B{pair_idx:05d}_B.tif", _normalize_uint16(img_b))
+        tifffile.imwrite(
+            OUTPUT_DIR / f"B{pair_idx:05d}_A.tif", _normalize_uint16(img_a)
+        )
+        tifffile.imwrite(
+            OUTPUT_DIR / f"B{pair_idx:05d}_B.tif", _normalize_uint16(img_b)
+        )
 
     # Save ground truth: analytical parameters + camera model
     gt_path = OUTPUT_DIR.parent / "ground_truth.npz"
@@ -211,9 +226,9 @@ def main():
 
     print(f"\nGround truth saved to {gt_path}")
     print(f"Images saved to {OUTPUT_DIR}")
-    print(f"\nTo use with PIVTOOLs:")
+    print("\nTo use with PIVTOOLs:")
     print(f"  source_paths: ['{OUTPUT_DIR.parent}']")
-    print(f"  image_format: ['B%05d_A.tif', 'B%05d_B.tif']")
+    print("  image_format: ['B%05d_A.tif', 'B%05d_B.tif']")
     print(f"  num_images: {NUM_PAIRS}")
 
 

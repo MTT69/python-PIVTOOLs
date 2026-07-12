@@ -23,7 +23,9 @@ from pivtools_cli.synthetic_calibration_common import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-OUTPUT_BASE = Path(__file__).resolve().parent.parent / "unit-tests" / "synthetic_calibration"
+OUTPUT_BASE = (
+    Path(__file__).resolve().parent.parent / "unit-tests" / "synthetic_calibration"
+)
 N_VIEWS = 10
 MEGAPIXELS = 1.0
 
@@ -36,19 +38,20 @@ DOT_RADIUS_RATIO = 0.22
 # ChArUco params (match generate_synthetic_charuco.py)
 SQUARES_H = 10
 SQUARES_V = 7
-SQUARE_SIZE = 0.030       # metres
+SQUARE_SIZE = 0.030  # metres
 MARKER_RATIO = 0.5
 ARUCO_DICT_ID = cv2.aruco.DICT_4X4_1000
 OVERSAMPLE = 4
 
 # Stereo baseline
-STEREO_ROTATION_DEG = 5.0   # rotation around Y axis
-STEREO_BASELINE_MM = 50.0   # horizontal translation
+STEREO_ROTATION_DEG = 5.0  # rotation around Y axis
+STEREO_BASELINE_MM = 50.0  # horizontal translation
 
 
 # ---------------------------------------------------------------------------
 # Stereo geometry
 # ---------------------------------------------------------------------------
+
 
 def make_stereo_transform():
     """Create known inter-camera rotation and translation."""
@@ -56,7 +59,8 @@ def make_stereo_transform():
     rvec_stereo = np.array([0, angle_rad, 0], dtype=np.float64)
     R_stereo, _ = cv2.Rodrigues(rvec_stereo)
     T_stereo = np.array(
-        [[STEREO_BASELINE_MM / 1000.0], [0.0], [0.0]], dtype=np.float64,
+        [[STEREO_BASELINE_MM / 1000.0], [0.0], [0.0]],
+        dtype=np.float64,
     )
     return R_stereo, T_stereo
 
@@ -77,6 +81,7 @@ def compose_stereo_poses(poses_cam1, R_stereo, T_stereo):
 # Rendering (reuses same logic as planar generators)
 # ---------------------------------------------------------------------------
 
+
 def generate_dotboard_images(out_dir, camera_matrix, poses, W, H):
     """Render dotboard views with adaptive radius."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -96,7 +101,8 @@ def generate_dotboard_images(out_dir, camera_matrix, poses, W, H):
         tree = cKDTree(centres_px)
         dists, _ = tree.query(centres_px, k=2)
         local_radii = np.maximum(
-            np.round(DOT_RADIUS_RATIO * dists[:, 1]).astype(int), 2,
+            np.round(DOT_RADIUS_RATIO * dists[:, 1]).astype(int),
+            2,
         )
 
         img = np.zeros((H, W), dtype=np.uint8)
@@ -115,14 +121,19 @@ def generate_charuco_images(out_dir, camera_matrix, poses, W, H):
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT_ID)
     board = cv2.aruco.CharucoBoard(
-        (SQUARES_H, SQUARES_V), SQUARE_SIZE, SQUARE_SIZE * MARKER_RATIO, aruco_dict,
+        (SQUARES_H, SQUARES_V),
+        SQUARE_SIZE,
+        SQUARE_SIZE * MARKER_RATIO,
+        aruco_dict,
     )
 
     hi_w, hi_h = W * OVERSAMPLE, H * OVERSAMPLE
     frontal = board.generateImage((hi_w, hi_h))
 
     detector = cv2.aruco.CharucoDetector(
-        board, cv2.aruco.CharucoParameters(), cv2.aruco.DetectorParameters(),
+        board,
+        cv2.aruco.CharucoParameters(),
+        cv2.aruco.DetectorParameters(),
     )
     charuco_corners, charuco_ids, _, _ = detector.detectBoard(frontal)
     if charuco_corners is None or len(charuco_corners) == 0:
@@ -137,7 +148,11 @@ def generate_charuco_images(out_dir, camera_matrix, poses, W, H):
 
     for i, (rvec, tvec) in enumerate(poses):
         proj_all, _ = cv2.projectPoints(
-            obj_pts_all, rvec, tvec, camera_matrix, dist_coeffs,
+            obj_pts_all,
+            rvec,
+            tvec,
+            camera_matrix,
+            dist_coeffs,
         )
         proj_all = proj_all.reshape(-1, 2)
 
@@ -160,9 +175,10 @@ def generate_charuco_images(out_dir, camera_matrix, poses, W, H):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     total_px = int(MEGAPIXELS * 1e6)
-    W = H = int(total_px ** 0.5)
+    W = H = int(total_px**0.5)
     print(f"Stereo target image: {W}x{H}  ({W * H / 1e6:.2f} MP)")
 
     cam_mtx = make_camera_matrix(W, H)
@@ -171,29 +187,47 @@ def main():
 
     # --- Dotboard ---
     board_w = (DOT_COLS - 1) * DOT_SPACING_MM / 1000.0
-    board_centre_dot = np.array([board_w / 2, (DOT_ROWS - 1) * DOT_SPACING_MM / 2000.0, 0])
+    board_centre_dot = np.array(
+        [board_w / 2, (DOT_ROWS - 1) * DOT_SPACING_MM / 2000.0, 0]
+    )
 
     poses_cam1_dot = make_poses(
-        N_VIEWS, board_centre_dot, fx, W, board_w,
+        N_VIEWS,
+        board_centre_dot,
+        fx,
+        W,
+        board_w,
         fill_fraction_range=(0.80, 0.55),
     )
     poses_cam2_dot = compose_stereo_poses(poses_cam1_dot, R_stereo, T_stereo)
 
-    generate_dotboard_images(OUTPUT_BASE / "stereo_dotboard" / "cam1", cam_mtx, poses_cam1_dot, W, H)
-    generate_dotboard_images(OUTPUT_BASE / "stereo_dotboard" / "cam2", cam_mtx, poses_cam2_dot, W, H)
+    generate_dotboard_images(
+        OUTPUT_BASE / "stereo_dotboard" / "cam1", cam_mtx, poses_cam1_dot, W, H
+    )
+    generate_dotboard_images(
+        OUTPUT_BASE / "stereo_dotboard" / "cam2", cam_mtx, poses_cam2_dot, W, H
+    )
 
     # --- ChArUco ---
     charuco_board_w = SQUARES_H * SQUARE_SIZE
     charuco_centre = np.array([charuco_board_w / 2, SQUARES_V * SQUARE_SIZE / 2, 0])
 
     poses_cam1_char = make_poses(
-        N_VIEWS, charuco_centre, fx, W, charuco_board_w,
+        N_VIEWS,
+        charuco_centre,
+        fx,
+        W,
+        charuco_board_w,
         fill_fraction_range=(0.85, 0.65),
     )
     poses_cam2_char = compose_stereo_poses(poses_cam1_char, R_stereo, T_stereo)
 
-    generate_charuco_images(OUTPUT_BASE / "stereo_charuco" / "cam1", cam_mtx, poses_cam1_char, W, H)
-    generate_charuco_images(OUTPUT_BASE / "stereo_charuco" / "cam2", cam_mtx, poses_cam2_char, W, H)
+    generate_charuco_images(
+        OUTPUT_BASE / "stereo_charuco" / "cam1", cam_mtx, poses_cam1_char, W, H
+    )
+    generate_charuco_images(
+        OUTPUT_BASE / "stereo_charuco" / "cam2", cam_mtx, poses_cam2_char, W, H
+    )
 
     # --- Save ground truth ---
     gt_path = OUTPUT_BASE / "stereo_ground_truth.npz"

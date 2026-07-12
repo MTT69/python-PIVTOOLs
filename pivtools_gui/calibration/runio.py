@@ -21,7 +21,11 @@ from pivtools_core.paths import get_data_paths
 
 from . import frames
 from . import record as rec
-from .apply import calibrate_coordinates, calibrate_displacements, calibrate_stress_tensor
+from .apply import (
+    calibrate_coordinates,
+    calibrate_displacements,
+    calibrate_stress_tensor,
+)
 from .camera_model import CameraModel
 from .record import MonoRecord, StereoRecord
 
@@ -43,12 +47,22 @@ def resolve_dt(explicit_dt, model_dt, config_dt) -> float:
             return float(cand)
     raise ValueError(
         "dt could not be resolved — not given explicitly, not stamped in the model, "
-        "and not in config; velocity has no safe default, so set dt")
+        "and not in config; velocity has no safe default, so set dt"
+    )
 
 
-def plan_apply_units(full_cfg, source, board, stereo, type_name,
-                     active_paths=None, camera_pair=None, camera=None, explicit=None,
-                     model_type=None):
+def plan_apply_units(
+    full_cfg,
+    source,
+    board,
+    stereo,
+    type_name,
+    active_paths=None,
+    camera_pair=None,
+    camera=None,
+    explicit=None,
+    model_type=None,
+):
     """Resolve every (base_path x camera/pair) apply unit, deriving I/O dirs from config.
 
     Shared by the Flask apply route and the CLI's ``--all-paths`` apply, so both drive the
@@ -69,42 +83,92 @@ def plan_apply_units(full_cfg, source, board, stereo, type_name,
     """
     base_paths = full_cfg.base_paths
     nfp = full_cfg.num_frame_pairs
-    base_indices = [int(i) for i in active_paths] if active_paths else list(range(len(base_paths)))
+    base_indices = (
+        [int(i) for i in active_paths] if active_paths else list(range(len(base_paths)))
+    )
 
     units = []
     if stereo:
         pair = camera_pair or [1, 2]
         cam1, cam2 = int(pair[0]), int(pair[1])
-        record = rec.load_stereo(rec.stereo_model_dir_for_source(source, cam1, cam2),
-                                 model_type=model_type)
+        record = rec.load_stereo(
+            rec.stereo_model_dir_for_source(source, cam1, cam2), model_type=model_type
+        )
         if explicit:
-            return [dict(stereo=True, record=record,
-                         uncal1=Path(explicit["uncal1"]), uncal2=Path(explicit["uncal2"]),
-                         out=Path(explicit["out"]), label="manual")]
+            return [
+                dict(
+                    stereo=True,
+                    record=record,
+                    uncal1=Path(explicit["uncal1"]),
+                    uncal2=Path(explicit["uncal2"]),
+                    out=Path(explicit["out"]),
+                    label="manual",
+                )
+            ]
         for bi in base_indices:
             base = base_paths[bi]
-            uncal1 = get_data_paths(base, nfp, cam1, type_name, use_uncalibrated=True)["data_dir"]
-            uncal2 = get_data_paths(base, nfp, cam2, type_name, use_uncalibrated=True)["data_dir"]
-            out = get_data_paths(base, nfp, cam1, type_name, use_stereo=True,
-                                 stereo_camera_pair=(cam1, cam2))["data_dir"]
-            units.append(dict(stereo=True, record=record, uncal1=uncal1, uncal2=uncal2,
-                              out=out, label=f"{base.name}/Cam{cam1}_Cam{cam2}"))
+            uncal1 = get_data_paths(base, nfp, cam1, type_name, use_uncalibrated=True)[
+                "data_dir"
+            ]
+            uncal2 = get_data_paths(base, nfp, cam2, type_name, use_uncalibrated=True)[
+                "data_dir"
+            ]
+            out = get_data_paths(
+                base,
+                nfp,
+                cam1,
+                type_name,
+                use_stereo=True,
+                stereo_camera_pair=(cam1, cam2),
+            )["data_dir"]
+            units.append(
+                dict(
+                    stereo=True,
+                    record=record,
+                    uncal1=uncal1,
+                    uncal2=uncal2,
+                    out=out,
+                    label=f"{base.name}/Cam{cam1}_Cam{cam2}",
+                )
+            )
     else:
         if explicit:
             cam = int(camera) if camera is not None else int(full_cfg.camera_numbers[0])
-            record = rec.mono_record_for_camera(rec.mono_model_dir_for_source(source, cam, board),
-                                                cam, model_type=model_type)
-            return [dict(stereo=False, record=record, uncal=Path(explicit["uncal"]),
-                         out=Path(explicit["out"]), label="manual")]
+            record = rec.mono_record_for_camera(
+                rec.mono_model_dir_for_source(source, cam, board),
+                cam,
+                model_type=model_type,
+            )
+            return [
+                dict(
+                    stereo=False,
+                    record=record,
+                    uncal=Path(explicit["uncal"]),
+                    out=Path(explicit["out"]),
+                    label="manual",
+                )
+            ]
         for bi in base_indices:
             base = base_paths[bi]
             for cam in full_cfg.camera_numbers:
                 record = rec.mono_record_for_camera(
-                    rec.mono_model_dir_for_source(source, cam, board), cam, model_type=model_type)
-                uncal = get_data_paths(base, nfp, cam, type_name, use_uncalibrated=True)["data_dir"]
+                    rec.mono_model_dir_for_source(source, cam, board),
+                    cam,
+                    model_type=model_type,
+                )
+                uncal = get_data_paths(
+                    base, nfp, cam, type_name, use_uncalibrated=True
+                )["data_dir"]
                 out = get_data_paths(base, nfp, cam, type_name)["data_dir"]
-                units.append(dict(stereo=False, record=record, uncal=uncal, out=out,
-                                  label=f"{base.name}/Cam{cam}"))
+                units.append(
+                    dict(
+                        stereo=False,
+                        record=record,
+                        uncal=uncal,
+                        out=out,
+                        label=f"{base.name}/Cam{cam}",
+                    )
+                )
     return units
 
 
@@ -129,7 +193,8 @@ def _vector_files(uncal_dir: Path, vector_glob: str) -> List[Path]:
     bare ``*.mat`` glob would otherwise sweep in and choke ``read_vectors``.
     """
     return sorted(
-        b for b in Path(uncal_dir).glob(vector_glob)
+        b
+        for b in Path(uncal_dir).glob(vector_glob)
         if b.name not in _NON_VECTOR_MATS
         and not b.name.startswith(_NON_VECTOR_MAT_PREFIXES)
         and not b.name.startswith(".")
@@ -160,7 +225,9 @@ def read_coordinates(coords_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarra
     return out
 
 
-def read_vectors(bmat_path: Path) -> Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
+def read_vectors(
+    bmat_path: Path,
+) -> Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]]:
     """Return {pass_idx: (ux_px, uy_px, b_mask)} from a per-frame B*.mat."""
     mat = scipy.io.loadmat(str(bmat_path), squeeze_me=True)
     pr = mat["piv_result"]
@@ -205,9 +272,14 @@ def _stress_suffixes(names) -> List[str]:
 
 
 def calibrate_ensemble_file(
-    in_path: Path, out_path: Path, model: CameraModel,
-    coords_px: Dict[int, Tuple[np.ndarray, np.ndarray]], dt: float,
-    z_world: float = 0.0, tilt_x: float = 0.0, tilt_y: float = 0.0,
+    in_path: Path,
+    out_path: Path,
+    model: CameraModel,
+    coords_px: Dict[int, Tuple[np.ndarray, np.ndarray]],
+    dt: float,
+    z_world: float = 0.0,
+    tilt_x: float = 0.0,
+    tilt_y: float = 0.0,
 ) -> None:
     """Calibrate an ``ensemble_result.mat``: mean velocity + every Reynolds-stress triple.
 
@@ -220,7 +292,7 @@ def calibrate_ensemble_file(
     # squeeze_me is deliberately omitted: the struct stays a mutable structured array so
     # `er[field][i] = ...` writes through the reshape(-1) view and persists on savemat.
     mat = scipy.io.loadmat(str(in_path))
-    er = mat["ensemble_result"].reshape(-1)   # view; (n_passes,)
+    er = mat["ensemble_result"].reshape(-1)  # view; (n_passes,)
     names = er.dtype.names
     suffixes = _stress_suffixes(names)
     has_vel = ("ux" in names) and ("uy" in names)
@@ -230,7 +302,8 @@ def calibrate_ensemble_file(
         xpx, ypx = coords_px[i]
         coords = np.stack([xpx, ypx], axis=-1)
         if has_vel:
-            ux = _as2d(er["ux"][i]); uy = _as2d(er["uy"][i])
+            ux = _as2d(er["ux"][i])
+            uy = _as2d(er["uy"][i])
             if ux.size:
                 # A shape mismatch means the ensemble grid does not correspond to
                 # coordinates.mat — calibrating it would emit plausible-but-wrong m/s.
@@ -238,9 +311,17 @@ def calibrate_ensemble_file(
                 if ux.shape != xpx.shape:
                     raise ValueError(
                         f"ensemble pass {i}: ux shape {ux.shape} != coords {xpx.shape}; "
-                        f"the ensemble grid does not match coordinates.mat — cannot calibrate")
+                        f"the ensemble grid does not match coordinates.mat — cannot calibrate"
+                    )
                 u, v = calibrate_displacements(
-                    model, coords, np.stack([ux, uy], axis=-1), dt, z_world, tilt_x, tilt_y)
+                    model,
+                    coords,
+                    np.stack([ux, uy], axis=-1),
+                    dt,
+                    z_world,
+                    tilt_x,
+                    tilt_y,
+                )
                 er["ux"][i] = u
                 er["uy"][i] = v
         for suf in suffixes:
@@ -250,18 +331,24 @@ def calibrate_ensemble_file(
             if uu.shape != xpx.shape:
                 raise ValueError(
                     f"ensemble pass {i}: UU{suf} shape {uu.shape} != coords {xpx.shape}; "
-                    f"the stress grid does not match coordinates.mat — cannot calibrate")
+                    f"the stress grid does not match coordinates.mat — cannot calibrate"
+                )
             vv = _as2d(er["VV" + suf][i])
             uv = _as2d(er["UV" + suf][i])
             cu, cv, cuv = calibrate_stress_tensor(
-                model, coords, uu, vv, uv, dt, z_world, tilt_x, tilt_y)
+                model, coords, uu, vv, uv, dt, z_world, tilt_x, tilt_y
+            )
             er["UU" + suf][i] = cu
             er["VV" + suf][i] = cv
             er["UV" + suf][i] = cuv
-    scipy.io.savemat(str(out_path), {"ensemble_result": er}, oned_as="row", do_compression=True)
+    scipy.io.savemat(
+        str(out_path), {"ensemble_result": er}, oned_as="row", do_compression=True
+    )
 
 
-def _coords_struct(per_pass: Dict[int, Tuple[np.ndarray, np.ndarray]], n_passes: int) -> np.ndarray:
+def _coords_struct(
+    per_pass: Dict[int, Tuple[np.ndarray, np.ndarray]], n_passes: int
+) -> np.ndarray:
     st = np.empty((n_passes,), dtype=[("x", object), ("y", object)])
     empty = np.array([], dtype=np.float64)
     for i in range(n_passes):
@@ -273,8 +360,13 @@ def _coords_struct(per_pass: Dict[int, Tuple[np.ndarray, np.ndarray]], n_passes:
     return st
 
 
-def _vectors_struct(per_pass: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]], n_passes: int) -> np.ndarray:
-    st = np.empty((n_passes,), dtype=[("ux", object), ("uy", object), ("b_mask", object)])
+def _vectors_struct(
+    per_pass: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]],
+    n_passes: int,
+) -> np.ndarray:
+    st = np.empty(
+        (n_passes,), dtype=[("ux", object), ("uy", object), ("b_mask", object)]
+    )
     empty = np.array([], dtype=np.float64)
     for i in range(n_passes):
         if i in per_pass:
@@ -319,12 +411,15 @@ def calibrate_mono_run(
     cal_coords: Dict[int, Tuple[np.ndarray, np.ndarray]] = {}
     for i, (xpx, ypx) in coords_px.items():
         stacked = np.stack([xpx, ypx], axis=-1)
-        world = calibrate_coordinates(model, stacked, z_world, tilt_x, tilt_y, offset_mm=offset_mm)
+        world = calibrate_coordinates(
+            model, stacked, z_world, tilt_x, tilt_y, offset_mm=offset_mm
+        )
         cal_coords[i] = (world[..., 0], world[..., 1])
     scipy.io.savemat(
         str(out_dir / "coordinates.mat"),
         {"coordinates": _coords_struct(cal_coords, n_passes)},
-        oned_as="row", do_compression=True,
+        oned_as="row",
+        do_compression=True,
     )
 
     written: List[str] = []
@@ -334,7 +429,9 @@ def calibrate_mono_run(
         out_b = out_dir / bmat.name
         if bmat.name == ENSEMBLE_FILE:
             # Ensemble: mean velocity + Reynolds-stress tensors (different struct/fields).
-            calibrate_ensemble_file(bmat, out_b, model, coords_px, dt, z_world, tilt_x, tilt_y)
+            calibrate_ensemble_file(
+                bmat, out_b, model, coords_px, dt, z_world, tilt_x, tilt_y
+            )
             written.append(str(out_b))
             if progress_cb:
                 progress_cb(k + 1, total)
@@ -347,12 +444,15 @@ def calibrate_mono_run(
             xpx, ypx = coords_px[i]
             coords_stack = np.stack([xpx, ypx], axis=-1)
             disp_stack = np.stack([ux, uy], axis=-1)
-            u, v = calibrate_displacements(model, coords_stack, disp_stack, dt, z_world, tilt_x, tilt_y)
+            u, v = calibrate_displacements(
+                model, coords_stack, disp_stack, dt, z_world, tilt_x, tilt_y
+            )
             cal_vecs[i] = (u, v, b)
         scipy.io.savemat(
             str(out_b),
             {"piv_result": _vectors_struct(cal_vecs, n_passes)},
-            oned_as="row", do_compression=True,
+            oned_as="row",
+            do_compression=True,
         )
         written.append(str(out_b))
         if progress_cb:
@@ -402,7 +502,13 @@ def reconstruct_stereo_run(
     # (back-projections + Jacobians) — do it once, before any frame I/O, so an empty
     # overlap or degenerate spacing fails loudly up front.
     gX, gY, gZ, _spacing = regular_world_grid(
-        record.model1, record.model2, c1, c2, z_world, tilt_x, tilt_y,
+        record.model1,
+        record.model2,
+        c1,
+        c2,
+        z_world,
+        tilt_x,
+        tilt_y,
     )
 
     written: List[str] = []
@@ -419,18 +525,31 @@ def reconstruct_stereo_run(
         ux1, uy1, b1 = v1[p]
         ux2, uy2, b2 = v2[p]
         U, V, Wc, bmask = reconstruct_3c_field(
-            record.model1, record.model2, (gX, gY, gZ),
-            c1, ux1, uy1, c2, ux2, uy2,
-            dt, interpolator=interpolator,
-            bmask1=b1, bmask2=b2,
+            record.model1,
+            record.model2,
+            (gX, gY, gZ),
+            c1,
+            ux1,
+            uy1,
+            c2,
+            ux2,
+            uy2,
+            dt,
+            interpolator=interpolator,
+            bmask1=b1,
+            bmask2=b2,
         )
         n_passes = p + 1
         # The regular world grid is frame-invariant — write coordinates once, on the
         # first processed frame, not once per frame (no frames -> no output).
         if not coords_written:
             cs = _coords_struct({p: (gX, gY)}, n_passes)
-            scipy.io.savemat(str(out_dir / "coordinates.mat"),
-                             {"coordinates": cs}, oned_as="row", do_compression=True)
+            scipy.io.savemat(
+                str(out_dir / "coordinates.mat"),
+                {"coordinates": cs},
+                oned_as="row",
+                do_compression=True,
+            )
             coords_written = True
         st = np.empty(
             (n_passes,),
@@ -444,7 +563,9 @@ def reconstruct_stereo_run(
             else:
                 st["ux"][i] = st["uy"][i] = st["uz"][i] = st["b_mask"][i] = empty
         out_b = out_dir / name
-        scipy.io.savemat(str(out_b), {"piv_result": st}, oned_as="row", do_compression=True)
+        scipy.io.savemat(
+            str(out_b), {"piv_result": st}, oned_as="row", do_compression=True
+        )
         written.append(str(out_b))
         if progress_cb:
             progress_cb(k + 1, total)

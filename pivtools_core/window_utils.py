@@ -24,7 +24,7 @@ Mathematical Formulas:
 """
 
 import logging
-from typing import Tuple, Optional, Dict, Any
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -58,7 +58,7 @@ class WindowCenterResult:
         n_win_y: int,
         win_spacing_x: int,
         win_spacing_y: int,
-        padding: Optional[Tuple[int, int, int, int]] = None
+        padding: Optional[Tuple[int, int, int, int]] = None,
     ):
         self.win_ctrs_x = win_ctrs_x
         self.win_ctrs_y = win_ctrs_y
@@ -77,8 +77,7 @@ class WindowCenterResult:
 
 
 def compute_padding_for_single_mode(
-    window_size: Tuple[int, int],
-    sum_window: Tuple[int, int]
+    window_size: Tuple[int, int], sum_window: Tuple[int, int]
 ) -> Tuple[int, int, int, int]:
     """
     Compute padding required for ensemble single mode.
@@ -144,7 +143,7 @@ def compute_window_centers(
     image_shape: Tuple[int, int],
     window_size: Tuple[int, int],
     overlap: float,
-    validate: bool = True
+    validate: bool = True,
 ) -> WindowCenterResult:
     """
     Compute window center positions for standard PIV processing.
@@ -244,7 +243,7 @@ def compute_window_centers(
         first_ctr_x,
         first_ctr_x + win_spacing_x * (n_win_x - 1),
         n_win_x,
-        dtype=np.float32
+        dtype=np.float32,
     )
     # Anchor to BOTTOM of image, but return ASCENDING order for np.interp compatibility
     # Gap will be at TOP (pixels 0 to first_ctr_y - window/2 are unmeasured)
@@ -252,9 +251,9 @@ def compute_window_centers(
     first_ctr_y_anchored = last_ctr_y - win_spacing_y * (n_win_y - 1)
     win_ctrs_y = np.linspace(
         first_ctr_y_anchored,  # Near top (low pixel y, high physical y)
-        last_ctr_y,            # At bottom (high pixel y, low physical y)
+        last_ctr_y,  # At bottom (high pixel y, low physical y)
         n_win_y,
-        dtype=np.float32
+        dtype=np.float32,
     )
 
     logging.debug(
@@ -272,7 +271,7 @@ def compute_window_centers(
         n_win_y=n_win_y,
         win_spacing_x=win_spacing_x,
         win_spacing_y=win_spacing_y,
-        padding=None
+        padding=None,
     )
 
 
@@ -281,7 +280,7 @@ def compute_window_centers_single_mode(
     window_size: Tuple[int, int],
     sum_window: Tuple[int, int],
     overlap: float,
-    validate: bool = True
+    validate: bool = True,
 ) -> WindowCenterResult:
     """
     Compute window center positions for ensemble single mode.
@@ -402,16 +401,16 @@ def compute_window_centers_single_mode(
         first_ctr_x,
         first_ctr_x + win_spacing_x * (n_win_x - 1),
         n_win_x,
-        dtype=np.float32
+        dtype=np.float32,
     )
     # Anchor to BOTTOM of image, but return ASCENDING order for np.interp compatibility
     # Gap will be at TOP (pixels 0 to first_ctr_y - window/2 are unmeasured)
     first_ctr_y_anchored = last_ctr_y - win_spacing_y * (n_win_y - 1)
     win_ctrs_y = np.linspace(
         first_ctr_y_anchored,  # Near top (low pixel y, high physical y)
-        last_ctr_y,            # At bottom (high pixel y, low physical y)
+        last_ctr_y,  # At bottom (high pixel y, low physical y)
         n_win_y,
-        dtype=np.float32
+        dtype=np.float32,
     )
 
     # Verify last window fits within padded image (catches off-by-one errors early)
@@ -443,7 +442,7 @@ def compute_window_centers_single_mode(
         n_win_y=n_win_y,
         win_spacing_x=win_spacing_x,
         win_spacing_y=win_spacing_y,
-        padding=(pad_top, pad_bottom, pad_left, pad_right)
+        padding=(pad_top, pad_bottom, pad_left, pad_right),
     )
 
 
@@ -451,7 +450,7 @@ def apply_single_mode_padding(
     image: np.ndarray,
     window_size: Tuple[int, int],
     sum_window: Tuple[int, int],
-    pad_value: float = 0.0
+    pad_value: float = 0.0,
 ) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
     """
     Apply zero-padding to image for ensemble single mode processing.
@@ -512,9 +511,7 @@ def apply_single_mode_padding(
         )
 
     else:
-        raise ValueError(
-            f"Image must be 2D, 3D, or 4D, got shape {image.shape}"
-        )
+        raise ValueError(f"Image must be 2D, 3D, or 4D, got shape {image.shape}")
 
     padded = np.pad(
         image,
@@ -526,13 +523,12 @@ def apply_single_mode_padding(
     return padded, (pad_top, pad_bottom, pad_left, pad_right)
 
 
-
 def validate_window_configuration(
     image_shape: Tuple[int, int],
     window_size: Tuple[int, int],
     overlap: float,
     sum_window: Optional[Tuple[int, int]] = None,
-    mode: str = 'standard'
+    mode: str = "standard",
 ) -> Tuple[bool, str]:
     """
     Validate that window configuration is feasible for given image.
@@ -570,7 +566,10 @@ def validate_window_configuration(
 
     # Check basic window size
     if win_h > H or win_w > W:
-        return False, f"Window size {window_size} exceeds image dimensions {image_shape}"
+        return (
+            False,
+            f"Window size {window_size} exceeds image dimensions {image_shape}",
+        )
 
     # Check overlap range
     if overlap < 0 or overlap >= 100:
@@ -581,7 +580,7 @@ def validate_window_configuration(
         return False, f"Window size must be positive, got {window_size}"
 
     # For single mode, check sum window
-    if mode == 'single':
+    if mode == "single":
         if sum_window is None:
             return False, "sum_window must be specified for single mode"
         sum_h, sum_w = sum_window
@@ -590,7 +589,7 @@ def validate_window_configuration(
 
     # Try to compute window centers to check if at least 1 window fits
     try:
-        if mode == 'single' and sum_window is not None:
+        if mode == "single" and sum_window is not None:
             result = compute_window_centers_single_mode(
                 image_shape, window_size, sum_window, overlap, validate=False
             )
@@ -600,7 +599,7 @@ def validate_window_configuration(
             )
 
         if result.n_win_x < 1 or result.n_win_y < 1:
-            return False, f"Configuration produces no valid windows"
+            return False, "Configuration produces no valid windows"
 
     except Exception as e:
         return False, f"Window computation failed: {str(e)}"
@@ -613,7 +612,7 @@ def get_window_grid_shape(
     window_size: Tuple[int, int],
     overlap: float,
     sum_window: Optional[Tuple[int, int]] = None,
-    mode: str = 'standard'
+    mode: str = "standard",
 ) -> Tuple[int, int]:
     """
     Get the output grid shape (number of windows) without computing full centers.
@@ -643,7 +642,7 @@ def get_window_grid_shape(
     >>> get_window_grid_shape((512, 512), (64, 64), 50)
     (16, 16)
     """
-    if mode == 'single' and sum_window is not None:
+    if mode == "single" and sum_window is not None:
         result = compute_window_centers_single_mode(
             image_shape, window_size, sum_window, overlap
         )

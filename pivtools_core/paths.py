@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 
 def vector_glob_from_format(vector_format: str) -> str:
@@ -58,15 +58,16 @@ def get_data_paths(
             raise ValueError("stereo_camera_pair required when use_stereo=True")
         cam_pair_str = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
         data_dir = base_dir / "stereo_calibrated" / num_str / cam_pair_str / type_name
-        stats_dir = base_dir / "statistics" / num_str / "stereo" / cam_pair_str / type_name
+        stats_dir = (
+            base_dir / "statistics" / num_str / "stereo" / cam_pair_str / type_name
+        )
         video_dir = base_dir / "videos" / num_str / "stereo" / cam_pair_str
     # Uncalibrated data
     elif use_uncalibrated:
         cam_str = f"Cam{cam}"
         data_dir = base_dir / "uncalibrated_piv" / num_str / cam_str / type_name
         stats_dir = (
-            base_dir / "statistics" / "uncalibrated" /
-            num_str / cam_str / type_name
+            base_dir / "statistics" / "uncalibrated" / num_str / cam_str / type_name
         )
         video_dir = base_dir / "videos" / "uncalibrated" / num_str / cam_str
     # Merged data

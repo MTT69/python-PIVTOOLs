@@ -18,7 +18,12 @@ import numpy as np
 
 from ..config import Config
 from .load_images import read_single_frame
-from .path_utils import build_calibration_camera_path, format_to_glob, resolve_file_path, validate_images_generic
+from .path_utils import (
+    build_calibration_camera_path,
+    format_to_glob,
+    resolve_file_path,
+    validate_images_generic,
+)
 
 
 def _normalize_to_uint8(img: np.ndarray) -> np.ndarray:
@@ -96,7 +101,9 @@ def read_calibration_image(
         If the image cannot be read or calibration_sources not configured
     """
     # Use passed values or fall back to config
-    cal_image_type = image_type if image_type is not None else config.calibration_image_type
+    cal_image_type = (
+        image_type if image_type is not None else config.calibration_image_type
+    )
     fmt = image_format if image_format is not None else config.calibration_image_format
 
     # Build calibration path using shared utility
@@ -152,6 +159,7 @@ def read_calibration_frame_at(
     # For IM7 with camera subfolders, each file is single-camera - don't pass camera_no.
     if image_type == "lavision_im7" and use_camera_subfolders:
         from .load_images import read_image
+
         img = read_image(str(file_path))
         if img.ndim == 3:
             img = img[0]  # Extract single frame
@@ -164,6 +172,7 @@ def read_calibration_frame_at(
     fpc = 1
     if image_type == "lavision_im7" and num_cameras is not None:
         from .load_images import _detect_im7_frames_per_camera
+
         fpc = _detect_im7_frames_per_camera(Path(file_path), num_cameras)
 
     # Unified core reader (passes camera_no for multi-camera containers).
@@ -223,9 +232,13 @@ def validate_calibration_images(
         - suggested_pattern: str or None - Suggested pattern if files don't match
     """
     # Use passed values or fall back to config
-    cal_image_type = image_type if image_type is not None else config.calibration_image_type
+    cal_image_type = (
+        image_type if image_type is not None else config.calibration_image_type
+    )
     fmt = image_format if image_format is not None else config.calibration_image_format
-    expected_count = num_images if num_images is not None else config.calibration_image_count
+    expected_count = (
+        num_images if num_images is not None else config.calibration_image_count
+    )
 
     # Build calibration path using shared utility
     camera_path = build_calibration_camera_path(config, source_path_idx, camera)
@@ -233,8 +246,12 @@ def validate_calibration_images(
     # Create a frame reader function for preview generation
     def read_frame(idx: int) -> np.ndarray:
         return read_calibration_image(
-            idx, camera, config, source_path_idx,
-            image_format=fmt, image_type=cal_image_type
+            idx,
+            camera,
+            config,
+            source_path_idx,
+            image_format=fmt,
+            image_type=cal_image_type,
         )
 
     # Use the generic validator
@@ -250,9 +267,7 @@ def validate_calibration_images(
 
 
 def get_calibration_frame_count(
-    camera: int,
-    config: Config,
-    source_path_idx: int = 0
+    camera: int, config: Config, source_path_idx: int = 0
 ) -> int:
     """Auto-detect number of calibration images from directory.
 
@@ -290,6 +305,7 @@ def get_calibration_frame_count(
         # Get frame count from .cine file
         try:
             from .readers.cine_reader import get_cine_frame_count
+
             if "%" in fmt:
                 cine_filename = fmt % camera
             else:
@@ -309,5 +325,3 @@ def get_calibration_frame_count(
         # Standard formats
         pattern = format_to_glob(fmt)
         return len(list(camera_path.glob(pattern)))
-
-

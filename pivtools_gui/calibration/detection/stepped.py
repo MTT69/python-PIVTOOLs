@@ -29,9 +29,8 @@ from typing import Optional
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .grid_detection import detect_dotboard_blobs, to_grayscale_2d
-
 from .base import DetectionResult
+from .grid_detection import detect_dotboard_blobs, to_grayscale_2d
 from .stepped_levels import (
     SteppedBoardSpec,
     cluster_into_rows,
@@ -196,5 +195,8 @@ class SteppedDetector:
             board_type=self.board_type,
             image_points=np.empty((0, 2)),
             board_local_points=np.empty((0, 3)),
-            diagnostics={"error": why, **{k: v for k, v in blob_info.items() if np.isscalar(v)}},
+            diagnostics={
+                "error": why,
+                **{k: v for k, v in blob_info.items() if np.isscalar(v)},
+            },
         )

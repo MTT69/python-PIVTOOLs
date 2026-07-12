@@ -27,7 +27,6 @@ noise. No pass-index gating needed.
 
 import numpy as np
 
-
 # =============================================================================
 # Bicubic kernel (Keys a=-0.75, 4-tap) — matches fused_warp.c line 27
 # =============================================================================
@@ -81,15 +80,18 @@ def bicubic_dtft(k, f):
     """
     w_m1, w_0, w_1, w_2 = bicubic_weights(f)
     twopik = 2.0 * np.pi * k
-    return (w_m1 * np.exp(1j * twopik)
-            + w_0
-            + w_1 * np.exp(-1j * twopik)
-            + w_2 * np.exp(-2j * twopik))
+    return (
+        w_m1 * np.exp(1j * twopik)
+        + w_0
+        + w_1 * np.exp(-1j * twopik)
+        + w_2 * np.exp(-2j * twopik)
+    )
 
 
 # =============================================================================
 # Lanczos-3 kernel (6-tap windowed sinc) — matches fused_warp.c interp_mode=1
 # =============================================================================
+
 
 def _lanczos3_single_weight(t):
     """Single Lanczos-3 weight: sinc(t)*sinc(t/3) for |t|<3, else 0."""
@@ -155,7 +157,8 @@ def lanczos3_dtft(k, f):
 # Unified API
 # =============================================================================
 
-def compute_noise_psd_2d(K_X, K_Y, f_x, f_y, kernel='bicubic'):
+
+def compute_noise_psd_2d(K_X, K_Y, f_x, f_y, kernel="bicubic"):
     """Compute 2D noise PSD from interpolation kernel DTFT.
 
     P_noise(kx, ky) = |H(kx, fx)|^2 * |H(ky, fy)|^2
@@ -176,7 +179,7 @@ def compute_noise_psd_2d(K_X, K_Y, f_x, f_y, kernel='bicubic'):
     P_noise : ndarray
         2D noise power spectral density, same shape as K_X.
     """
-    if kernel == 'lanczos3':
+    if kernel == "lanczos3":
         dtft_fn = lanczos3_dtft
     else:
         dtft_fn = bicubic_dtft

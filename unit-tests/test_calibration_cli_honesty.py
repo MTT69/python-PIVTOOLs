@@ -103,8 +103,13 @@ def test_stepped_missing_board_thickness_raises():
 
 def test_stepped_present_builds():
     p = _stepped_params_from(
-        {"dot_spacing_mm": 15.0, "step_height_mm": 3.0, "board_thickness_mm": 14.8})
-    assert (p.dot_spacing_mm, p.step_height_mm, p.board_thickness_mm) == (15.0, 3.0, 14.8)
+        {"dot_spacing_mm": 15.0, "step_height_mm": 3.0, "board_thickness_mm": 14.8}
+    )
+    assert (p.dot_spacing_mm, p.step_height_mm, p.board_thickness_mm) == (
+        15.0,
+        3.0,
+        14.8,
+    )
     assert p.level_offset_mm is None  # derived (defaults to spacing/2) — stays optional
 
 

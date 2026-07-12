@@ -19,21 +19,20 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
+import matplotlib
 import numpy as np
 
-import matplotlib
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-
 from loguru import logger
-
+from matplotlib.gridspec import GridSpec
 
 # ---------------------------------------------------------------------------
 # Grid network drawing helpers
 # ---------------------------------------------------------------------------
 
-def _draw_grid_network(ax, centers, grid_indices, color='limegreen', lw=0.6, alpha=0.7):
+
+def _draw_grid_network(ax, centers, grid_indices, color="limegreen", lw=0.6, alpha=0.7):
     """Draw lines between grid-neighboring points on a matplotlib axis."""
     idx_map = {}
     for i, gi in enumerate(grid_indices):
@@ -44,9 +43,13 @@ def _draw_grid_network(ax, centers, grid_indices, color='limegreen', lw=0.6, alp
             nb = (c + dc, r + dr)
             if nb in idx_map:
                 j = idx_map[nb]
-                ax.plot([centers[i, 0], centers[j, 0]],
-                        [centers[i, 1], centers[j, 1]],
-                        color=color, linewidth=lw, alpha=alpha)
+                ax.plot(
+                    [centers[i, 0], centers[j, 0]],
+                    [centers[i, 1], centers[j, 1]],
+                    color=color,
+                    linewidth=lw,
+                    alpha=alpha,
+                )
 
 
 def _draw_grid_network_cv(img, centers, grid_indices, color=(0, 200, 0), thickness=2):
@@ -91,6 +94,7 @@ def _to_uint8_gray(img):
 # 1. Per-frame dotboard detection figure (6-panel)
 # ---------------------------------------------------------------------------
 
+
 def make_detection_figure(
     image: np.ndarray,
     success: bool,
@@ -125,56 +129,74 @@ def make_detection_figure(
         from pivtools_gui.calibration.detection.grid_detection import to_grayscale_2d
 
         fig = plt.figure(figsize=(20, 7))
-        status = (f'SUCCESS: {grid_data["n_cols"]}x{grid_data["n_rows"]} ({len(grid_data["centers"])} pts)'
-                  if success and grid_data else f'FAILED: {info.get("error", "?")[:60]}')
-        fig.suptitle(f'{title or "Detection"}  —  {status}', fontsize=13,
-                     color='darkgreen' if success else 'darkred')
+        status = (
+            f'SUCCESS: {grid_data["n_cols"]}x{grid_data["n_rows"]} ({len(grid_data["centers"])} pts)'
+            if success and grid_data
+            else f'FAILED: {info.get("error", "?")[:60]}'
+        )
+        fig.suptitle(
+            f'{title or "Detection"}  —  {status}',
+            fontsize=13,
+            color="darkgreen" if success else "darkred",
+        )
         gs = GridSpec(1, 3, figure=fig, wspace=0.10)
 
-        clahe_img = info.get('gray_image')
+        clahe_img = info.get("gray_image")
         if clahe_img is None:
             clahe_img = to_grayscale_2d(_to_uint8_gray(image))
         scale = max(1, clahe_img.shape[1] // 1200)
-        noise_thresh = info.get('noise_threshold', 0)
+        noise_thresh = info.get("noise_threshold", 0)
 
         # Panel 1: Blob detection
         ax1 = fig.add_subplot(gs[0, 0])
         disp = cv2.cvtColor(clahe_img, cv2.COLOR_GRAY2RGB)
-        for (pt, sz) in info.get('all_keypoints', []):
+        for pt, sz in info.get("all_keypoints", []):
             color = (255, 80, 80) if sz < noise_thresh else (0, 255, 0)
             cv2.circle(disp, (int(pt[0]), int(pt[1])), max(int(sz / 2), 3), color, 2)
         ax1.imshow(disp[::scale, ::scale])
-        n_raw = len(info.get('all_keypoints', []))
-        n_noise = info.get('noise_blobs_filtered', 0)
+        n_raw = len(info.get("all_keypoints", []))
+        n_noise = info.get("noise_blobs_filtered", 0)
         n_kept = n_raw - n_noise
-        ax1.set_title(f'Blob Detection: {n_kept} kept, {n_noise} filtered', fontsize=10)
-        ax1.set_xticks([]); ax1.set_yticks([])
+        ax1.set_title(f"Blob Detection: {n_kept} kept, {n_noise} filtered", fontsize=10)
+        ax1.set_xticks([])
+        ax1.set_yticks([])
 
         # Panel 2: Final grid network
         ax2 = fig.add_subplot(gs[0, 1])
         if success and grid_data:
-            _draw_grid_network(ax2, grid_data['centers'], grid_data['grid_indices'])
-            ax2.scatter(grid_data['centers'][:, 0], grid_data['centers'][:, 1],
-                        c='limegreen', s=10, zorder=5,
-                        label=f'{len(grid_data["centers"])} pts')
+            _draw_grid_network(ax2, grid_data["centers"], grid_data["grid_indices"])
+            ax2.scatter(
+                grid_data["centers"][:, 0],
+                grid_data["centers"][:, 1],
+                c="limegreen",
+                s=10,
+                zorder=5,
+                label=f'{len(grid_data["centers"])} pts',
+            )
             ax2.legend(fontsize=8)
             ax2.invert_yaxis()
-            ax2.set_title(f'Final Grid ({grid_data["n_cols"]}x{grid_data["n_rows"]})', fontsize=10)
-        ax2.set_xticks([]); ax2.set_yticks([])
+            ax2.set_title(
+                f'Final Grid ({grid_data["n_cols"]}x{grid_data["n_rows"]})', fontsize=10
+            )
+        ax2.set_xticks([])
+        ax2.set_yticks([])
 
         # Panel 3: Grid on image
         ax3 = fig.add_subplot(gs[0, 2])
         result_disp = cv2.cvtColor(clahe_img, cv2.COLOR_GRAY2RGB)
         if success and grid_data:
-            _draw_grid_network_cv(result_disp, grid_data['centers'], grid_data['grid_indices'])
-            for pt in grid_data['centers']:
+            _draw_grid_network_cv(
+                result_disp, grid_data["centers"], grid_data["grid_indices"]
+            )
+            for pt in grid_data["centers"]:
                 cv2.circle(result_disp, (int(pt[0]), int(pt[1])), 8, (0, 255, 0), 3)
         ax3.imshow(result_disp[::scale, ::scale])
-        ax3.set_title('Final Grid on Image', fontsize=10)
-        ax3.set_xticks([]); ax3.set_yticks([])
+        ax3.set_title("Final Grid on Image", fontsize=10)
+        ax3.set_xticks([])
+        ax3.set_yticks([])
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=150, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
         plt.close(fig)
     except Exception:
         logger.warning(f"Failed to generate detection figure: {traceback.format_exc()}")
@@ -183,6 +205,7 @@ def make_detection_figure(
 # ---------------------------------------------------------------------------
 # 2. Per-frame ChArUco detection figure (3-panel)
 # ---------------------------------------------------------------------------
+
 
 def make_charuco_detection_figure(
     image: np.ndarray,
@@ -202,11 +225,14 @@ def make_charuco_detection_figure(
     try:
         fig = plt.figure(figsize=(18, 6))
         n_corners = len(corners) if corners is not None else 0
-        sq_h = board_params.get('squares_h', '?')
-        sq_v = board_params.get('squares_v', '?')
-        status = f'{n_corners} corners' if n_corners > 0 else 'FAILED'
-        fig.suptitle(f'{title or "ChArUco Detection"}  —  {status}', fontsize=13,
-                     color='darkgreen' if n_corners > 0 else 'darkred')
+        sq_h = board_params.get("squares_h", "?")
+        sq_v = board_params.get("squares_v", "?")
+        status = f"{n_corners} corners" if n_corners > 0 else "FAILED"
+        fig.suptitle(
+            f'{title or "ChArUco Detection"}  —  {status}',
+            fontsize=13,
+            color="darkgreen" if n_corners > 0 else "darkred",
+        )
 
         img_disp = _to_uint8_gray(image)
         if img_disp.ndim == 2:
@@ -224,48 +250,68 @@ def make_charuco_detection_figure(
                 color_bgr = tuple(int(c * 255) for c in color_rgb[::-1])
                 cv2.circle(disp, (int(pt[0]), int(pt[1])), 8, color_bgr, 3)
         ax1.imshow(disp[::scale, ::scale])
-        ax1.set_title('Detected Corners', fontsize=10)
-        ax1.set_xticks([]); ax1.set_yticks([])
+        ax1.set_title("Detected Corners", fontsize=10)
+        ax1.set_xticks([])
+        ax1.set_yticks([])
 
         # Panel 2: Coverage map
         ax2 = fig.add_subplot(1, 3, 2)
-        ax2.set_xlim(0, w); ax2.set_ylim(h, 0)
-        ax2.set_aspect('equal')
-        ax2.add_patch(plt.Rectangle((0, 0), w, h, fill=False, edgecolor='gray', linewidth=1))
+        ax2.set_xlim(0, w)
+        ax2.set_ylim(h, 0)
+        ax2.set_aspect("equal")
+        ax2.add_patch(
+            plt.Rectangle((0, 0), w, h, fill=False, edgecolor="gray", linewidth=1)
+        )
         if corners is not None and len(corners) > 0:
-            ax2.scatter(corners[:, 0], corners[:, 1], c='limegreen', s=8, zorder=5)
-        ax2.set_title('Corner Coverage', fontsize=10)
+            ax2.scatter(corners[:, 0], corners[:, 1], c="limegreen", s=8, zorder=5)
+        ax2.set_title("Corner Coverage", fontsize=10)
 
         # Panel 3: Summary text
         ax3 = fig.add_subplot(1, 3, 3)
-        ax3.axis('off')
-        total_possible = (int(sq_h) - 1) * (int(sq_v) - 1) if isinstance(sq_h, int) and isinstance(sq_v, int) else '?'
+        ax3.axis("off")
+        total_possible = (
+            (int(sq_h) - 1) * (int(sq_v) - 1)
+            if isinstance(sq_h, int) and isinstance(sq_v, int)
+            else "?"
+        )
         text = (
-            f'ChArUco Detection Summary\n\n'
-            f'Board:  {sq_h} x {sq_v} squares\n'
+            f"ChArUco Detection Summary\n\n"
+            f"Board:  {sq_h} x {sq_v} squares\n"
             f'Square size: {board_params.get("square_size_mm", board_params.get("square_size", "?"))} mm\n'
             f'Marker ratio: {board_params.get("marker_ratio", "?")}\n\n'
-            f'Corners detected: {n_corners}\n'
-            f'Total possible: {total_possible}\n'
-            f'Detection rate: {n_corners / total_possible * 100:.0f}%\n' if isinstance(total_possible, int) and total_possible > 0 else
-            f'ChArUco Detection Summary\n\n'
-            f'Board:  {sq_h} x {sq_v} squares\n'
-            f'Corners detected: {n_corners}\n'
+            f"Corners detected: {n_corners}\n"
+            f"Total possible: {total_possible}\n"
+            f"Detection rate: {n_corners / total_possible * 100:.0f}%\n"
+            if isinstance(total_possible, int) and total_possible > 0
+            else f"ChArUco Detection Summary\n\n"
+            f"Board:  {sq_h} x {sq_v} squares\n"
+            f"Corners detected: {n_corners}\n"
         )
-        ax3.text(0.05, 0.95, text, transform=ax3.transAxes, fontsize=11,
-                 va='top', fontfamily='monospace', color='darkblue')
-        ax3.set_title('Summary', fontsize=10)
+        ax3.text(
+            0.05,
+            0.95,
+            text,
+            transform=ax3.transAxes,
+            fontsize=11,
+            va="top",
+            fontfamily="monospace",
+            color="darkblue",
+        )
+        ax3.set_title("Summary", fontsize=10)
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=150, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
         plt.close(fig)
     except Exception:
-        logger.warning(f"Failed to generate ChArUco detection figure: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate ChArUco detection figure: {traceback.format_exc()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 3. Calibration model summary figure (6-panel)
 # ---------------------------------------------------------------------------
+
 
 def make_calibration_model_figure(
     K: np.ndarray,
@@ -313,7 +359,9 @@ def make_calibration_model_figure(
     try:
         n_views = len(all_objpoints)
         fig = plt.figure(figsize=(20, 14))
-        fig.suptitle(f'Calibration Model — {n_views} views, RMS={rms:.3f} px', fontsize=14)
+        fig.suptitle(
+            f"Calibration Model — {n_views} views, RMS={rms:.3f} px", fontsize=14
+        )
         gs = GridSpec(2, 3, figure=fig, hspace=0.30, wspace=0.25)
         colors = plt.cm.tab10(np.linspace(0, 1, max(n_views, 1)))
         w, h = image_size
@@ -324,62 +372,87 @@ def make_calibration_model_figure(
             bg = _to_uint8_gray(best_image)
             clahe_bg = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(bg)
             sc = max(1, clahe_bg.shape[1] // 1200)
-            ax1.imshow(clahe_bg[::sc, ::sc], cmap='gray', alpha=0.5)
+            ax1.imshow(clahe_bg[::sc, ::sc], cmap="gray", alpha=0.5)
         else:
             sc = 1
         for idx in range(n_views):
             pts = np.array(all_imgpoints[idx]).reshape(-1, 2)
-            ax1.scatter(pts[:, 0] / sc, pts[:, 1] / sc,
-                        c=[colors[idx]], s=4, label=f'view {idx + 1} ({len(pts)})')
+            ax1.scatter(
+                pts[:, 0] / sc,
+                pts[:, 1] / sc,
+                c=[colors[idx]],
+                s=4,
+                label=f"view {idx + 1} ({len(pts)})",
+            )
         if n_views <= 15:
-            ax1.legend(fontsize=7, loc='lower left')
-        ax1.set_title('All Points', fontsize=10)
-        ax1.set_xticks([]); ax1.set_yticks([])
+            ax1.legend(fontsize=7, loc="lower left")
+        ax1.set_title("All Points", fontsize=10)
+        ax1.set_xticks([])
+        ax1.set_yticks([])
 
         # Panel 2: Intrinsics text
         ax3 = fig.add_subplot(gs[0, 1])
-        ax3.axis('off')
+        ax3.axis("off")
         dist_flat = np.array(dist).flatten()
         text = (
-            f'Camera Intrinsics\n\n'
-            f'fx = {K[0, 0]:.1f} px\n'
-            f'fy = {K[1, 1]:.1f} px\n'
-            f'cx = {K[0, 2]:.1f} px  (centre: {w / 2:.0f})\n'
-            f'cy = {K[1, 2]:.1f} px  (centre: {h / 2:.0f})\n\n'
-            f'Distortion:\n'
-            f'  k1 = {dist_flat[0]:.6f}\n'
-            f'  k2 = {dist_flat[1]:.6f}\n'
-            f'  p1 = {dist_flat[2]:.6f}\n'
-            f'  p2 = {dist_flat[3]:.6f}\n\n'
-            f'Image: {w} x {h}\n'
-            f'Views: {n_views}\n'
-            f'Total: {sum(len(np.array(o).reshape(-1, 3)) for o in all_objpoints)} pts\n'
-            f'RMS: {rms:.4f} px'
+            f"Camera Intrinsics\n\n"
+            f"fx = {K[0, 0]:.1f} px\n"
+            f"fy = {K[1, 1]:.1f} px\n"
+            f"cx = {K[0, 2]:.1f} px  (centre: {w / 2:.0f})\n"
+            f"cy = {K[1, 2]:.1f} px  (centre: {h / 2:.0f})\n\n"
+            f"Distortion:\n"
+            f"  k1 = {dist_flat[0]:.6f}\n"
+            f"  k2 = {dist_flat[1]:.6f}\n"
+            f"  p1 = {dist_flat[2]:.6f}\n"
+            f"  p2 = {dist_flat[3]:.6f}\n\n"
+            f"Image: {w} x {h}\n"
+            f"Views: {n_views}\n"
+            f"Total: {sum(len(np.array(o).reshape(-1, 3)) for o in all_objpoints)} pts\n"
+            f"RMS: {rms:.4f} px"
         )
-        ax3.text(0.05, 0.95, text, transform=ax3.transAxes, fontsize=11,
-                 va='top', fontfamily='monospace', color='darkblue')
-        ax3.set_title('Calibration Parameters', fontsize=10)
+        ax3.text(
+            0.05,
+            0.95,
+            text,
+            transform=ax3.transAxes,
+            fontsize=11,
+            va="top",
+            fontfamily="monospace",
+            color="darkblue",
+        )
+        ax3.set_title("Calibration Parameters", fontsize=10)
 
         # Panel 4: Distortion map
         ax4 = fig.add_subplot(gs[1, 0])
         try:
             new_cam, _ = cv2.getOptimalNewCameraMatrix(K, dist, (w, h), 1, (w, h))
             grid_pts = np.array(
-                [[gx, gy] for gy in range(0, h, max(h // 20, 1)) for gx in range(0, w, max(w // 20, 1))],
+                [
+                    [gx, gy]
+                    for gy in range(0, h, max(h // 20, 1))
+                    for gx in range(0, w, max(w // 20, 1))
+                ],
                 dtype=np.float32,
             ).reshape(-1, 1, 2)
             undist_pts = cv2.undistortPoints(grid_pts, K, dist, P=new_cam)
             orig = grid_pts.reshape(-1, 2)
             undist = undist_pts.reshape(-1, 2)
             mag = np.sqrt(np.sum((undist - orig) ** 2, axis=1))
-            sc4 = ax4.scatter(orig[:, 0], orig[:, 1], c=mag, cmap='hot', s=6, vmin=0)
-            plt.colorbar(sc4, ax=ax4, label='px')
-            ax4.set_xlim(0, w); ax4.set_ylim(h, 0)
-            ax4.set_aspect('equal')
+            sc4 = ax4.scatter(orig[:, 0], orig[:, 1], c=mag, cmap="hot", s=6, vmin=0)
+            plt.colorbar(sc4, ax=ax4, label="px")
+            ax4.set_xlim(0, w)
+            ax4.set_ylim(h, 0)
+            ax4.set_aspect("equal")
         except Exception:
-            ax4.text(0.5, 0.5, 'Distortion map\nunavailable', ha='center', va='center',
-                     transform=ax4.transAxes)
-        ax4.set_title('Distortion Map', fontsize=10)
+            ax4.text(
+                0.5,
+                0.5,
+                "Distortion map\nunavailable",
+                ha="center",
+                va="center",
+                transform=ax4.transAxes,
+            )
+        ax4.set_title("Distortion Map", fontsize=10)
 
         # Panel 5: Residual scatter
         ax5 = fig.add_subplot(gs[1, 1])
@@ -390,41 +463,50 @@ def make_calibration_model_figure(
             res = (np.array(all_imgpoints[i]).reshape(-1, 1, 2) - proj).reshape(-1, 2)
             all_rx.extend(res[:, 0])
             all_ry.extend(res[:, 1])
-        ax5.scatter(all_rx, all_ry, s=3, alpha=0.5, color='steelblue')
-        ax5.axhline(0, color='gray', lw=0.5)
-        ax5.axvline(0, color='gray', lw=0.5)
+        ax5.scatter(all_rx, all_ry, s=3, alpha=0.5, color="steelblue")
+        ax5.axhline(0, color="gray", lw=0.5)
+        ax5.axvline(0, color="gray", lw=0.5)
         if all_rx:
             mr = max(max(abs(np.array(all_rx))), max(abs(np.array(all_ry)))) * 1.2
-            ax5.set_xlim(-mr, mr); ax5.set_ylim(-mr, mr)
-        ax5.set_aspect('equal')
-        ax5.set_xlabel('Res X (px)')
-        ax5.set_ylabel('Res Y (px)')
-        ax5.set_title(f'Residuals ({len(all_rx)} pts)', fontsize=10)
+            ax5.set_xlim(-mr, mr)
+            ax5.set_ylim(-mr, mr)
+        ax5.set_aspect("equal")
+        ax5.set_xlabel("Res X (px)")
+        ax5.set_ylabel("Res Y (px)")
+        ax5.set_title(f"Residuals ({len(all_rx)} pts)", fontsize=10)
 
         # Panel 6: Coverage (convex hulls)
         ax6 = fig.add_subplot(gs[1, 2])
-        ax6.set_xlim(0, w); ax6.set_ylim(h, 0)
-        ax6.set_aspect('equal')
+        ax6.set_xlim(0, w)
+        ax6.set_ylim(h, 0)
+        ax6.set_aspect("equal")
         for idx in range(n_views):
             pts = np.array(all_imgpoints[idx]).reshape(-1, 2).astype(np.float32)
             if len(pts) >= 3:
                 hull = cv2.convexHull(pts).reshape(-1, 2)
                 hull_closed = np.vstack([hull, hull[0]])
-                ax6.fill(hull_closed[:, 0], hull_closed[:, 1], alpha=0.15, color=colors[idx])
-                ax6.plot(hull_closed[:, 0], hull_closed[:, 1], color=colors[idx], lw=1.5)
+                ax6.fill(
+                    hull_closed[:, 0], hull_closed[:, 1], alpha=0.15, color=colors[idx]
+                )
+                ax6.plot(
+                    hull_closed[:, 0], hull_closed[:, 1], color=colors[idx], lw=1.5
+                )
             ax6.scatter(pts[:, 0], pts[:, 1], c=[colors[idx]], s=2)
-        ax6.set_title('Point Coverage', fontsize=10)
+        ax6.set_title("Point Coverage", fontsize=10)
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=150, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
         plt.close(fig)
     except Exception:
-        logger.warning(f"Failed to generate calibration model figure: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate calibration model figure: {traceback.format_exc()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 4. Camera placement figure (2-panel, for stereo)
 # ---------------------------------------------------------------------------
+
 
 def make_camera_placement_figure(
     cam_data_list: List[Dict[str, Any]],
@@ -495,23 +577,25 @@ def make_camera_placement_figure(
         # convention — OpenCV, SIG, or a real camera.
         cam_records = []
         for cam in cam_data_list:
-            rvec = np.asarray(cam['rvec'], dtype=np.float64).reshape(3, 1)
-            tvec = np.asarray(cam['tvec'], dtype=np.float64).reshape(3, 1)
+            rvec = np.asarray(cam["rvec"], dtype=np.float64).reshape(3, 1)
+            tvec = np.asarray(cam["tvec"], dtype=np.float64).reshape(3, 1)
             R, _ = cv2.Rodrigues(rvec)
-            pos = (-R.T @ tvec).flatten()            # camera centre in world
+            pos = (-R.T @ tvec).flatten()  # camera centre in world
             right = (R.T @ np.array([1.0, 0.0, 0.0])).flatten()
             up = (R.T @ np.array([0.0, -1.0, 0.0])).flatten()
-            cam_records.append({
-                'label': cam.get('label', 'Cam'),
-                'color': cam.get('color', 'tab:blue'),
-                'pos': pos,
-                'axis': None,  # resolved below once we know the board centroid
-                'up': up,
-                'right': right,
-                'rvecs_all': cam.get('rvecs_all'),
-                'tvecs_all': cam.get('tvecs_all'),
-                'obj_points': cam.get('obj_points'),
-            })
+            cam_records.append(
+                {
+                    "label": cam.get("label", "Cam"),
+                    "color": cam.get("color", "tab:blue"),
+                    "pos": pos,
+                    "axis": None,  # resolved below once we know the board centroid
+                    "up": up,
+                    "right": right,
+                    "rvecs_all": cam.get("rvecs_all"),
+                    "tvecs_all": cam.get("tvecs_all"),
+                    "obj_points": cam.get("obj_points"),
+                }
+            )
 
         # ---- Board datum object points ----
         # Each per-camera fit has its OWN world frame (anchored at its
@@ -525,9 +609,9 @@ def make_camera_placement_figure(
         # stacked 12 mm apart instead of just 2.
         per_cam_dots: List[Tuple[str, np.ndarray]] = []  # [(color, (N,3)), ...]
         for cr in cam_records:
-            if cr['obj_points'] is not None:
-                pts = np.asarray(cr['obj_points'], dtype=np.float64)
-                per_cam_dots.append((cr['color'], pts, cr['label']))
+            if cr["obj_points"] is not None:
+                pts = np.asarray(cr["obj_points"], dtype=np.float64)
+                per_cam_dots.append((cr["color"], pts, cr["label"]))
 
         if board_obj_points is None and per_cam_dots:
             # Concatenate all per-camera dots so bounding box / axes
@@ -535,38 +619,50 @@ def make_camera_placement_figure(
             board_obj_points = np.vstack([pts for _, pts, _ in per_cam_dots])
         if board_obj_points is None:
             # Fallback rectangle — 150 × 60 mm at z=0
-            board_obj_points = np.array([
-                [0.0, 0.0, 0.0], [150.0, 0.0, 0.0],
-                [150.0, 60.0, 0.0], [0.0, 60.0, 0.0],
-            ])
+            board_obj_points = np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [150.0, 0.0, 0.0],
+                    [150.0, 60.0, 0.0],
+                    [0.0, 60.0, 0.0],
+                ]
+            )
         board_obj_points = np.asarray(board_obj_points, dtype=np.float64)
 
         # Board bounding rectangle at its most-populated z plane
         unique_z = np.unique(np.round(board_obj_points[:, 2], 1))
         z_primary = unique_z[np.argmin(np.abs(unique_z))]
         primary_mask = np.abs(board_obj_points[:, 2] - z_primary) < 0.5
-        x_min, x_max = board_obj_points[primary_mask, 0].min(), board_obj_points[primary_mask, 0].max()
-        y_min, y_max = board_obj_points[primary_mask, 1].min(), board_obj_points[primary_mask, 1].max()
-        board_corners_local = np.array([
-            [x_min, y_min, z_primary],
-            [x_max, y_min, z_primary],
-            [x_max, y_max, z_primary],
-            [x_min, y_max, z_primary],
-        ])
+        x_min, x_max = (
+            board_obj_points[primary_mask, 0].min(),
+            board_obj_points[primary_mask, 0].max(),
+        )
+        y_min, y_max = (
+            board_obj_points[primary_mask, 1].min(),
+            board_obj_points[primary_mask, 1].max(),
+        )
+        board_corners_local = np.array(
+            [
+                [x_min, y_min, z_primary],
+                [x_max, y_min, z_primary],
+                [x_max, y_max, z_primary],
+                [x_min, y_max, z_primary],
+            ]
+        )
 
         # Resolve each camera's optical axis as the direction from its
         # world centre to the full board centroid. This is invariant to
         # whether OpenCV's (R, t) absorbed a reflection.
         board_centroid = board_obj_points.mean(axis=0)
         for cr in cam_records:
-            direction = board_centroid - cr['pos']
+            direction = board_centroid - cr["pos"]
             norm = float(np.linalg.norm(direction))
-            cr['axis'] = direction / norm if norm > 1e-9 else np.array([0.0, 0.0, 1.0])
+            cr["axis"] = direction / norm if norm > 1e-9 else np.array([0.0, 0.0, 1.0])
 
         # ---- Scene bounds for consistent axes ----
         all_pts = [board_obj_points]
         for cr in cam_records:
-            all_pts.append(cr['pos'].reshape(1, 3))
+            all_pts.append(cr["pos"].reshape(1, 3))
         all_pts = np.vstack(all_pts)
         pad = 0.1 * (all_pts.max(axis=0) - all_pts.min(axis=0) + 1e-6)
         lo = all_pts.min(axis=0) - pad
@@ -580,20 +676,28 @@ def make_camera_placement_figure(
         # each 2D panel auto-scale independently and rely on two zoomed
         # inset axes to make the board legible at its own scale.
         fig = plt.figure(figsize=(18, 11))
-        fig.suptitle('Camera Placement — 3D scene + top-down view + board detail',
-                     fontsize=14, y=0.98)
-        gs = GridSpec(2, 3, figure=fig,
-                      width_ratios=[1.5, 1.2, 1.0],
-                      height_ratios=[1.5, 1.0],
-                      hspace=0.30, wspace=0.32)
+        fig.suptitle(
+            "Camera Placement — 3D scene + top-down view + board detail",
+            fontsize=14,
+            y=0.98,
+        )
+        gs = GridSpec(
+            2,
+            3,
+            figure=fig,
+            width_ratios=[1.5, 1.2, 1.0],
+            height_ratios=[1.5, 1.0],
+            hspace=0.30,
+            wspace=0.32,
+        )
 
-        ax_3d = fig.add_subplot(gs[0, 0], projection='3d')
-        ax_xz = fig.add_subplot(gs[0, 1])       # top-down (primary 2D)
+        ax_3d = fig.add_subplot(gs[0, 0], projection="3d")
+        ax_xz = fig.add_subplot(gs[0, 1])  # top-down (primary 2D)
         ax_legend = fig.add_subplot(gs[0, 2])
-        ax_legend.axis('off')
-        ax_board = fig.add_subplot(gs[1, 0])    # zoomed board plan view
-        ax_zy = fig.add_subplot(gs[1, 1])       # side view
-        ax_zoom3d = fig.add_subplot(gs[1, 2])   # zoomed board cross-section
+        ax_legend.axis("off")
+        ax_board = fig.add_subplot(gs[1, 0])  # zoomed board plan view
+        ax_zy = fig.add_subplot(gs[1, 1])  # side view
+        ax_zoom3d = fig.add_subplot(gs[1, 2])  # zoomed board cross-section
 
         # ---- 3D panel ----
         # 1. Draw the board dots — coloured per camera so transmission
@@ -601,20 +705,36 @@ def make_camera_placement_figure(
         #    same-side (cam1 and cam2 z-coincident).
         if per_cam_dots:
             for color, pts, label in per_cam_dots:
-                ax_3d.scatter(pts[:, 0], pts[:, 1], pts[:, 2],
-                              c=color, s=10, alpha=0.75,
-                              label=f'{label} object frame',
-                              edgecolors='black', linewidths=0.2)
+                ax_3d.scatter(
+                    pts[:, 0],
+                    pts[:, 1],
+                    pts[:, 2],
+                    c=color,
+                    s=10,
+                    alpha=0.75,
+                    label=f"{label} object frame",
+                    edgecolors="black",
+                    linewidths=0.2,
+                )
         else:
-            ax_3d.scatter(board_obj_points[:, 0],
-                          board_obj_points[:, 1],
-                          board_obj_points[:, 2],
-                          c='black', s=8, alpha=0.9, label='Board dots')
+            ax_3d.scatter(
+                board_obj_points[:, 0],
+                board_obj_points[:, 1],
+                board_obj_points[:, 2],
+                c="black",
+                s=8,
+                alpha=0.9,
+                label="Board dots",
+            )
 
         # 2. Draw the primary-face outline as a semi-transparent patch
-        board_patch = Poly3DCollection([board_corners_local],
-                                        alpha=0.10, facecolor='tab:orange',
-                                        edgecolor='tab:orange', linewidth=1.2)
+        board_patch = Poly3DCollection(
+            [board_corners_local],
+            alpha=0.10,
+            facecolor="tab:orange",
+            edgecolor="tab:orange",
+            linewidth=1.2,
+        )
         ax_3d.add_collection3d(board_patch)
 
         # 3. If we have all-pose extrinsics, draw each non-datum pose
@@ -635,24 +755,26 @@ def make_camera_placement_figure(
         _ = all_pose_obj_points  # reserved for future per-pose planes
 
         # 4. Draw each camera as a pyramidal frustum + optical axis
-        axis_len = 0.4 * max(hi - lo)   # scale to scene
+        axis_len = 0.4 * max(hi - lo)  # scale to scene
         frustum_scale = 0.06 * max(hi - lo)
         for cr in cam_records:
-            pos = cr['pos']
-            color = cr['color']
+            pos = cr["pos"]
+            color = cr["color"]
 
             # Pyramid apex at camera centre, base offset along optical axis
             apex = pos
-            fwd = cr['axis'] * frustum_scale
-            right = cr['right'] * frustum_scale * 0.7
-            up = cr['up'] * frustum_scale * 0.5
+            fwd = cr["axis"] * frustum_scale
+            right = cr["right"] * frustum_scale * 0.7
+            up = cr["up"] * frustum_scale * 0.5
             base_centre = apex + fwd
-            corners = np.array([
-                base_centre + right + up,
-                base_centre - right + up,
-                base_centre - right - up,
-                base_centre + right - up,
-            ])
+            corners = np.array(
+                [
+                    base_centre + right + up,
+                    base_centre - right + up,
+                    base_centre - right - up,
+                    base_centre + right - up,
+                ]
+            )
             frustum_faces = [
                 [apex, corners[0], corners[1]],
                 [apex, corners[1], corners[2]],
@@ -661,83 +783,119 @@ def make_camera_placement_figure(
                 [corners[0], corners[1], corners[2], corners[3]],  # back face
             ]
             frustum_coll = Poly3DCollection(
-                frustum_faces, alpha=0.35, facecolor=color, edgecolor=color, linewidth=0.8,
+                frustum_faces,
+                alpha=0.35,
+                facecolor=color,
+                edgecolor=color,
+                linewidth=0.8,
             )
             ax_3d.add_collection3d(frustum_coll)
 
             # Optical axis ray toward the scene
-            axis_end = pos + cr['axis'] * axis_len
-            ax_3d.plot([pos[0], axis_end[0]],
-                       [pos[1], axis_end[1]],
-                       [pos[2], axis_end[2]],
-                       color=color, linewidth=1.5, alpha=0.7)
-            ax_3d.text(pos[0], pos[1], pos[2] + frustum_scale * 1.5,
-                       cr['label'], color=color, fontsize=11,
-                       fontweight='bold', ha='center')
+            axis_end = pos + cr["axis"] * axis_len
+            ax_3d.plot(
+                [pos[0], axis_end[0]],
+                [pos[1], axis_end[1]],
+                [pos[2], axis_end[2]],
+                color=color,
+                linewidth=1.5,
+                alpha=0.7,
+            )
+            ax_3d.text(
+                pos[0],
+                pos[1],
+                pos[2] + frustum_scale * 1.5,
+                cr["label"],
+                color=color,
+                fontsize=11,
+                fontweight="bold",
+                ha="center",
+            )
 
-        ax_3d.set_xlabel('X (mm)')
-        ax_3d.set_ylabel('Y (mm)')
-        ax_3d.set_zlabel('Z (mm)')
+        ax_3d.set_xlabel("X (mm)")
+        ax_3d.set_ylabel("Y (mm)")
+        ax_3d.set_zlabel("Z (mm)")
         ax_3d.set_xlim(lo[0], hi[0])
         ax_3d.set_ylim(lo[1], hi[1])
         ax_3d.set_zlim(lo[2], hi[2])
-        ax_3d.set_title('3D scene (board + cameras)', fontsize=11)
+        ax_3d.set_title("3D scene (board + cameras)", fontsize=11)
         # Do NOT force equal aspect — the camera-to-board scale ratio
         # (~50:1) would make the board invisible. Let matplotlib pick
         # per-axis scaling and show the zoomed board detail separately.
 
         # ---- 2D projections ----
-        def _draw_projection(ax, ix, iy, xlabel, ylabel, title,
-                             equal_aspect=False):
+        def _draw_projection(ax, ix, iy, xlabel, ylabel, title, equal_aspect=False):
             # Per-camera board dots in camera colour
             if per_cam_dots:
                 for color, pts, _ in per_cam_dots:
-                    ax.scatter(pts[:, ix], pts[:, iy],
-                               c=color, s=10, alpha=0.75,
-                               edgecolors='black', linewidths=0.2)
+                    ax.scatter(
+                        pts[:, ix],
+                        pts[:, iy],
+                        c=color,
+                        s=10,
+                        alpha=0.75,
+                        edgecolors="black",
+                        linewidths=0.2,
+                    )
             else:
-                ax.scatter(board_obj_points[:, ix],
-                           board_obj_points[:, iy],
-                           c='black', s=8, alpha=0.8)
+                ax.scatter(
+                    board_obj_points[:, ix],
+                    board_obj_points[:, iy],
+                    c="black",
+                    s=8,
+                    alpha=0.8,
+                )
             # board outline
             bc = np.vstack([board_corners_local, board_corners_local[:1]])
-            ax.plot(bc[:, ix], bc[:, iy], color='tab:orange',
-                    linewidth=1.5, alpha=0.6)
+            ax.plot(bc[:, ix], bc[:, iy], color="tab:orange", linewidth=1.5, alpha=0.6)
             # cameras
             for cr in cam_records:
-                pos = cr['pos']
-                axis = cr['axis']
-                ax.plot(pos[ix], pos[iy], 'o', color=cr['color'],
-                        markersize=12, markeredgecolor='black', markeredgewidth=0.8)
-                ax.annotate(cr['label'],
-                            xy=(pos[ix], pos[iy]),
-                            xytext=(10, 10), textcoords='offset points',
-                            color=cr['color'], fontsize=11, fontweight='bold')
+                pos = cr["pos"]
+                axis = cr["axis"]
+                ax.plot(
+                    pos[ix],
+                    pos[iy],
+                    "o",
+                    color=cr["color"],
+                    markersize=12,
+                    markeredgecolor="black",
+                    markeredgewidth=0.8,
+                )
+                ax.annotate(
+                    cr["label"],
+                    xy=(pos[ix], pos[iy]),
+                    xytext=(10, 10),
+                    textcoords="offset points",
+                    color=cr["color"],
+                    fontsize=11,
+                    fontweight="bold",
+                )
                 # Optical axis ray
                 span_x = ax.get_xlim()[1] - ax.get_xlim()[0]
                 span_y = ax.get_ylim()[1] - ax.get_ylim()[0]
                 arrow_len = 0.18 * max(abs(span_x), abs(span_y))
                 ax.annotate(
-                    '', xy=(pos[ix] + axis[ix] * arrow_len,
-                            pos[iy] + axis[iy] * arrow_len),
+                    "",
+                    xy=(pos[ix] + axis[ix] * arrow_len, pos[iy] + axis[iy] * arrow_len),
                     xytext=(pos[ix], pos[iy]),
-                    arrowprops=dict(arrowstyle='->', color=cr['color'],
-                                    lw=1.8, alpha=0.8),
+                    arrowprops=dict(
+                        arrowstyle="->", color=cr["color"], lw=1.8, alpha=0.8
+                    ),
                 )
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
             ax.set_title(title, fontsize=11)
             ax.grid(True, alpha=0.3)
             if equal_aspect:
-                ax.set_aspect('equal', adjustable='box')
+                ax.set_aspect("equal", adjustable="box")
 
         # Primary 2D diagnostic: top-down world X–Z.
-        _draw_projection(ax_xz, 0, 2, 'X (mm)', 'Z (mm)',
-                         'Top-down (X–Z): cameras + board')
+        _draw_projection(
+            ax_xz, 0, 2, "X (mm)", "Z (mm)", "Top-down (X–Z): cameras + board"
+        )
         # Side view (Z–Y): shows the board as a nearly-point plus
         # camera pair tilt above/below laser sheet.
-        _draw_projection(ax_zy, 2, 1, 'Z (mm)', 'Y (mm)',
-                         'Side view (Z–Y)')
+        _draw_projection(ax_zy, 2, 1, "Z (mm)", "Y (mm)", "Side view (Z–Y)")
 
         # ---- Zoomed "board detail" panels (cameras omitted) ----
         # Show the actual dot layout in full detail at board scale.
@@ -745,8 +903,7 @@ def make_camera_placement_figure(
         # transmission geometry (cam1 front face, cam2 back face at
         # different z) is visually distinct from same-side geometry
         # (both cameras' dots coincident).
-        def _draw_board_detail(ax, ix, iy, xlabel, ylabel, title,
-                               split_levels=False):
+        def _draw_board_detail(ax, ix, iy, xlabel, ylabel, title, split_levels=False):
             if per_cam_dots:
                 for color, pts, label in per_cam_dots:
                     z_levels = np.unique(np.round(pts[:, 2], 1))
@@ -759,67 +916,84 @@ def make_camera_placement_figure(
                         # xy_offset 0 dots have col*spacing exactly (int),
                         # xy_offset dots have col*spacing + 7.5 (half).
                         x0 = pts[mask, ix]
-                        frac = x0 - np.round(x0)
+                        x0 - np.round(x0)
                         # any dot whose x is closer to an integer multiple
                         # of spacing ⇒ "peak" family; else "trough" family
                         # (crude but works for our board)
-                        marker = 'o'  # default
-                        ax.scatter(pts[mask, ix], pts[mask, iy],
-                                   c=color, s=35, alpha=0.8,
-                                   edgecolors='black', linewidths=0.4,
-                                   marker=marker,
-                                   label=f'{label} z={z:+.0f}')
+                        marker = "o"  # default
+                        ax.scatter(
+                            pts[mask, ix],
+                            pts[mask, iy],
+                            c=color,
+                            s=35,
+                            alpha=0.8,
+                            edgecolors="black",
+                            linewidths=0.4,
+                            marker=marker,
+                            label=f"{label} z={z:+.0f}",
+                        )
             else:
-                ax.scatter(board_obj_points[:, ix],
-                           board_obj_points[:, iy],
-                           c='black', s=35)
+                ax.scatter(
+                    board_obj_points[:, ix], board_obj_points[:, iy], c="black", s=35
+                )
             bc = np.vstack([board_corners_local, board_corners_local[:1]])
-            ax.plot(bc[:, ix], bc[:, iy], color='tab:orange',
-                    linewidth=1.2, alpha=0.5)
-            ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
+            ax.plot(bc[:, ix], bc[:, iy], color="tab:orange", linewidth=1.2, alpha=0.5)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
             ax.set_title(title, fontsize=11)
             ax.grid(True, alpha=0.3)
-            ax.set_aspect('equal', adjustable='box')
-            ax.legend(fontsize=8, loc='upper right', framealpha=0.9)
+            ax.set_aspect("equal", adjustable="box")
+            ax.legend(fontsize=8, loc="upper right", framealpha=0.9)
 
-        _draw_board_detail(ax_board, 0, 1, 'X (mm)', 'Y (mm)',
-                           'Board detail: plan view (X–Y)')
-        _draw_board_detail(ax_zoom3d, 0, 2, 'X (mm)', 'Z (mm)',
-                           'Board detail: cross-section (X–Z)')
+        _draw_board_detail(
+            ax_board, 0, 1, "X (mm)", "Y (mm)", "Board detail: plan view (X–Y)"
+        )
+        _draw_board_detail(
+            ax_zoom3d, 0, 2, "X (mm)", "Z (mm)", "Board detail: cross-section (X–Z)"
+        )
 
         # ---- Legend / metadata panel ----
         legend_lines = []
         if len(cam_records) >= 2:
-            p1 = cam_records[0]['pos']
-            p2 = cam_records[1]['pos']
+            p1 = cam_records[0]["pos"]
+            p2 = cam_records[1]["pos"]
             baseline = float(np.linalg.norm(p1 - p2))
-            a1 = cam_records[0]['axis']
-            a2 = cam_records[1]['axis']
+            a1 = cam_records[0]["axis"]
+            a2 = cam_records[1]["axis"]
             ang = np.degrees(np.arccos(np.clip(np.dot(a1, a2), -1.0, 1.0)))
             legend_lines.append(f"Cam1–Cam2 world baseline : {baseline:.1f} mm")
             legend_lines.append(f"Optical-axis angle       : {ang:.2f}°")
-            legend_lines.append('')
+            legend_lines.append("")
         for cr in cam_records:
-            p = cr['pos']
+            p = cr["pos"]
             legend_lines.append(
                 f"{cr['label']:8s}  pos = ({p[0]:+8.1f}, {p[1]:+8.1f}, {p[2]:+8.1f}) mm"
             )
-            a = cr['axis']
+            a = cr["axis"]
             legend_lines.append(
                 f"          axis = ({a[0]:+.3f}, {a[1]:+.3f}, {a[2]:+.3f})"
             )
-        legend_lines.append('')
-        legend_lines.append('Axes: X = board right, Y = board up, Z = board normal')
-        legend_lines.append('(world frame of the datum-pose fiducial click)')
-        ax_legend.text(0.02, 0.98, '\n'.join(legend_lines),
-                       family='monospace', fontsize=9,
-                       va='top', ha='left', transform=ax_legend.transAxes)
+        legend_lines.append("")
+        legend_lines.append("Axes: X = board right, Y = board up, Z = board normal")
+        legend_lines.append("(world frame of the datum-pose fiducial click)")
+        ax_legend.text(
+            0.02,
+            0.98,
+            "\n".join(legend_lines),
+            family="monospace",
+            fontsize=9,
+            va="top",
+            ha="left",
+            transform=ax_legend.transAxes,
+        )
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=140, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=140, bbox_inches="tight")
         plt.close(fig)
     except Exception:
-        logger.warning(f"Failed to generate camera placement figure: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate camera placement figure: {traceback.format_exc()}"
+        )
 
 
 def make_camera_placement_html(
@@ -863,25 +1037,27 @@ def make_camera_placement_html(
         cam_records = []
         all_obj_pts: List[np.ndarray] = []
         for cam in cam_data_list:
-            rvec = np.asarray(cam['rvec'], dtype=np.float64).reshape(3, 1)
-            tvec = np.asarray(cam['tvec'], dtype=np.float64).reshape(3, 1)
+            rvec = np.asarray(cam["rvec"], dtype=np.float64).reshape(3, 1)
+            tvec = np.asarray(cam["tvec"], dtype=np.float64).reshape(3, 1)
             R, _ = cv2.Rodrigues(rvec)
             pos = (-R.T @ tvec).flatten()
             right = (R.T @ np.array([1.0, 0.0, 0.0])).flatten()
             up = (R.T @ np.array([0.0, -1.0, 0.0])).flatten()
-            obj_pts = cam.get('obj_points')
+            obj_pts = cam.get("obj_points")
             if obj_pts is not None:
                 obj_pts = np.asarray(obj_pts, dtype=np.float64)
                 all_obj_pts.append(obj_pts)
-            cam_records.append({
-                'label': cam.get('label', 'Cam'),
-                'color': cam.get('color', '#1f77b4'),
-                'pos': pos,
-                'axis': None,
-                'up': up,
-                'right': right,
-                'obj_points': obj_pts,
-            })
+            cam_records.append(
+                {
+                    "label": cam.get("label", "Cam"),
+                    "color": cam.get("color", "#1f77b4"),
+                    "pos": pos,
+                    "axis": None,
+                    "up": up,
+                    "right": right,
+                    "obj_points": obj_pts,
+                }
+            )
 
         # Board centroid across all cameras' object frames (in tx
         # mode this averages the front + back faces, giving a centroid
@@ -893,16 +1069,16 @@ def make_camera_placement_html(
         else:
             board_centroid = np.zeros(3)
         for cr in cam_records:
-            direction = board_centroid - cr['pos']
+            direction = board_centroid - cr["pos"]
             norm = float(np.linalg.norm(direction))
-            cr['axis'] = direction / norm if norm > 1e-9 else np.array([0.0, 0.0, 1.0])
+            cr["axis"] = direction / norm if norm > 1e-9 else np.array([0.0, 0.0, 1.0])
 
         # ---- Scene bounds for frustum scaling ----
         all_pts = []
         for cr in cam_records:
-            all_pts.append(cr['pos'].reshape(1, 3))
-            if cr['obj_points'] is not None:
-                all_pts.append(cr['obj_points'])
+            all_pts.append(cr["pos"].reshape(1, 3))
+            if cr["obj_points"] is not None:
+                all_pts.append(cr["obj_points"])
         scene_pts = np.vstack(all_pts) if all_pts else np.zeros((1, 3))
         scene_span = float(np.max(scene_pts.max(axis=0) - scene_pts.min(axis=0)))
         if scene_span <= 0:
@@ -915,42 +1091,46 @@ def make_camera_placement_html(
 
         # Board dots per camera
         for cr in cam_records:
-            if cr['obj_points'] is None:
+            if cr["obj_points"] is None:
                 continue
-            pts = np.asarray(cr['obj_points'], dtype=np.float64)
-            traces.append({
-                'type': 'scatter3d',
-                'mode': 'markers',
-                'x': pts[:, 0].tolist(),
-                'y': pts[:, 1].tolist(),
-                'z': pts[:, 2].tolist(),
-                'marker': {
-                    'size': 3.5,
-                    'color': cr['color'],
-                    'line': {'width': 0.5, 'color': 'black'},
-                    'opacity': 0.85,
-                },
-                'name': f"{cr['label']} board dots",
-                'hovertemplate': (
-                    '<b>%{fullData.name}</b><br>'
-                    'x=%{x:.1f} mm<br>y=%{y:.1f} mm<br>z=%{z:.1f} mm'
-                    '<extra></extra>'
-                ),
-            })
+            pts = np.asarray(cr["obj_points"], dtype=np.float64)
+            traces.append(
+                {
+                    "type": "scatter3d",
+                    "mode": "markers",
+                    "x": pts[:, 0].tolist(),
+                    "y": pts[:, 1].tolist(),
+                    "z": pts[:, 2].tolist(),
+                    "marker": {
+                        "size": 3.5,
+                        "color": cr["color"],
+                        "line": {"width": 0.5, "color": "black"},
+                        "opacity": 0.85,
+                    },
+                    "name": f"{cr['label']} board dots",
+                    "hovertemplate": (
+                        "<b>%{fullData.name}</b><br>"
+                        "x=%{x:.1f} mm<br>y=%{y:.1f} mm<br>z=%{z:.1f} mm"
+                        "<extra></extra>"
+                    ),
+                }
+            )
 
         # Per-camera: frustum (as line segments) + optical axis + point
         for cr in cam_records:
-            pos = cr['pos']
-            fwd = cr['axis'] * frustum_scale
-            right = cr['right'] * frustum_scale * 0.8
-            up = cr['up'] * frustum_scale * 0.55
+            pos = cr["pos"]
+            fwd = cr["axis"] * frustum_scale
+            right = cr["right"] * frustum_scale * 0.8
+            up = cr["up"] * frustum_scale * 0.55
             base_centre = pos + fwd
-            corners = np.array([
-                base_centre + right + up,
-                base_centre - right + up,
-                base_centre - right - up,
-                base_centre + right - up,
-            ])
+            corners = np.array(
+                [
+                    base_centre + right + up,
+                    base_centre - right + up,
+                    base_centre - right - up,
+                    base_centre + right - up,
+                ]
+            )
 
             # Frustum edges: 4 apex→corner lines + the square base loop.
             # Plotly draws multi-segment lines by inserting None/NaN
@@ -968,98 +1148,106 @@ def make_camera_placement_html(
                 fx += [a[0], b[0], None]
                 fy += [a[1], b[1], None]
                 fz += [a[2], b[2], None]
-            traces.append({
-                'type': 'scatter3d',
-                'mode': 'lines',
-                'x': fx,
-                'y': fy,
-                'z': fz,
-                'line': {'color': cr['color'], 'width': 4},
-                'name': f"{cr['label']} frustum",
-                'hoverinfo': 'skip',
-                'showlegend': False,
-            })
+            traces.append(
+                {
+                    "type": "scatter3d",
+                    "mode": "lines",
+                    "x": fx,
+                    "y": fy,
+                    "z": fz,
+                    "line": {"color": cr["color"], "width": 4},
+                    "name": f"{cr['label']} frustum",
+                    "hoverinfo": "skip",
+                    "showlegend": False,
+                }
+            )
 
             # Optical axis
-            axis_end = pos + cr['axis'] * axis_len
-            traces.append({
-                'type': 'scatter3d',
-                'mode': 'lines',
-                'x': [pos[0], axis_end[0]],
-                'y': [pos[1], axis_end[1]],
-                'z': [pos[2], axis_end[2]],
-                'line': {'color': cr['color'], 'width': 3, 'dash': 'dash'},
-                'name': f"{cr['label']} optical axis",
-                'hoverinfo': 'skip',
-                'showlegend': False,
-            })
+            axis_end = pos + cr["axis"] * axis_len
+            traces.append(
+                {
+                    "type": "scatter3d",
+                    "mode": "lines",
+                    "x": [pos[0], axis_end[0]],
+                    "y": [pos[1], axis_end[1]],
+                    "z": [pos[2], axis_end[2]],
+                    "line": {"color": cr["color"], "width": 3, "dash": "dash"},
+                    "name": f"{cr['label']} optical axis",
+                    "hoverinfo": "skip",
+                    "showlegend": False,
+                }
+            )
 
             # Camera position marker with label
-            traces.append({
-                'type': 'scatter3d',
-                'mode': 'markers+text',
-                'x': [pos[0]],
-                'y': [pos[1]],
-                'z': [pos[2]],
-                'marker': {
-                    'size': 9,
-                    'color': cr['color'],
-                    'line': {'width': 1.5, 'color': 'black'},
-                    'symbol': 'diamond',
-                },
-                'text': [f"<b>{cr['label']}</b>"],
-                'textposition': 'top center',
-                'textfont': {'size': 14, 'color': cr['color']},
-                'name': cr['label'],
-                'hovertemplate': (
-                    f"<b>{cr['label']}</b><br>"
-                    f"pos = ({pos[0]:+.0f}, {pos[1]:+.0f}, {pos[2]:+.0f}) mm<br>"
-                    f"axis = ({cr['axis'][0]:+.3f}, {cr['axis'][1]:+.3f}, {cr['axis'][2]:+.3f})"
-                    '<extra></extra>'
-                ),
-            })
+            traces.append(
+                {
+                    "type": "scatter3d",
+                    "mode": "markers+text",
+                    "x": [pos[0]],
+                    "y": [pos[1]],
+                    "z": [pos[2]],
+                    "marker": {
+                        "size": 9,
+                        "color": cr["color"],
+                        "line": {"width": 1.5, "color": "black"},
+                        "symbol": "diamond",
+                    },
+                    "text": [f"<b>{cr['label']}</b>"],
+                    "textposition": "top center",
+                    "textfont": {"size": 14, "color": cr["color"]},
+                    "name": cr["label"],
+                    "hovertemplate": (
+                        f"<b>{cr['label']}</b><br>"
+                        f"pos = ({pos[0]:+.0f}, {pos[1]:+.0f}, {pos[2]:+.0f}) mm<br>"
+                        f"axis = ({cr['axis'][0]:+.3f}, {cr['axis'][1]:+.3f}, {cr['axis'][2]:+.3f})"
+                        "<extra></extra>"
+                    ),
+                }
+            )
 
         # ---- Metadata banner ----
         header_bits = []
         if len(cam_records) >= 2:
-            p1, p2 = cam_records[0]['pos'], cam_records[1]['pos']
+            p1, p2 = cam_records[0]["pos"], cam_records[1]["pos"]
             baseline = float(np.linalg.norm(p1 - p2))
-            a1, a2 = cam_records[0]['axis'], cam_records[1]['axis']
-            ang = float(np.degrees(np.arccos(np.clip(float(np.dot(a1, a2)), -1.0, 1.0))))
+            a1, a2 = cam_records[0]["axis"], cam_records[1]["axis"]
+            ang = float(
+                np.degrees(np.arccos(np.clip(float(np.dot(a1, a2)), -1.0, 1.0)))
+            )
             header_bits.append(
                 f"Baseline: {baseline:.1f} mm &nbsp;•&nbsp; "
                 f"Optical-axis angle: {ang:.2f}°"
             )
         for cr in cam_records:
-            p = cr['pos']
+            p = cr["pos"]
             header_bits.append(
                 f"<span style='color:{cr['color']}'>"
                 f"{cr['label']}</span>: pos=({p[0]:+.0f},&nbsp;{p[1]:+.0f},&nbsp;{p[2]:+.0f}) mm"
             )
-        header_html = ' &nbsp;•&nbsp; '.join(header_bits)
+        header_html = " &nbsp;•&nbsp; ".join(header_bits)
 
         layout = {
-            'title': {'text': title, 'x': 0.5, 'xanchor': 'center'},
-            'scene': {
-                'xaxis': {'title': 'X (mm)', 'backgroundcolor': 'rgb(240,240,240)'},
-                'yaxis': {'title': 'Y (mm)', 'backgroundcolor': 'rgb(240,240,240)'},
-                'zaxis': {'title': 'Z (mm)', 'backgroundcolor': 'rgb(240,240,240)'},
-                'aspectmode': 'data',
-                'camera': {
-                    'eye': {'x': 1.4, 'y': -1.4, 'z': 1.1},
-                    'up': {'x': 0, 'y': 1, 'z': 0},
+            "title": {"text": title, "x": 0.5, "xanchor": "center"},
+            "scene": {
+                "xaxis": {"title": "X (mm)", "backgroundcolor": "rgb(240,240,240)"},
+                "yaxis": {"title": "Y (mm)", "backgroundcolor": "rgb(240,240,240)"},
+                "zaxis": {"title": "Z (mm)", "backgroundcolor": "rgb(240,240,240)"},
+                "aspectmode": "data",
+                "camera": {
+                    "eye": {"x": 1.4, "y": -1.4, "z": 1.1},
+                    "up": {"x": 0, "y": 1, "z": 0},
                 },
             },
-            'legend': {'x': 0.02, 'y': 0.98, 'bgcolor': 'rgba(255,255,255,0.85)'},
-            'margin': {'l': 0, 'r': 0, 't': 50, 'b': 0},
-            'paper_bgcolor': 'white',
+            "legend": {"x": 0.02, "y": 0.98, "bgcolor": "rgba(255,255,255,0.85)"},
+            "margin": {"l": 0, "r": 0, "t": 50, "b": 0},
+            "paper_bgcolor": "white",
         }
 
         plot_json = json.dumps(
-            {'data': traces, 'layout': layout},
+            {"data": traces, "layout": layout},
             default=lambda o: (None if (isinstance(o, float) and np.isnan(o)) else o),
             allow_nan=False,
-            separators=(',', ':'),
+            separators=(",", ":"),
         )
 
         html_template = f"""<!DOCTYPE html>
@@ -1088,15 +1276,18 @@ def make_camera_placement_html(
 </html>
 """
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(str(output_path), 'w', encoding='utf-8') as f:
+        with open(str(output_path), "w", encoding="utf-8") as f:
             f.write(html_template)
     except Exception:
-        logger.warning(f"Failed to generate camera placement HTML: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate camera placement HTML: {traceback.format_exc()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 5. Stepped board detection figure (2-panel)
 # ---------------------------------------------------------------------------
+
 
 def make_stepped_detection_figure(
     image: np.ndarray,
@@ -1149,35 +1340,46 @@ def make_stepped_detection_figure(
     try:
         n_a = 0
         n_b = 0
-        if level_a is not None and 'centers' in level_a:
-            n_a = len(np.array(level_a['centers']))
-        if level_b is not None and 'centers' in level_b:
-            n_b = len(np.array(level_b['centers']))
+        if level_a is not None and "centers" in level_a:
+            n_a = len(np.array(level_a["centers"]))
+        if level_b is not None and "centers" in level_b:
+            n_b = len(np.array(level_b["centers"]))
 
         # Resolve peak/trough display mapping.
-        if peak_level in ('A', 'B') and trough_level in ('A', 'B') and peak_level != trough_level:
-            level_peak_data = level_a if peak_level == 'A' else level_b
-            level_trough_data = level_a if trough_level == 'A' else level_b
-            peak_label_text = 'Peak'
-            trough_label_text = 'Trough'
+        if (
+            peak_level in ("A", "B")
+            and trough_level in ("A", "B")
+            and peak_level != trough_level
+        ):
+            level_peak_data = level_a if peak_level == "A" else level_b
+            level_trough_data = level_a if trough_level == "A" else level_b
+            peak_label_text = "Peak"
+            trough_label_text = "Trough"
         else:
             # Legacy fallback when caller doesn't know the resolution.
             level_peak_data = level_a
             level_trough_data = level_b
-            peak_label_text = 'Level A'
-            trough_label_text = 'Level B'
+            peak_label_text = "Level A"
+            trough_label_text = "Level B"
 
-        n_peak = len(np.array(level_peak_data['centers'])) if (
-            level_peak_data is not None and 'centers' in level_peak_data
-        ) else 0
-        n_trough = len(np.array(level_trough_data['centers'])) if (
-            level_trough_data is not None and 'centers' in level_trough_data
-        ) else 0
+        n_peak = (
+            len(np.array(level_peak_data["centers"]))
+            if (level_peak_data is not None and "centers" in level_peak_data)
+            else 0
+        )
+        n_trough = (
+            len(np.array(level_trough_data["centers"]))
+            if (level_trough_data is not None and "centers" in level_trough_data)
+            else 0
+        )
 
         fig = plt.figure(figsize=(20, 7))
-        status = f'{n_a + n_b} points ({peak_label_text}={n_peak}, {trough_label_text}={n_trough})'
-        fig.suptitle(f'{title or "Stepped Board Detection"}  —  {status}', fontsize=13,
-                     color='darkgreen' if (n_a + n_b) > 0 else 'darkred')
+        status = f"{n_a + n_b} points ({peak_label_text}={n_peak}, {trough_label_text}={n_trough})"
+        fig.suptitle(
+            f'{title or "Stepped Board Detection"}  —  {status}',
+            fontsize=13,
+            color="darkgreen" if (n_a + n_b) > 0 else "darkred",
+        )
         gs = GridSpec(1, 3, figure=fig, wspace=0.10)
 
         clahe_img = _to_uint8_gray(image)
@@ -1190,15 +1392,17 @@ def make_stepped_detection_figure(
         # _polarity_results = [{'centers', 'n_blobs', 'invert', ...}].
         # The legacy figure read `all_keypoints`/`noise_blobs_filtered`
         # which were never populated (reported "0 kept, 0 filtered").
-        n_blobs = blob_info.get('n_blobs_detected', 0) if blob_info else 0
-        polarity_mode = blob_info.get('image_mode', 'unknown') if blob_info else 'unknown'
-        polarity_results = blob_info.get('_polarity_results', []) if blob_info else []
+        n_blobs = blob_info.get("n_blobs_detected", 0) if blob_info else 0
+        polarity_mode = (
+            blob_info.get("image_mode", "unknown") if blob_info else "unknown"
+        )
+        polarity_results = blob_info.get("_polarity_results", []) if blob_info else []
         candidate_bits = []
         for p in polarity_results:
-            p_inv = p.get('invert', False)
-            p_n = int(p.get('n_blobs', 0))
+            p_inv = p.get("invert", False)
+            p_n = int(p.get("n_blobs", 0))
             candidate_bits.append(f"{'inverted' if p_inv else 'original'}={p_n}")
-        candidates_str = ' | '.join(candidate_bits) if candidate_bits else 'n/a'
+        candidates_str = " | ".join(candidate_bits) if candidate_bits else "n/a"
 
         # Panel 1: Blob detection summary — kept blob centers overlaid
         # on CLAHE gray, plus fiducial crosshairs for the datum pose.
@@ -1208,18 +1412,19 @@ def make_stepped_detection_figure(
         # level_a OR level_b) as small green circles — shows the actual
         # detector output, not a stale pre-filter keypoint list.
         for level_data in (level_a, level_b):
-            if level_data is None or 'centers' not in level_data:
+            if level_data is None or "centers" not in level_data:
                 continue
-            centers_np = np.array(level_data['centers'])
+            centers_np = np.array(level_data["centers"])
             for pt in centers_np:
                 cv2.circle(disp, (int(pt[0]), int(pt[1])), 6, (0, 255, 0), 2)
         ax1.imshow(disp[::scale, ::scale])
         ax1.set_title(
-            f'Blob Detection: {n_blobs} kept ({polarity_mode})  —  '
-            f'polarity candidates: {candidates_str}',
+            f"Blob Detection: {n_blobs} kept ({polarity_mode})  —  "
+            f"polarity candidates: {candidates_str}",
             fontsize=9,
         )
-        ax1.set_xticks([]); ax1.set_yticks([])
+        ax1.set_xticks([])
+        ax1.set_yticks([])
 
         # Fiducial overlay — only when the caller supplies fiducials
         # (i.e. the datum pose). Show origin, +X, +Y labels and the
@@ -1227,37 +1432,66 @@ def make_stepped_detection_figure(
         # orientation convention at a glance.
         if fiducials is not None:
             try:
-                origin = np.asarray(fiducials.get('origin'), dtype=np.float64) / scale
-                x_axis = np.asarray(fiducials.get('x_axis'), dtype=np.float64) / scale
-                y_axis = np.asarray(fiducials.get('y_axis'), dtype=np.float64) / scale
+                origin = np.asarray(fiducials.get("origin"), dtype=np.float64) / scale
+                x_axis = np.asarray(fiducials.get("x_axis"), dtype=np.float64) / scale
+                y_axis = np.asarray(fiducials.get("y_axis"), dtype=np.float64) / scale
 
                 ax1.annotate(
-                    '', xy=x_axis, xytext=origin,
-                    arrowprops=dict(arrowstyle='-|>', color='yellow', lw=2),
+                    "",
+                    xy=x_axis,
+                    xytext=origin,
+                    arrowprops=dict(arrowstyle="-|>", color="yellow", lw=2),
                 )
                 ax1.annotate(
-                    '', xy=y_axis, xytext=origin,
-                    arrowprops=dict(arrowstyle='-|>', color='magenta', lw=2),
+                    "",
+                    xy=y_axis,
+                    xytext=origin,
+                    arrowprops=dict(arrowstyle="-|>", color="magenta", lw=2),
                 )
                 ax1.scatter(
-                    [origin[0]], [origin[1]],
-                    s=100, facecolor='none', edgecolor='lime', linewidths=2,
-                    marker='o', zorder=10,
+                    [origin[0]],
+                    [origin[1]],
+                    s=100,
+                    facecolor="none",
+                    edgecolor="lime",
+                    linewidths=2,
+                    marker="o",
+                    zorder=10,
                 )
                 ax1.scatter(
-                    [origin[0]], [origin[1]],
-                    s=30, color='lime', marker='+', zorder=11,
+                    [origin[0]],
+                    [origin[1]],
+                    s=30,
+                    color="lime",
+                    marker="+",
+                    zorder=11,
                 )
-                ax1.text(origin[0] + 5, origin[1] - 5, 'O',
-                         color='lime', fontsize=10, fontweight='bold')
-                ax1.text(x_axis[0] + 5, x_axis[1] - 5, '+X',
-                         color='yellow', fontsize=10, fontweight='bold')
-                ax1.text(y_axis[0] + 5, y_axis[1] - 5, '+Y',
-                         color='magenta', fontsize=10, fontweight='bold')
+                ax1.text(
+                    origin[0] + 5,
+                    origin[1] - 5,
+                    "O",
+                    color="lime",
+                    fontsize=10,
+                    fontweight="bold",
+                )
+                ax1.text(
+                    x_axis[0] + 5,
+                    x_axis[1] - 5,
+                    "+X",
+                    color="yellow",
+                    fontsize=10,
+                    fontweight="bold",
+                )
+                ax1.text(
+                    y_axis[0] + 5,
+                    y_axis[1] - 5,
+                    "+Y",
+                    color="magenta",
+                    fontsize=10,
+                    fontweight="bold",
+                )
             except Exception:
-                logger.debug(
-                    f"Fiducial overlay failed: {traceback.format_exc()}"
-                )
+                logger.debug(f"Fiducial overlay failed: {traceback.format_exc()}")
 
         # Panel 2: Final grid network — Peak=royalblue, Trough=crimson,
         # with each level drawn as its OWN network (no cross-level edges,
@@ -1265,25 +1499,32 @@ def make_stepped_detection_figure(
         # sub-lattices).
         ax2 = fig.add_subplot(gs[0, 1])
         for level_data, color, lbl in [
-            (level_peak_data, 'royalblue', peak_label_text),
-            (level_trough_data, 'crimson', trough_label_text),
+            (level_peak_data, "royalblue", peak_label_text),
+            (level_trough_data, "crimson", trough_label_text),
         ]:
-            if level_data is None or 'centers' not in level_data:
+            if level_data is None or "centers" not in level_data:
                 continue
-            centers = np.array(level_data['centers'])
+            centers = np.array(level_data["centers"])
             if len(centers) == 0:
                 continue
-            ax2.scatter(centers[:, 0], centers[:, 1], c=color, s=10, zorder=5,
-                        label=f'{lbl} ({len(centers)})')
-            if 'grid_indices' in level_data:
-                gi = np.array(level_data['grid_indices'])
+            ax2.scatter(
+                centers[:, 0],
+                centers[:, 1],
+                c=color,
+                s=10,
+                zorder=5,
+                label=f"{lbl} ({len(centers)})",
+            )
+            if "grid_indices" in level_data:
+                gi = np.array(level_data["grid_indices"])
                 if len(gi) > 0:
                     _draw_grid_network(ax2, centers, gi, color=color, lw=0.6, alpha=0.7)
         ax2.invert_yaxis()
-        ax2.set_aspect('equal', adjustable='datalim')
+        ax2.set_aspect("equal", adjustable="datalim")
         ax2.legend(fontsize=8)
-        ax2.set_title('Final Grid (per-level networks)', fontsize=10)
-        ax2.set_xticks([]); ax2.set_yticks([])
+        ax2.set_title("Final Grid (per-level networks)", fontsize=10)
+        ax2.set_xticks([])
+        ax2.set_yticks([])
 
         # Panel 3: Grid on image — same colour convention
         ax3 = fig.add_subplot(gs[0, 2])
@@ -1295,31 +1536,37 @@ def make_stepped_detection_figure(
             (level_peak_data, (225, 105, 65)),
             (level_trough_data, (60, 20, 220)),
         ]:
-            if level_data is None or 'centers' not in level_data:
+            if level_data is None or "centers" not in level_data:
                 continue
-            centers = np.array(level_data['centers'])
+            centers = np.array(level_data["centers"])
             if len(centers) == 0:
                 continue
             for pt in centers:
                 cv2.circle(result_disp, (int(pt[0]), int(pt[1])), 8, cv_color, 3)
-            if 'grid_indices' in level_data:
-                gi = np.array(level_data['grid_indices'])
+            if "grid_indices" in level_data:
+                gi = np.array(level_data["grid_indices"])
                 if len(gi) > 0:
-                    _draw_grid_network_cv(result_disp, centers, gi, color=cv_color, thickness=1)
+                    _draw_grid_network_cv(
+                        result_disp, centers, gi, color=cv_color, thickness=1
+                    )
         ax3.imshow(result_disp[::scale, ::scale])
-        ax3.set_title('Grid on Image', fontsize=10)
-        ax3.set_xticks([]); ax3.set_yticks([])
+        ax3.set_title("Grid on Image", fontsize=10)
+        ax3.set_xticks([])
+        ax3.set_yticks([])
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=150, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
         plt.close(fig)
     except Exception:
-        logger.warning(f"Failed to generate stepped detection figure: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate stepped detection figure: {traceback.format_exc()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 6. Stepped board reprojection error figure (per-camera scatter with RMS circle)
 # ---------------------------------------------------------------------------
+
 
 def make_stepped_reprojection_figure(
     cam_results: Dict[int, Dict[str, Any]],
@@ -1354,68 +1601,86 @@ def make_stepped_reprojection_figure(
             axes = [axes]
 
         for ax, (cam_num, r) in zip(axes, cam_results.items()):
-            K = r['K']
-            dist = r['dist']
-            rms_val = r['rms']
+            K = r["K"]
+            dist = r["dist"]
+            rms_val = r["rms"]
 
-            obj_views = r.get('obj_views_per_pose')
-            img_views = r.get('img_views_per_pose')
-            rvecs_all = r.get('rvecs_all')
-            tvecs_all = r.get('tvecs_all')
-            pose_indices = r.get('pose_indices')
+            obj_views = r.get("obj_views_per_pose")
+            img_views = r.get("img_views_per_pose")
+            rvecs_all = r.get("rvecs_all")
+            tvecs_all = r.get("tvecs_all")
+            pose_indices = r.get("pose_indices")
             is_multi = (
-                obj_views is not None and img_views is not None
-                and rvecs_all is not None and tvecs_all is not None
+                obj_views is not None
+                and img_views is not None
+                and rvecs_all is not None
+                and tvecs_all is not None
                 and len(obj_views) > 1
             )
 
             if not is_multi:
                 # --- Single-pose path: original Z-plane coloring ---
-                obj = r['obj_points']
-                img = r['img_points']
-                rvec = r['rvec']
-                tvec = r['tvec']
+                obj = r["obj_points"]
+                img = r["img_points"]
+                rvec = r["rvec"]
+                tvec = r["tvec"]
                 projected, _ = cv2.projectPoints(
                     obj.astype(np.float64),
                     rvec.astype(np.float64),
                     tvec.astype(np.float64),
-                    K, dist,
+                    K,
+                    dist,
                 )
                 errors = img.reshape(-1, 2) - projected.reshape(-1, 2)
                 z_vals = obj[:, 2]
                 unique_z = np.unique(np.round(z_vals, 2))
                 for z in unique_z:
                     mask = np.abs(z_vals - z) < 0.5
-                    ax.scatter(errors[mask, 0], errors[mask, 1], s=4, alpha=0.6,
-                               label=f'Z={z:.1f}mm ({mask.sum()} pts)')
+                    ax.scatter(
+                        errors[mask, 0],
+                        errors[mask, 1],
+                        s=4,
+                        alpha=0.6,
+                        label=f"Z={z:.1f}mm ({mask.sum()} pts)",
+                    )
             else:
                 # --- Multi-pose path: per-pose coloring ---
                 n_poses = len(obj_views)
                 if pose_indices is None or len(pose_indices) != n_poses:
                     pose_indices = list(range(n_poses))
-                cmap = plt.get_cmap('tab10' if n_poses <= 10 else 'tab20')
+                cmap = plt.get_cmap("tab10" if n_poses <= 10 else "tab20")
                 all_errs = []
-                for i, (obj, img_pts, rv, tv, pose_id) in enumerate(zip(
-                    obj_views, img_views, rvecs_all, tvecs_all, pose_indices,
-                )):
+                for i, (obj, img_pts, rv, tv, pose_id) in enumerate(
+                    zip(
+                        obj_views,
+                        img_views,
+                        rvecs_all,
+                        tvecs_all,
+                        pose_indices,
+                    )
+                ):
                     obj = np.asarray(obj, dtype=np.float64)
                     img_pts = np.asarray(img_pts, dtype=np.float64).reshape(-1, 2)
                     projected, _ = cv2.projectPoints(
                         obj,
                         np.asarray(rv, dtype=np.float64),
                         np.asarray(tv, dtype=np.float64),
-                        K, dist,
+                        K,
+                        dist,
                     )
                     errors = img_pts - projected.reshape(-1, 2)
                     all_errs.append(errors)
-                    pose_rms = float(np.sqrt(np.mean(errors ** 2)))
-                    label = (f'pose {pose_id} (n={len(errors)}, '
-                             f'rms={pose_rms:.3f}px)')
+                    pose_rms = float(np.sqrt(np.mean(errors**2)))
+                    label = (
+                        f"pose {pose_id} (n={len(errors)}, " f"rms={pose_rms:.3f}px)"
+                    )
                     if i == 0:
-                        label = 'DATUM ' + label
+                        label = "DATUM " + label
                     ax.scatter(
-                        errors[:, 0], errors[:, 1],
-                        s=8, alpha=0.7,
+                        errors[:, 0],
+                        errors[:, 1],
+                        s=8,
+                        alpha=0.7,
                         color=cmap(i % cmap.N),
                         label=label,
                     )
@@ -1433,35 +1698,47 @@ def make_stepped_reprojection_figure(
                 span = 3 * rms_val + 0.5
 
             # RMS circle (full-fit rms across all poses)
-            circle = plt.Circle((0, 0), rms_val, fill=False, color='red',
-                                linewidth=1.5, linestyle='--',
-                                label=f'total RMS={rms_val:.3f}px')
+            circle = plt.Circle(
+                (0, 0),
+                rms_val,
+                fill=False,
+                color="red",
+                linewidth=1.5,
+                linestyle="--",
+                label=f"total RMS={rms_val:.3f}px",
+            )
             ax.add_patch(circle)
-            ax.axhline(0, color='k', linewidth=0.5, alpha=0.3)
-            ax.axvline(0, color='k', linewidth=0.5, alpha=0.3)
+            ax.axhline(0, color="k", linewidth=0.5, alpha=0.3)
+            ax.axvline(0, color="k", linewidth=0.5, alpha=0.3)
             ax.set_xlim(-span, span)
             ax.set_ylim(-span, span)
-            ax.set_aspect('equal')
-            ax.set_xlabel('x error (px)')
-            ax.set_ylabel('y error (px)')
-            pose_suffix = f' ({len(obj_views)} poses)' if is_multi else ''
-            ax.set_title(f'Cam {cam_num}: RMS={rms_val:.3f}px{pose_suffix}')
-            ax.legend(fontsize=7, loc='upper right')
+            ax.set_aspect("equal")
+            ax.set_xlabel("x error (px)")
+            ax.set_ylabel("y error (px)")
+            pose_suffix = f" ({len(obj_views)} poses)" if is_multi else ""
+            ax.set_title(f"Cam {cam_num}: RMS={rms_val:.3f}px{pose_suffix}")
+            ax.legend(fontsize=7, loc="upper right")
 
-        fig.suptitle('Reprojection Errors (per calibration dot)\n'
-                     'Red dashed circle = total fit RMS radius',
-                     fontsize=13, fontweight='bold')
+        fig.suptitle(
+            "Reprojection Errors (per calibration dot)\n"
+            "Red dashed circle = total fit RMS radius",
+            fontsize=13,
+            fontweight="bold",
+        )
         plt.tight_layout()
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=200, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=200, bbox_inches="tight")
         plt.close(fig)
     except Exception:
-        logger.warning(f"Failed to generate stepped reprojection figure: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate stepped reprojection figure: {traceback.format_exc()}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # 7. Dewarp overlay pair figure (red-cyan stereo verification)
 # ---------------------------------------------------------------------------
+
 
 def make_dewarp_overlay_figure(
     img1: np.ndarray,
@@ -1529,10 +1806,12 @@ def make_dewarp_overlay_figure(
 
         def build_dewarp_maps(pr, z_mm):
             Z_grid = np.full_like(X_grid, z_mm)
-            world_pts = np.column_stack([X_grid.ravel(), Y_grid.ravel(),
-                                         Z_grid.ravel()]).astype(np.float64)
-            projected, _ = cv2.projectPoints(world_pts, pr['rvec'], pr['tvec'],
-                                              pr['K'], pr['dist'])
+            world_pts = np.column_stack(
+                [X_grid.ravel(), Y_grid.ravel(), Z_grid.ravel()]
+            ).astype(np.float64)
+            projected, _ = cv2.projectPoints(
+                world_pts, pr["rvec"], pr["tvec"], pr["K"], pr["dist"]
+            )
             projected = projected.reshape(-1, 2)
             map_x = projected[:, 0].reshape(X_grid.shape).astype(np.float32)
             map_y = projected[:, 1].reshape(Y_grid.shape).astype(np.float32)
@@ -1544,16 +1823,36 @@ def make_dewarp_overlay_figure(
                 return np.zeros(im.shape, dtype=np.uint8)
             return ((im - lo) / (hi - lo) * 255).astype(np.uint8)
 
-        img1_f = img1.astype(np.float64) if img1.ndim == 2 else cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY).astype(np.float64)
-        img2_f = img2.astype(np.float64) if img2.ndim == 2 else cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY).astype(np.float64)
+        img1_f = (
+            img1.astype(np.float64)
+            if img1.ndim == 2
+            else cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY).astype(np.float64)
+        )
+        img2_f = (
+            img2.astype(np.float64)
+            if img2.ndim == 2
+            else cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY).astype(np.float64)
+        )
 
         map1_x, map1_y = build_dewarp_maps(pr1, z1)
         map2_x, map2_y = build_dewarp_maps(pr2, z2)
 
-        dw1 = cv2.remap(img1_f, map1_x, map1_y, cv2.INTER_CUBIC,
-                         borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-        dw2 = cv2.remap(img2_f, map2_x, map2_y, cv2.INTER_CUBIC,
-                         borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        dw1 = cv2.remap(
+            img1_f,
+            map1_x,
+            map1_y,
+            cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
+        )
+        dw2 = cv2.remap(
+            img2_f,
+            map2_x,
+            map2_y,
+            cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
+        )
 
         h_img1, w_img1 = img1_f.shape[:2]
         h_img2, w_img2 = img2_f.shape[:2]
@@ -1569,38 +1868,70 @@ def make_dewarp_overlay_figure(
         overlay = np.stack([r_ch, c_ch, c_ch], axis=-1)
 
         fig, ax = plt.subplots(1, 1, figsize=(16, 12))
-        ax.imshow(overlay, extent=[x_min, x_max, y_min, y_max], origin='lower')
+        ax.imshow(overlay, extent=[x_min, x_max, y_min, y_max], origin="lower")
 
         # Grid lines at dot spacing, offset for the level being displayed
-        ax.axhline(0, color='lime', linewidth=1, alpha=0.6)
-        ax.axvline(0, color='lime', linewidth=1, alpha=0.6)
-        ax.scatter(0, 0, s=300, c='lime', marker='+', linewidths=3, zorder=20)
-        ax.set_xticks(np.arange(
-            np.ceil((x_min - grid_offset) / dot_spacing_mm) * dot_spacing_mm + grid_offset,
-            x_max, dot_spacing_mm))
-        ax.set_yticks(np.arange(
-            np.ceil((y_min - grid_offset) / dot_spacing_mm) * dot_spacing_mm + grid_offset,
-            y_max, dot_spacing_mm))
-        ax.grid(True, color='white', alpha=0.15, linewidth=0.5)
+        ax.axhline(0, color="lime", linewidth=1, alpha=0.6)
+        ax.axvline(0, color="lime", linewidth=1, alpha=0.6)
+        ax.scatter(0, 0, s=300, c="lime", marker="+", linewidths=3, zorder=20)
+        ax.set_xticks(
+            np.arange(
+                np.ceil((x_min - grid_offset) / dot_spacing_mm) * dot_spacing_mm
+                + grid_offset,
+                x_max,
+                dot_spacing_mm,
+            )
+        )
+        ax.set_yticks(
+            np.arange(
+                np.ceil((y_min - grid_offset) / dot_spacing_mm) * dot_spacing_mm
+                + grid_offset,
+                y_max,
+                dot_spacing_mm,
+            )
+        )
+        ax.grid(True, color="white", alpha=0.15, linewidth=0.5)
 
         # Cal dot markers for the specific levels being dewarped
         c1_pts = cam1_level_obj if cam1_level_obj is not None else cam1_obj
         c2_pts = cam2_level_obj if cam2_level_obj is not None else cam2_obj
-        ax.scatter(c1_pts[:, 0], c1_pts[:, 1], s=25, facecolors='none',
-                   edgecolors='white', linewidths=0.6, marker='s', alpha=0.7,
-                   zorder=6, label=f'Cam1 ({len(c1_pts)})')
-        ax.scatter(c2_pts[:, 0], c2_pts[:, 1], s=25, facecolors='none',
-                   edgecolors='lime', linewidths=0.6, marker='D', alpha=0.7,
-                   zorder=6, label=f'Cam2 ({len(c2_pts)})')
+        ax.scatter(
+            c1_pts[:, 0],
+            c1_pts[:, 1],
+            s=25,
+            facecolors="none",
+            edgecolors="white",
+            linewidths=0.6,
+            marker="s",
+            alpha=0.7,
+            zorder=6,
+            label=f"Cam1 ({len(c1_pts)})",
+        )
+        ax.scatter(
+            c2_pts[:, 0],
+            c2_pts[:, 1],
+            s=25,
+            facecolors="none",
+            edgecolors="lime",
+            linewidths=0.6,
+            marker="D",
+            alpha=0.7,
+            zorder=6,
+            label=f"Cam2 ({len(c2_pts)})",
+        )
 
-        ax.set_xlabel('X world (mm)')
-        ax.set_ylabel('Y world (mm)')
-        ax.set_title(title or f'Dewarp Overlay (Cam1=red Z={z1:.1f}mm, Cam2=cyan Z={z2:.1f}mm)',
-                     fontsize=12)
-        ax.legend(fontsize=8, loc='upper right')
+        ax.set_xlabel("X world (mm)")
+        ax.set_ylabel("Y world (mm)")
+        ax.set_title(
+            title or f"Dewarp Overlay (Cam1=red Z={z1:.1f}mm, Cam2=cyan Z={z2:.1f}mm)",
+            fontsize=12,
+        )
+        ax.legend(fontsize=8, loc="upper right")
         plt.tight_layout()
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(output_path), dpi=200, bbox_inches='tight')
+        fig.savefig(str(output_path), dpi=200, bbox_inches="tight")
         plt.close(fig)
     except Exception:
-        logger.warning(f"Failed to generate dewarp overlay figure: {traceback.format_exc()}")
+        logger.warning(
+            f"Failed to generate dewarp overlay figure: {traceback.format_exc()}"
+        )

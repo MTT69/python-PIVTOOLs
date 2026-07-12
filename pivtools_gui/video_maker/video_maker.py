@@ -72,7 +72,9 @@ class PlotSettings:
     use_ffmpeg: bool = True  # only ffmpeg supported
     crf: int = 15  # High quality default (lower = higher quality, range 0-51)
     codec: str = "libx264"  # ensure H.264 by default
-    pix_fmt: str = "yuv420p"  # 4:2:0 for maximum compatibility (macOS, Windows, browsers)
+    pix_fmt: str = (
+        "yuv420p"  # 4:2:0 for maximum compatibility (macOS, Windows, browsers)
+    )
     preset: str = "veryslow"  # Maximum quality encoding (slower but better compression)
     dither: bool = False  # Disabled by default to avoid graininess
     dither_strength: float = 0.0001  # Much lower strength when enabled
@@ -82,10 +84,14 @@ class PlotSettings:
 
     # Extra ffmpeg args - optimized for scientific visualization with Mac/browser compatibility
     ffmpeg_extra_args: Tuple[str, ...] | List[str] = (
-        "-profile:v", "high",  # H.264 High profile (compatible with macOS/QuickTime)
-        "-level:v", "4.0",  # Level 4.0 for maximum compatibility (supports 1080p)
-        "-tune", "stillimage",  # Optimize for still images/slow motion (scientific data)
-        "-x264-params", "aq-mode=3:aq-strength=0.5:deblock=-1,-1",  # Reduced blocking artifacts
+        "-profile:v",
+        "high",  # H.264 High profile (compatible with macOS/QuickTime)
+        "-level:v",
+        "4.0",  # Level 4.0 for maximum compatibility (supports 1080p)
+        "-tune",
+        "stillimage",  # Optimize for still images/slow motion (scientific data)
+        "-x264-params",
+        "aq-mode=3:aq-strength=0.5:deblock=-1,-1",  # Reduced blocking artifacts
     )
     ffmpeg_loglevel: str = "warning"
 
@@ -204,21 +210,33 @@ def _select_variable_from_arrs(
 
     # Debug: Check if var is actually a numpy array (which would be an error in calling code)
     if isinstance(var, np.ndarray):
-        logger.error(f"ERROR: var parameter is a numpy array instead of string! var.shape={var.shape}, var.dtype={var.dtype}")
-        logger.error(f"This suggests a bug in the calling code. Defaulting to 'ux'")
+        logger.error(
+            f"ERROR: var parameter is a numpy array instead of string! var.shape={var.shape}, var.dtype={var.dtype}"
+        )
+        logger.error("This suggests a bug in the calling code. Defaulting to 'ux'")
         var = "ux"  # Default to ux as a fallback
     elif not isinstance(var, (str, int)):
         logger.error(f"ERROR: var parameter has unexpected type {type(var)}: {var}")
-        logger.error(f"Converting to string as fallback")
+        logger.error("Converting to string as fallback")
         var = str(var)
 
     # Define stats variables that are loaded from piv_result struct
     STATS_VARIABLES = {
-        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
-        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
-        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+        "u_prime",
+        "v_prime",
+        "w_prime",  # Legacy fluctuations
+        "uu_inst",
+        "vv_inst",
+        "ww_inst",
+        "uv_inst",
+        "uw_inst",
+        "vw_inst",  # Stress tensor components
+        "vorticity",
+        "divergence",
+        "gamma1",
+        "gamma2",  # Derived stats
     }
-    
+
     # ndarray case (common path)
     if isinstance(arrs, np.ndarray):
         try:
@@ -226,7 +244,9 @@ def _select_variable_from_arrs(
                 # Layout: (R, C, H, W) where C=3 (ux,uy,b_mask) or C=4 (ux,uy,uz,b_mask)
                 # b_mask is ALWAYS the last channel
                 if not (0 <= run_index < arrs.shape[0]):
-                    logger.warning(f"run_index {run_index} out of bounds for {filepath}, using 0")
+                    logger.warning(
+                        f"run_index {run_index} out of bounds for {filepath}, using 0"
+                    )
                     run_index = 0
                 C = arrs.shape[1]
                 mask_idx = C - 1  # b_mask is always last channel
@@ -240,7 +260,9 @@ def _select_variable_from_arrs(
                         if C >= 4:
                             var_idx = 2
                         else:
-                            raise ValueError(f"uz not available for 2D data (C={C}) in {filepath}")
+                            raise ValueError(
+                                f"uz not available for 2D data (C={C}) in {filepath}"
+                            )
                     elif var == "mag":
                         ux = arrs[run_index, 0]
                         uy = arrs[run_index, 1]
@@ -264,7 +286,9 @@ def _select_variable_from_arrs(
                     arr = arrs[run_index, var_idx]
                     b_mask = arrs[run_index, mask_idx] if C > 2 else None
                     if arr.ndim != 2:
-                        raise ValueError(f"Expected 2D array for {var} in {filepath} (run_index {run_index}), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data for this run; try a different run (e.g., run=1).")
+                        raise ValueError(
+                            f"Expected 2D array for {var} in {filepath} (run_index {run_index}), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data for this run; try a different run (e.g., run=1)."
+                        )
                     return arr, (b_mask if b_mask is not None else None)
             elif arrs.ndim == 3:
                 # Layout: (C, H, W) where C=3 (ux,uy,b_mask) or C=4 (ux,uy,uz,b_mask)
@@ -280,7 +304,9 @@ def _select_variable_from_arrs(
                         if C >= 4:
                             var_idx = 2
                         else:
-                            raise ValueError(f"uz not available for 2D data (C={C}) in {filepath}")
+                            raise ValueError(
+                                f"uz not available for 2D data (C={C}) in {filepath}"
+                            )
                     elif var == "mag":
                         ux = arrs[0]
                         uy = arrs[1]
@@ -303,25 +329,32 @@ def _select_variable_from_arrs(
                     arr = arrs[var_idx]
                     b_mask = arrs[mask_idx] if C > 2 else None
                     if arr.ndim != 2:
-                        raise ValueError(f"Expected 2D array for {var} in {filepath} (3D case), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data.")
+                        raise ValueError(
+                            f"Expected 2D array for {var} in {filepath} (3D case), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data."
+                        )
                     return arr, (b_mask if b_mask is not None else None)
                 else:
-                    logger.warning(f"Invalid variable '{var}' for 3D array in {filepath}, defaulting to index 0 (ux)")
+                    logger.warning(
+                        f"Invalid variable '{var}' for 3D array in {filepath}, defaulting to index 0 (ux)"
+                    )
                     arr = arrs[0]
                     b_mask = arrs[mask_idx] if C > 2 else None
                     if arr.ndim != 2:
-                        raise ValueError(f"Expected 2D array for default variable (index 0) in {filepath} (3D case), but got {arr.ndim}D with shape {arr.shape}.")
+                        raise ValueError(
+                            f"Expected 2D array for default variable (index 0) in {filepath} (3D case), but got {arr.ndim}D with shape {arr.shape}."
+                        )
                     return arr, (b_mask if b_mask is not None else None)
 
             # fallback: flatten first item (for non-3D/4D or invalid var_idx)
             # logger.debug(f"Fallback: arrs[0].shape={arrs[0].shape}")
             arr = arrs[0]
             if arr.ndim != 2:
-                raise ValueError(f"Expected 2D array for {var} in {filepath} (fallback), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data.")
+                raise ValueError(
+                    f"Expected 2D array for {var} in {filepath} (fallback), but got {arr.ndim}D with shape {arr.shape}. The MAT file may contain 1D data."
+                )
             return arr, None
         except Exception as e:
             logger.error(f"Error in ndarray case for {filepath}: {e}")
-            pass
 
     # dict-like or unknown: try loadmat to find a variable by name
     try:
@@ -349,20 +382,29 @@ def _select_variable_from_arrs(
                             candidate = piv_result.flat[i]
                             if hasattr(candidate, var):
                                 arr_check = getattr(candidate, var, None)
-                                if arr_check is not None and np.asarray(arr_check).size > 0:
+                                if (
+                                    arr_check is not None
+                                    and np.asarray(arr_check).size > 0
+                                ):
                                     pr = candidate
-                                    logger.debug(f"Stats var {var}: run {run_index} empty, using run {i}")
+                                    logger.debug(
+                                        f"Stats var {var}: run {run_index} empty, using run {i}"
+                                    )
                                     break
 
                     if pr is None:
-                        raise ValueError(f"No valid run found with variable '{var}' in {filepath}")
+                        raise ValueError(
+                            f"No valid run found with variable '{var}' in {filepath}"
+                        )
                 else:
                     pr = piv_result
 
                 if hasattr(pr, var):
                     arr = np.asarray(getattr(pr, var))
                     if arr.ndim != 2:
-                        raise ValueError(f"Expected 2D array for {var} in {filepath}, got {arr.ndim}D with shape {arr.shape}")
+                        raise ValueError(
+                            f"Expected 2D array for {var} in {filepath}, got {arr.ndim}D with shape {arr.shape}"
+                        )
                     # Try to get mask from piv_result
                     b_mask = None
                     for mask_attr in ("b_mask", "bmask", "mask", "valid_mask"):
@@ -371,7 +413,9 @@ def _select_variable_from_arrs(
                             break
                     return arr, b_mask
                 else:
-                    raise ValueError(f"Stats variable '{var}' not found in piv_result struct in {filepath}")
+                    raise ValueError(
+                        f"Stats variable '{var}' not found in piv_result struct in {filepath}"
+                    )
 
         if var in mat:
             arr = np.asarray(mat[var])
@@ -399,7 +443,6 @@ def _select_variable_from_arrs(
             return arr, b_mask
     except Exception as e:
         logger.error(f"Error loading MAT for {filepath}: {e}")
-        pass
 
     # If arrs is dict-like, try to pull key directly
     try:
@@ -423,14 +466,16 @@ def _select_variable_from_arrs(
                 return arr, (np.asarray(b_mask) if b_mask is not None else None)
     except Exception as e:
         logger.error(f"Error in dict case for {filepath}: {e}")
-        pass
 
     # give up with a clear error
     raise ValueError(f"Unable to extract variable '{var}' from {filepath}")
 
 
 def _compute_global_limits_from_files(
-    files: List[Path], var: str, settings: PlotSettings, run_index: int = 0,
+    files: List[Path],
+    var: str,
+    settings: PlotSettings,
+    run_index: int = 0,
 ) -> Tuple[float, float, bool, float, float]:
     """Compute limits using parallel processing for efficiency."""
     if settings.lower_limit is not None and settings.upper_limit is not None:
@@ -447,7 +492,9 @@ def _compute_global_limits_from_files(
     def process_file(f: Path) -> Optional[np.ndarray]:
         try:
             arrs = read_mat_contents(str(f), run_index=run_index)
-            arr, b_mask = _select_variable_from_arrs(arrs, str(f), var, 0)  # Run already selected by read_mat_contents
+            arr, b_mask = _select_variable_from_arrs(
+                arrs, str(f), var, 0
+            )  # Run already selected by read_mat_contents
             # Combine b_mask and NaN into a single mask
             nan_mask = np.isnan(arr)
             if b_mask is not None:
@@ -459,7 +506,7 @@ def _compute_global_limits_from_files(
         except Exception:
             return None
 
-    with ThreadPoolExecutor(max_workers = min(os.cpu_count(), 8)) as executor:
+    with ThreadPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
         futures = [executor.submit(process_file, f) for f in files_to_check]
         for future in as_completed(futures):
             result = future.result()
@@ -664,7 +711,9 @@ def verify_video_ready(video_path: str, timeout_sec: float = 5.0) -> bool:
 
             # Consider file ready when size is stable
             if stable_count >= min_stable_checks:
-                logger.debug(f"Video verified: {video_path} (size={current_size} bytes)")
+                logger.debug(
+                    f"Video verified: {video_path} (size={current_size} bytes)"
+                )
                 return True
 
             time.sleep(check_interval)
@@ -706,7 +755,7 @@ def make_video_from_scalar(
     folder = Path(folder)
     if not folder.exists() or not folder.is_dir():
         raise ValueError(f"Invalid folder path: {folder}")
-    
+
     files = sorted(
         [Path(p) for p in glob.glob(str(folder / pattern))], key=_natural_key
     )
@@ -732,7 +781,9 @@ def make_video_from_scalar(
         elif valid_runs:
             # Fall back to highest valid run (like vector viewer does)
             effective_run_index = max(valid_runs)
-            logger.info(f"Run {run_index} has no data, falling back to highest valid run: {effective_run_index}")
+            logger.info(
+                f"Run {run_index} has no data, falling back to highest valid run: {effective_run_index}"
+            )
         else:
             raise ValueError(f"No valid runs found in {files[0]} for variable {var}")
 
@@ -740,17 +791,27 @@ def make_video_from_scalar(
         test_arrs = read_mat_contents(str(files[0]), run_index=effective_run_index)
         if isinstance(test_arrs, np.ndarray):
             if test_arrs.size == 0 or not np.any(test_arrs):
-                raise ValueError(f"Run not found: run_index {effective_run_index} contains empty/zero data in {files[0]}")
+                raise ValueError(
+                    f"Run not found: run_index {effective_run_index} contains empty/zero data in {files[0]}"
+                )
         else:
-            raise ValueError(f"Run not found: unexpected data type returned for run_index {effective_run_index}")
+            raise ValueError(
+                f"Run not found: unexpected data type returned for run_index {effective_run_index}"
+            )
     except ValueError as e:
         # read_mat_contents already validates run_index and raises informative errors
-        if "Invalid run_index" in str(e) or "No valid runs" in str(e) or "Run not found" in str(e):
+        if (
+            "Invalid run_index" in str(e)
+            or "No valid runs" in str(e)
+            or "Run not found" in str(e)
+        ):
             raise ValueError(f"Run not found: {e}")
         raise
     except Exception as e:
         logger.error(f"Failed to validate run_index {run_index} in {files[0]}: {e}")
-        raise ValueError(f"Run not found: unable to load data with run_index {run_index}")
+        raise ValueError(
+            f"Run not found: unable to load data with run_index {run_index}"
+        )
 
     # Use effective_run_index for all subsequent operations
     run_index = effective_run_index
@@ -769,10 +830,14 @@ def make_video_from_scalar(
     # Get dimensions from first file
     try:
         arrs0 = read_mat_contents(str(files[0]), run_index=run_index)
-        arr0, _ = _select_variable_from_arrs(arrs0, str(files[0]), var, 0)  # Run already selected by read_mat_contents
+        arr0, _ = _select_variable_from_arrs(
+            arrs0, str(files[0]), var, 0
+        )  # Run already selected by read_mat_contents
         logger.debug(f"First file arr0.shape={arr0.shape}, arr0.ndim={arr0.ndim}")
         if arr0.ndim != 2:
-            raise ValueError(f"Expected 2D array for {var} in {files[0]}, but got {arr0.ndim}D with shape {arr0.shape}")
+            raise ValueError(
+                f"Expected 2D array for {var} in {files[0]}, but got {arr0.ndim}D with shape {arr0.shape}"
+            )
         H, W = arr0.shape
         if H == 0 or W == 0:
             raise ValueError(f"Invalid dimensions {H}x{W} in {files[0]}")
@@ -794,7 +859,9 @@ def make_video_from_scalar(
             Hout += 1
         if Wout % 2:
             Wout += 1
-        logger.info(f"Auto-upscaled from {H}x{W} to {Hout}x{Wout} (min dimension guard)")
+        logger.info(
+            f"Auto-upscaled from {H}x{W} to {Hout}x{Wout} (min dimension guard)"
+        )
 
     try:
         writer = FFmpegVideoWriter(
@@ -822,11 +889,15 @@ def make_video_from_scalar(
         for j, f in enumerate(batch_files):
             try:
                 arrs = read_mat_contents(str(f), run_index=run_index)
-                field, b_mask = _select_variable_from_arrs(arrs, str(f), var, 0)  # Run already selected by read_mat_contents
+                field, b_mask = _select_variable_from_arrs(
+                    arrs, str(f), var, 0
+                )  # Run already selected by read_mat_contents
                 # Merge NaN pixels into mask (prevents NaN->0->blue in LUT)
                 nan_mask = np.isnan(field)
                 if np.any(nan_mask):
-                    field = np.where(nan_mask, 0.0, field)  # Replace NaN before LUT indexing
+                    field = np.where(
+                        nan_mask, 0.0, field
+                    )  # Replace NaN before LUT indexing
                     if b_mask is not None:
                         b_mask = b_mask.astype(bool) | nan_mask
                     else:
@@ -834,7 +905,9 @@ def make_video_from_scalar(
                 field_indices = _to_uint16_var(field, vmin, vmax)
                 rgb = lut[field_indices]
                 if Hout != H or Wout != W:
-                    rgb = cv2.resize(rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4)
+                    rgb = cv2.resize(
+                        rgb, (Wout, Hout), interpolation=cv2.INTER_LANCZOS4
+                    )
                     b_mask = (
                         cv2.resize(
                             b_mask.astype(np.uint8),
@@ -879,7 +952,8 @@ def make_video_from_scalar(
         "pix_fmt": getattr(settings, "pix_fmt", None),
         "crf": getattr(settings, "crf", None),
         "codec": getattr(settings, "codec", None),
-        "effective_run": run_index + 1,  # Return 1-based run number that was actually used
+        "effective_run": run_index
+        + 1,  # Return 1-based run number that was actually used
     }
 
 
@@ -906,9 +980,19 @@ class VideoMaker:
 
     # Variables that come from instantaneous stats files (not PIV files)
     STATS_VARIABLES = {
-        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
-        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
-        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+        "u_prime",
+        "v_prime",
+        "w_prime",  # Legacy fluctuations
+        "uu_inst",
+        "vv_inst",
+        "ww_inst",
+        "uv_inst",
+        "uw_inst",
+        "vw_inst",  # Stress tensor components
+        "vorticity",
+        "divergence",
+        "gamma1",
+        "gamma2",  # Derived stats
     }
 
     def __init__(
@@ -958,17 +1042,46 @@ class VideoMaker:
             else:
                 cam_pair = (1, 2)
             cam_pair_str = f"Cam{cam_pair[0]}_Cam{cam_pair[1]}"
-            return self.base_dir / "stereo_calibrated" / num_str / cam_pair_str / "instantaneous"
+            return (
+                self.base_dir
+                / "stereo_calibrated"
+                / num_str
+                / cam_pair_str
+                / "instantaneous"
+            )
         elif data_source == "calibrated":
-            return self.base_dir / "calibrated_piv" / num_str / f"Cam{self.camera}" / "instantaneous"
+            return (
+                self.base_dir
+                / "calibrated_piv"
+                / num_str
+                / f"Cam{self.camera}"
+                / "instantaneous"
+            )
         elif data_source == "uncalibrated":
-            return self.base_dir / "uncalibrated_piv" / num_str / f"Cam{self.camera}" / "instantaneous"
+            return (
+                self.base_dir
+                / "uncalibrated_piv"
+                / num_str
+                / f"Cam{self.camera}"
+                / "instantaneous"
+            )
         elif data_source == "merged":
-            return self.base_dir / "calibrated_piv" / num_str / "Merged" / "instantaneous"
+            return (
+                self.base_dir / "calibrated_piv" / num_str / "Merged" / "instantaneous"
+            )
         elif data_source == "inst_stats":
-            return self.base_dir / "statistics" / num_str / f"Cam{self.camera}" / "instantaneous" / "instantaneous_stats"
+            return (
+                self.base_dir
+                / "statistics"
+                / num_str
+                / f"Cam{self.camera}"
+                / "instantaneous"
+                / "instantaneous_stats"
+            )
         else:
-            raise ValueError(f"Unknown data_source: {data_source}. Must be one of: calibrated, uncalibrated, merged, stereo, inst_stats")
+            raise ValueError(
+                f"Unknown data_source: {data_source}. Must be one of: calibrated, uncalibrated, merged, stereo, inst_stats"
+            )
 
     def _get_video_dir(self, data_source: str, num_frame_pairs: int) -> Path:
         """
@@ -1001,7 +1114,13 @@ class VideoMaker:
         elif data_source == "inst_stats":
             return self.base_dir / "videos" / num_str / f"Cam{self.camera}" / "stats"
         elif data_source == "uncalibrated":
-            return self.base_dir / "videos" / num_str / f"Cam{self.camera}" / "uncalibrated"
+            return (
+                self.base_dir
+                / "videos"
+                / num_str
+                / f"Cam{self.camera}"
+                / "uncalibrated"
+            )
         else:
             return self.base_dir / "videos" / num_str / f"Cam{self.camera}"
 
@@ -1077,7 +1196,9 @@ class VideoMaker:
             # Validate data_source and variable compatibility
             if variable in self.STATS_VARIABLES and data_source != "inst_stats":
                 # Auto-switch to inst_stats for stats variables
-                logger.info(f"Variable '{variable}' requires inst_stats data source, switching from '{data_source}'")
+                logger.info(
+                    f"Variable '{variable}' requires inst_stats data source, switching from '{data_source}'"
+                )
                 data_source = "inst_stats"
 
             # Get appropriate directories
@@ -1098,7 +1219,11 @@ class VideoMaker:
             # Determine output filename
             if out_name is None:
                 # Camera string: stereo pair or single camera
-                if data_source == "stereo" and self._config and self._config.stereo_pairs:
+                if (
+                    data_source == "stereo"
+                    and self._config
+                    and self._config.stereo_pairs
+                ):
                     cam_pair = self._config.stereo_pairs[0]
                     cam_str = f"Cam{cam_pair[0]}_Cam{cam_pair[1]}"
                 else:
@@ -1130,7 +1255,9 @@ class VideoMaker:
                 test_frames=test_frames if test_mode else None,
             )
 
-            logger.info(f"Creating video: var={variable}, run={run}, source={data_source}, data_dir={data_dir}")
+            logger.info(
+                f"Creating video: var={variable}, run={run}, source={data_source}, data_dir={data_dir}"
+            )
 
             # Call core video generation
             result = make_video_from_scalar(
@@ -1308,8 +1435,12 @@ def apply_cli_settings_to_config():
     config.data["video"]["run"] = _RUN
     config.data["video"]["piv_type"] = "instantaneous"
     config.data["video"]["cmap"] = _CMAP if _CMAP else "default"
-    config.data["video"]["lower"] = str(_LOWER_LIMIT) if _LOWER_LIMIT is not None else ""
-    config.data["video"]["upper"] = str(_UPPER_LIMIT) if _UPPER_LIMIT is not None else ""
+    config.data["video"]["lower"] = (
+        str(_LOWER_LIMIT) if _LOWER_LIMIT is not None else ""
+    )
+    config.data["video"]["upper"] = (
+        str(_UPPER_LIMIT) if _UPPER_LIMIT is not None else ""
+    )
     config.data["video"]["fps"] = _FPS
     config.data["video"]["crf"] = _CRF
     if _RESOLUTION is not None:
@@ -1336,7 +1467,9 @@ if __name__ == "__main__":
 
     if USE_CONFIG_DIRECTLY:
         # Load settings directly from existing config.yaml
-        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        logger.info(
+            "Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)"
+        )
         config = get_config()
 
         # Extract settings from config
@@ -1376,7 +1509,9 @@ if __name__ == "__main__":
     logger.info(f"Cameras: {camera_nums}")
     logger.info(f"Variable: {variable}, Run: {run}, Data source: {data_source}")
     logger.info(f"FPS: {fps}, CRF: {crf}, Resolution: {resolution}")
-    logger.info(f"Colormap: {cmap or 'auto'}, Limits: [{lower_limit or 'auto'}, {upper_limit or 'auto'}]")
+    logger.info(
+        f"Colormap: {cmap or 'auto'}, Limits: [{lower_limit or 'auto'}, {upper_limit or 'auto'}]"
+    )
     if test_mode:
         logger.info(f"TEST MODE: {test_frames} frames")
 
@@ -1409,7 +1544,9 @@ if __name__ == "__main__":
             if result["success"]:
                 logger.info(f"Video created: {result['out_path']}")
                 logger.info(f"  Limits: {result['vmin']:.3f} to {result['vmax']:.3f}")
-                logger.info(f"  Frames: {result['frames']}, Time: {result['elapsed_sec']:.1f}s")
+                logger.info(
+                    f"  Frames: {result['frames']}, Time: {result['elapsed_sec']:.1f}s"
+                )
                 logger.info(f"  Effective run: {result['effective_run']}")
             else:
                 logger.error(f"Failed: {result.get('error')}")
@@ -1418,6 +1555,7 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"Camera {camera_num} failed: {e}")
             import traceback
+
             traceback.print_exc()
             failed_cameras.append(camera_num)
 

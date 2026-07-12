@@ -10,7 +10,6 @@ Contains endpoints for:
 
 import random
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 from flask import Blueprint, jsonify, request
@@ -22,13 +21,12 @@ from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
 
-from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
+from ..plot_maker import make_scalar_settings
 from .shared_utils import (
     apply_wall_units,
     build_response_meta,
     create_and_return_plot,
-    extract_var_and_mask,
     length_units_for,
     load_and_plot_data,
     load_piv_result,
@@ -36,7 +34,6 @@ from .shared_utils import (
     units_for_var,
     validate_and_get_paths,
 )
-
 
 vector_plot_bp = Blueprint("vector_plot", __name__)
 
@@ -75,8 +72,8 @@ def plot_vector():
         # Strip variable prefix (inst:, mean:, inst_stat:) if present
         # Frontend sends prefixed names like "inst:ux" but mat structs use raw names like "ux"
         raw_var = params["var"]
-        if ':' in raw_var:
-            _, raw_var = raw_var.split(':', 1)
+        if ":" in raw_var:
+            _, raw_var = raw_var.split(":", 1)
 
         # Determine data source
         var_source = request.args.get("var_source", default="inst", type=str)
@@ -86,7 +83,11 @@ def plot_vector():
             data_path = stats_dir / "mean_stats" / "mean_stats.mat"
             coords_path = stats_dir / "mean_stats" / "coordinates.mat"
             if not coords_path.exists():
-                coords_path = data_dir / "coordinates.mat" if (data_dir / "coordinates.mat").exists() else None
+                coords_path = (
+                    data_dir / "coordinates.mat"
+                    if (data_dir / "coordinates.mat").exists()
+                    else None
+                )
         elif var_source == "inst_stat":
             # Per-frame calculated statistics
             inst_stats_dir = stats_dir / "instantaneous_stats"
@@ -136,7 +137,7 @@ def plot_vector():
         return jsonify({"success": False, "error": str(e)}), 400
     except FileNotFoundError as e:
         logger.warning(f"plot_vector: file not found: {e}")
-        return jsonify({"success": False, "error": f"File not found"}), 404
+        return jsonify({"success": False, "error": "File not found"}), 404
     except Exception:
         logger.exception("plot_vector: unexpected error")
         return jsonify({"success": False, "error": "Internal server error"}), 500
@@ -192,31 +193,63 @@ def plot_ensemble():
         # Strip variable prefix (inst:, mean:, inst_stat:) if present
         # Frontend sends prefixed names like "inst:ux" but ensemble structs use raw names like "ux"
         raw_var = params["var"]
-        if ':' in raw_var:
-            _, raw_var = raw_var.split(':', 1)
+        if ":" in raw_var:
+            _, raw_var = raw_var.split(":", 1)
 
         paths = validate_and_get_paths(params)
         data_dir = Path(paths["data_dir"])
 
         ensemble_file = data_dir / "ensemble_result.mat"
-        coords_path = data_dir / "coordinates.mat" if (data_dir / "coordinates.mat").exists() else None
+        coords_path = (
+            data_dir / "coordinates.mat"
+            if (data_dir / "coordinates.mat").exists()
+            else None
+        )
 
         if not ensemble_file.exists():
-            return jsonify({"success": False, "error": f"Ensemble result not found: {ensemble_file}"}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Ensemble result not found: {ensemble_file}",
+                    }
+                ),
+                404,
+            )
 
         mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
         if "ensemble_result" not in mat:
-            return jsonify({"success": False, "error": "Variable 'ensemble_result' not found in mat"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Variable 'ensemble_result' not found in mat",
+                    }
+                ),
+                400,
+            )
 
         ensemble_result = mat["ensemble_result"]
 
         # Use centralized helper from vector_loading (same as instantaneous data)
         pr, effective_run = find_non_empty_run(
-            ensemble_result, raw_var, run=params["run"], require_2d=False, reject_all_nan=True
+            ensemble_result,
+            raw_var,
+            run=params["run"],
+            require_2d=False,
+            reject_all_nan=True,
         )
 
         if pr is None:
-            return jsonify({"success": False, "error": f"No valid data found for variable '{raw_var}'"}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"No valid data found for variable '{raw_var}'",
+                    }
+                ),
+                404,
+            )
 
         var_arr = np.asarray(getattr(pr, raw_var))
         try:
@@ -226,7 +259,9 @@ def plot_ensemble():
 
         cx = cy = None
         if coords_path and coords_path.exists():
-            coords_mat = loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
+            coords_mat = loadmat(
+                str(coords_path), struct_as_record=False, squeeze_me=True
+            )
             if "coordinates" in coords_mat:
                 coords = coords_mat["coordinates"]
                 cx, cy = extract_coordinates(coords, effective_run)
@@ -256,10 +291,14 @@ def plot_ensemble():
             custom_title=params["custom_title"],
         )
 
-        b64_img, W, H, extra = create_and_return_plot(var_arr, mask_arr, settings, raw=params["raw"])
+        b64_img, W, H, extra = create_and_return_plot(
+            var_arr, mask_arr, settings, raw=params["raw"]
+        )
         if params["wall_units"]:
             extra = dict(extra or {})
-            extra.update({"wall_units": True, "u_tau": params["u_tau"], "nu": params["nu"]})
+            extra.update(
+                {"wall_units": True, "u_tau": params["u_tau"], "nu": params["nu"]}
+            )
         meta = build_response_meta(effective_run, raw_var, W, H, extra)
 
         return jsonify({"success": True, "image": b64_img, "meta": meta})
@@ -298,11 +337,17 @@ def check_vars():
             mat_path = mean_stats_dir / "mean_stats.mat"
 
         if not mat_path.exists():
-            return jsonify({"success": False, "error": f"File not found: {mat_path}"}), 404
+            return (
+                jsonify({"success": False, "error": f"File not found: {mat_path}"}),
+                404,
+            )
 
         data_mat = loadmat(str(mat_path), struct_as_record=False, squeeze_me=True)
         if "piv_result" not in data_mat:
-            return jsonify({"success": False, "error": "Variable 'piv_result' not found"}), 400
+            return (
+                jsonify({"success": False, "error": "Variable 'piv_result' not found"}),
+                400,
+            )
 
         piv_result = data_mat["piv_result"]
         pr = None
@@ -342,7 +387,8 @@ def check_vars():
             if not all_vars:
                 try:
                     attrs = [
-                        n for n in dir(pr)
+                        n
+                        for n in dir(pr)
                         if not n.startswith("_") and not callable(getattr(pr, n, None))
                     ]
                     all_vars = attrs
@@ -431,7 +477,8 @@ def _extract_plottable_vars(mat_path: Path) -> list:
             if not all_vars:
                 try:
                     attrs = [
-                        n for n in dir(pr)
+                        n
+                        for n in dir(pr)
                         if not n.startswith("_") and not callable(getattr(pr, n, None))
                     ]
                     all_vars = attrs
@@ -510,15 +557,27 @@ def check_all_vars():
                 # Filter to only include calculated stats (not duplicates of base vars)
                 base_vars = set(result["instantaneous"])
                 result["instantaneous_stats"] = [
-                    v for v in inst_vars
-                    if v not in base_vars or v in ("u_prime", "v_prime", "w_prime",
-                                                    "gamma1", "gamma2", "vorticity", "divergence")
+                    v
+                    for v in inst_vars
+                    if v not in base_vars
+                    or v
+                    in (
+                        "u_prime",
+                        "v_prime",
+                        "w_prime",
+                        "gamma1",
+                        "gamma2",
+                        "vorticity",
+                        "divergence",
+                    )
                 ]
 
         # 3. Check mean_stats.mat
         mean_stats_path = mean_stats_dir / "mean_stats.mat"
         if mean_stats_path.exists():
-            result["mean_stats"] = get_plottable_vars(mean_stats_path, var_name="piv_result")
+            result["mean_stats"] = get_plottable_vars(
+                mean_stats_path, var_name="piv_result"
+            )
 
         # 4. Check ensemble_result.mat
         try:
@@ -533,7 +592,9 @@ def check_all_vars():
                 stereo_camera_pair=params.get("stereo_camera_pair"),
             )
             ensemble_file = Path(ens_paths["data_dir"]) / "ensemble_result.mat"
-            result["ensemble"] = get_plottable_vars(ensemble_file, var_name="ensemble_result")
+            result["ensemble"] = get_plottable_vars(
+                ensemble_file, var_name="ensemble_result"
+            )
         except Exception as e:
             logger.debug(f"check_all_vars: could not check ensemble vars: {e}")
 
@@ -565,10 +626,19 @@ def check_limits():
         files_total = len(all_mats)
 
         if files_total == 0:
-            return jsonify({"success": False, "error": f"No .mat files found in {data_dir}"}), 404
+            return (
+                jsonify(
+                    {"success": False, "error": f"No .mat files found in {data_dir}"}
+                ),
+                404,
+            )
 
         sample_count = min(files_total, 50)
-        sampled = random.sample(all_mats, sample_count) if files_total > sample_count else all_mats
+        sampled = (
+            random.sample(all_mats, sample_count)
+            if files_total > sample_count
+            else all_mats
+        )
 
         all_values = []
         files_checked = 0
@@ -591,7 +661,9 @@ def check_limits():
                             continue
                 else:
                     try:
-                        arr = np.asarray(getattr(piv_result, params["var"], None)).ravel()
+                        arr = np.asarray(
+                            getattr(piv_result, params["var"], None)
+                        ).ravel()
                         arr = arr[np.isfinite(arr)]
                         if arr.size > 0:
                             vals.append(arr)
@@ -604,10 +676,15 @@ def check_limits():
                 continue
 
         if files_checked == 0 or not all_values:
-            return jsonify({
-                "success": False,
-                "error": f"No valid values found for var '{params['var']}'",
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"No valid values found for var '{params['var']}'",
+                    }
+                ),
+                404,
+            )
 
         all_values = np.asarray(all_values)
         p5 = float(np.percentile(all_values, 5))
@@ -615,17 +692,19 @@ def check_limits():
         min_val = float(np.min(all_values))
         max_val = float(np.max(all_values))
 
-        return jsonify({
-            "success": True,
-            "min": min_val,
-            "max": max_val,
-            "p5": p5,
-            "p95": p95,
-            "files_checked": files_checked,
-            "files_sampled": len(sampled),
-            "files_total": files_total,
-            "sampled_files": [p.name for p in sampled],
-        })
+        return jsonify(
+            {
+                "success": True,
+                "min": min_val,
+                "max": max_val,
+                "p5": p5,
+                "p95": p95,
+                "files_checked": files_checked,
+                "files_sampled": len(sampled),
+                "files_total": files_total,
+                "sampled_files": [p.name for p in sampled],
+            }
+        )
 
     except ValueError as e:
         logger.warning(f"check_limits: validation error: {e}")
@@ -650,30 +729,57 @@ def check_runs():
         if is_ensemble:
             ensemble_file = data_dir / "ensemble_result.mat"
             if not ensemble_file.exists():
-                return jsonify({"success": False, "error": f"Ensemble file not found: {ensemble_file}"}), 404
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": f"Ensemble file not found: {ensemble_file}",
+                        }
+                    ),
+                    404,
+                )
 
             mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
             if "ensemble_result" not in mat:
-                return jsonify({"success": False, "error": "Variable 'ensemble_result' not found"}), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "Variable 'ensemble_result' not found",
+                        }
+                    ),
+                    400,
+                )
 
             ensemble_result = mat["ensemble_result"]
             runs = []
             # Use default var for run check (ux is typically available)
             check_var = "ux"
 
-            if isinstance(ensemble_result, np.ndarray) and ensemble_result.dtype == object:
+            if (
+                isinstance(ensemble_result, np.ndarray)
+                and ensemble_result.dtype == object
+            ):
                 for i in range(ensemble_result.size):
                     try:
                         pr_candidate = ensemble_result.flat[i]
                         var_arr = np.asarray(getattr(pr_candidate, check_var, None))
-                        if var_arr is not None and var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                        if (
+                            var_arr is not None
+                            and var_arr.size > 0
+                            and not np.all(np.isnan(var_arr))
+                        ):
                             runs.append(i + 1)
                     except Exception:
                         continue
             else:
                 try:
                     var_arr = np.asarray(getattr(ensemble_result, check_var, None))
-                    if var_arr is not None and var_arr.size > 0 and not np.all(np.isnan(var_arr)):
+                    if (
+                        var_arr is not None
+                        and var_arr.size > 0
+                        and not np.all(np.isnan(var_arr))
+                    ):
                         runs = [1]
                 except Exception:
                     runs = []
@@ -685,7 +791,10 @@ def check_runs():
         mat_path = data_dir / (vec_fmt % frame)
 
         if not mat_path.exists():
-            return jsonify({"success": False, "error": f"File not found: {mat_path}"}), 404
+            return (
+                jsonify({"success": False, "error": f"File not found: {mat_path}"}),
+                404,
+            )
 
         piv_result = load_piv_result(mat_path)
         runs = []
@@ -694,15 +803,25 @@ def check_runs():
             for i in range(piv_result.size):
                 try:
                     pr_candidate = piv_result.flat[i]
-                    var_arr_candidate = np.asarray(getattr(pr_candidate, params["var"], None))
-                    if var_arr_candidate is not None and var_arr_candidate.size > 0 and not np.all(np.isnan(var_arr_candidate)):
+                    var_arr_candidate = np.asarray(
+                        getattr(pr_candidate, params["var"], None)
+                    )
+                    if (
+                        var_arr_candidate is not None
+                        and var_arr_candidate.size > 0
+                        and not np.all(np.isnan(var_arr_candidate))
+                    ):
                         runs.append(i + 1)
                 except Exception:
                     continue
         else:
             try:
                 var_arr_candidate = np.asarray(getattr(piv_result, params["var"], None))
-                if var_arr_candidate is not None and var_arr_candidate.size > 0 and not np.all(np.isnan(var_arr_candidate)):
+                if (
+                    var_arr_candidate is not None
+                    and var_arr_candidate.size > 0
+                    and not np.all(np.isnan(var_arr_candidate))
+                ):
                     runs = [1]
             except Exception:
                 runs = []
@@ -744,20 +863,52 @@ def check_available_data():
         is_stereo = cfg.is_stereo_setup
 
         available = {
-            "uncalibrated_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
-            "calibrated_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
-            "uncalibrated_ensemble": {"exists": False, "frame_count": 1, "variables": []},
+            "uncalibrated_instantaneous": {
+                "exists": False,
+                "frame_count": 0,
+                "variables": [],
+            },
+            "calibrated_instantaneous": {
+                "exists": False,
+                "frame_count": 0,
+                "variables": [],
+            },
+            "uncalibrated_ensemble": {
+                "exists": False,
+                "frame_count": 1,
+                "variables": [],
+            },
             "calibrated_ensemble": {"exists": False, "frame_count": 1, "variables": []},
-            "merged_instantaneous": {"exists": False, "frame_count": 0, "variables": []},
+            "merged_instantaneous": {
+                "exists": False,
+                "frame_count": 0,
+                "variables": [],
+            },
             "merged_ensemble": {"exists": False, "frame_count": 1, "variables": []},
             "statistics": {"exists": False, "variables": []},
             "merged_statistics": {"exists": False, "variables": []},
-            "stereo_instantaneous": {"exists": False, "frame_count": 0, "variables": [], "camera_pair": None},
-            "stereo_ensemble": {"exists": False, "frame_count": 1, "variables": [], "camera_pair": None},
-            "stereo_statistics": {"exists": False, "variables": [], "camera_pair": None},
+            "stereo_instantaneous": {
+                "exists": False,
+                "frame_count": 0,
+                "variables": [],
+                "camera_pair": None,
+            },
+            "stereo_ensemble": {
+                "exists": False,
+                "frame_count": 1,
+                "variables": [],
+                "camera_pair": None,
+            },
+            "stereo_statistics": {
+                "exists": False,
+                "variables": [],
+                "camera_pair": None,
+            },
         }
 
-        def check_directory_for_frames(data_dir: Path, is_ensemble: bool = False, source_name: str = "") -> dict:
+        def check_directory_for_frames(
+            data_dir: Path, is_ensemble: bool = False, source_name: str = ""
+        ) -> dict:
             result = {"exists": False, "frame_count": 0, "variables": []}
             logger.debug(f"check_available_data: checking {source_name} at {data_dir}")
 
@@ -770,14 +921,25 @@ def check_available_data():
                     result["exists"] = True
                     result["frame_count"] = 1
                     try:
-                        mat = loadmat(str(ensemble_file), struct_as_record=False, squeeze_me=True)
+                        mat = loadmat(
+                            str(ensemble_file), struct_as_record=False, squeeze_me=True
+                        )
                         if "ensemble_result" in mat:
                             er = mat["ensemble_result"]
-                            if isinstance(er, np.ndarray) and er.dtype == object and er.size > 0:
+                            if (
+                                isinstance(er, np.ndarray)
+                                and er.dtype == object
+                                and er.size > 0
+                            ):
                                 pr = er.flat[0]
                             else:
                                 pr = er
-                            attrs = [n for n in dir(pr) if not n.startswith("_") and not callable(getattr(pr, n, None))]
+                            attrs = [
+                                n
+                                for n in dir(pr)
+                                if not n.startswith("_")
+                                and not callable(getattr(pr, n, None))
+                            ]
                             result["variables"] = attrs
                     except Exception as e:
                         logger.debug(f"Error reading ensemble vars: {e}")
@@ -792,12 +954,23 @@ def check_available_data():
                     result["exists"] = True
                     result["frame_count"] = len(frame_files)
                     try:
-                        mat = loadmat(str(frame_files[0]), struct_as_record=False, squeeze_me=True)
+                        mat = loadmat(
+                            str(frame_files[0]), struct_as_record=False, squeeze_me=True
+                        )
                         if "piv_result" in mat:
                             pr = mat["piv_result"]
-                            if isinstance(pr, np.ndarray) and pr.dtype == object and pr.size > 0:
+                            if (
+                                isinstance(pr, np.ndarray)
+                                and pr.dtype == object
+                                and pr.size > 0
+                            ):
                                 pr = pr.flat[0]
-                            attrs = [n for n in dir(pr) if not n.startswith("_") and not callable(getattr(pr, n, None))]
+                            attrs = [
+                                n
+                                for n in dir(pr)
+                                if not n.startswith("_")
+                                and not callable(getattr(pr, n, None))
+                            ]
                             result["variables"] = attrs
                     except Exception as e:
                         logger.debug(f"Error reading instantaneous vars: {e}")
@@ -811,12 +984,23 @@ def check_available_data():
             if mean_stats_file.exists():
                 result["exists"] = True
                 try:
-                    mat = loadmat(str(mean_stats_file), struct_as_record=False, squeeze_me=True)
+                    mat = loadmat(
+                        str(mean_stats_file), struct_as_record=False, squeeze_me=True
+                    )
                     if "piv_result" in mat:
                         pr = mat["piv_result"]
-                        if isinstance(pr, np.ndarray) and pr.dtype == object and pr.size > 0:
+                        if (
+                            isinstance(pr, np.ndarray)
+                            and pr.dtype == object
+                            and pr.size > 0
+                        ):
                             pr = pr.flat[0]
-                        attrs = [n for n in dir(pr) if not n.startswith("_") and not callable(getattr(pr, n, None))]
+                        attrs = [
+                            n
+                            for n in dir(pr)
+                            if not n.startswith("_")
+                            and not callable(getattr(pr, n, None))
+                        ]
                         result["variables"] = attrs
                 except Exception as e:
                     logger.debug(f"Error reading statistics vars: {e}")
@@ -825,56 +1009,88 @@ def check_available_data():
 
         # Check all data sources
         uncal_inst_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="instantaneous", use_uncalibrated=True
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=True,
         )
         available["uncalibrated_instantaneous"] = check_directory_for_frames(
-            Path(uncal_inst_paths["data_dir"]), is_ensemble=False, source_name="uncalibrated_instantaneous"
+            Path(uncal_inst_paths["data_dir"]),
+            is_ensemble=False,
+            source_name="uncalibrated_instantaneous",
         )
 
         uncal_ens_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="ensemble", use_uncalibrated=True
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="ensemble",
+            use_uncalibrated=True,
         )
         available["uncalibrated_ensemble"] = check_directory_for_frames(
-            Path(uncal_ens_paths["data_dir"]), is_ensemble=True, source_name="uncalibrated_ensemble"
+            Path(uncal_ens_paths["data_dir"]),
+            is_ensemble=True,
+            source_name="uncalibrated_ensemble",
         )
 
         # Always check calibrated and merged paths (non-stereo)
         cal_inst_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="instantaneous", use_uncalibrated=False
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_uncalibrated=False,
         )
         available["calibrated_instantaneous"] = check_directory_for_frames(
-            Path(cal_inst_paths["data_dir"]), is_ensemble=False, source_name="calibrated_instantaneous"
+            Path(cal_inst_paths["data_dir"]),
+            is_ensemble=False,
+            source_name="calibrated_instantaneous",
         )
 
         cal_ens_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="ensemble", use_uncalibrated=False
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="ensemble",
+            use_uncalibrated=False,
         )
         available["calibrated_ensemble"] = check_directory_for_frames(
-            Path(cal_ens_paths["data_dir"]), is_ensemble=True, source_name="calibrated_ensemble"
+            Path(cal_ens_paths["data_dir"]),
+            is_ensemble=True,
+            source_name="calibrated_ensemble",
         )
 
         merged_inst_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="instantaneous", use_merged=True
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="instantaneous",
+            use_merged=True,
         )
         available["merged_instantaneous"] = check_directory_for_frames(
-            Path(merged_inst_paths["data_dir"]), is_ensemble=False, source_name="merged_instantaneous"
+            Path(merged_inst_paths["data_dir"]),
+            is_ensemble=False,
+            source_name="merged_instantaneous",
         )
 
         merged_ens_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=camera,
-            type_name="ensemble", use_merged=True
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=camera,
+            type_name="ensemble",
+            use_merged=True,
         )
         available["merged_ensemble"] = check_directory_for_frames(
-            Path(merged_ens_paths["data_dir"]), is_ensemble=True, source_name="merged_ensemble"
+            Path(merged_ens_paths["data_dir"]),
+            is_ensemble=True,
+            source_name="merged_ensemble",
         )
 
         available["statistics"] = check_statistics(Path(cal_inst_paths["stats_dir"]))
-        available["merged_statistics"] = check_statistics(Path(merged_inst_paths["stats_dir"]))
+        available["merged_statistics"] = check_statistics(
+            Path(merged_inst_paths["stats_dir"])
+        )
 
         # Always check stereo paths (file-based detection)
         # Get stereo camera pair from config, or derive from camera_numbers
@@ -887,21 +1103,33 @@ def check_available_data():
             cam_pair = (1, 2)  # Default fallback
 
         stereo_inst_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
-            type_name="instantaneous", use_stereo=True, stereo_camera_pair=cam_pair
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=cam_pair[0],
+            type_name="instantaneous",
+            use_stereo=True,
+            stereo_camera_pair=cam_pair,
         )
         stereo_result = check_directory_for_frames(
-            Path(stereo_inst_paths["data_dir"]), is_ensemble=False, source_name="stereo_instantaneous"
+            Path(stereo_inst_paths["data_dir"]),
+            is_ensemble=False,
+            source_name="stereo_instantaneous",
         )
         stereo_result["camera_pair"] = list(cam_pair)
         available["stereo_instantaneous"] = stereo_result
 
         stereo_ens_paths = get_data_paths(
-            base_dir=base_path, num_frame_pairs=num_frame_pairs, cam=cam_pair[0],
-            type_name="ensemble", use_stereo=True, stereo_camera_pair=cam_pair
+            base_dir=base_path,
+            num_frame_pairs=num_frame_pairs,
+            cam=cam_pair[0],
+            type_name="ensemble",
+            use_stereo=True,
+            stereo_camera_pair=cam_pair,
         )
         stereo_ens_result = check_directory_for_frames(
-            Path(stereo_ens_paths["data_dir"]), is_ensemble=True, source_name="stereo_ensemble"
+            Path(stereo_ens_paths["data_dir"]),
+            is_ensemble=True,
+            source_name="stereo_ensemble",
         )
         stereo_ens_result["camera_pair"] = list(cam_pair)
         available["stereo_ensemble"] = stereo_ens_result
@@ -913,18 +1141,20 @@ def check_available_data():
 
         # File-based stereo detection: has_stereo_data is True if stereo data exists
         has_stereo_data = (
-            available["stereo_instantaneous"]["exists"] or
-            available["stereo_ensemble"]["exists"]
+            available["stereo_instantaneous"]["exists"]
+            or available["stereo_ensemble"]["exists"]
         )
 
-        return jsonify({
-            "success": True,
-            "camera": camera,
-            "base_path": str(base_path),
-            "is_stereo": is_stereo,
-            "has_stereo_data": has_stereo_data,
-            "available": available,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "camera": camera,
+                "base_path": str(base_path),
+                "is_stereo": is_stereo,
+                "has_stereo_data": has_stereo_data,
+                "available": available,
+            }
+        )
 
     except ValueError as e:
         logger.warning(f"check_available_data: validation error: {e}")
@@ -1025,10 +1255,9 @@ def get_coordinate_at_point():
         x_coord = x_min + x_percent * (x_max - x_min)
         y_coord = y_min + y_percent * (y_max - y_min)
 
-        return jsonify({
-            "success": True,
-            "coordinate": {"x": float(x_coord), "y": float(y_coord)}
-        })
+        return jsonify(
+            {"success": True, "coordinate": {"x": float(x_coord), "y": float(y_coord)}}
+        )
 
     except ValueError as e:
         logger.warning(f"get_coordinate_at_point: validation error: {e}")
@@ -1078,8 +1307,8 @@ def get_vector_at_position():
             piv_result = mat["ensemble_result"]
             # Strip variable prefix if present (e.g., "inst:ux" -> "ux")
             var_name = params["var"]
-            if ':' in var_name:
-                _, var_name = var_name.split(':', 1)
+            if ":" in var_name:
+                _, var_name = var_name.split(":", 1)
         else:
             piv_result = load_piv_result(mat_path)
             var_name = params["var"]
@@ -1105,7 +1334,9 @@ def get_vector_at_position():
 
         try:
             if coords_file.exists():
-                coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+                coords_mat = loadmat(
+                    str(coords_file), struct_as_record=False, squeeze_me=True
+                )
                 if "coordinates" in coords_mat:
                     coords_struct = coords_mat["coordinates"]
                     cx, cy = extract_coordinates(coords_struct, effective_run)
@@ -1172,23 +1403,33 @@ def get_vector_at_position():
 
         ux_arr = np.asarray(getattr(pr, "ux", None))
         uy_arr = np.asarray(getattr(pr, "uy", None))
-        ux_val = float(ux_arr[i, j]) if ux_arr is not None and ux_arr.shape == var_arr.shape else None
-        uy_val = float(uy_arr[i, j]) if uy_arr is not None and uy_arr.shape == var_arr.shape else None
+        ux_val = (
+            float(ux_arr[i, j])
+            if ux_arr is not None and ux_arr.shape == var_arr.shape
+            else None
+        )
+        uy_val = (
+            float(uy_arr[i, j])
+            if uy_arr is not None and uy_arr.shape == var_arr.shape
+            else None
+        )
         value_val = float(var_arr[i, j])
 
         # Values are reported exactly as stored (raw, no sign flip) — the plot conveys
         # orientation via its axis direction, not by negating the data.
 
-        return jsonify({
-            "success": True,
-            "x": _nan_safe(coord_x),
-            "y": _nan_safe(coord_y),
-            "ux": _nan_safe(ux_val),
-            "uy": _nan_safe(uy_val),
-            "value": _nan_safe(value_val),
-            "i": i,
-            "j": j,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "x": _nan_safe(coord_x),
+                "y": _nan_safe(coord_y),
+                "ux": _nan_safe(ux_val),
+                "uy": _nan_safe(uy_val),
+                "value": _nan_safe(value_val),
+                "i": i,
+                "j": j,
+            }
+        )
 
     except ValueError as e:
         logger.warning(f"get_vector_at_position: validation error: {e}")
@@ -1229,7 +1470,9 @@ def get_stats_value_at_position():
 
         try:
             if coords_file.exists():
-                coords_mat = loadmat(str(coords_file), struct_as_record=False, squeeze_me=True)
+                coords_mat = loadmat(
+                    str(coords_file), struct_as_record=False, squeeze_me=True
+                )
                 if "coordinates" in coords_mat:
                     coords_struct = coords_mat["coordinates"]
                     cx, cy = extract_coordinates(coords_struct, effective_run)
@@ -1296,23 +1539,33 @@ def get_stats_value_at_position():
 
         ux_arr = np.asarray(getattr(pr, "ux", None))
         uy_arr = np.asarray(getattr(pr, "uy", None))
-        ux_val = float(ux_arr[i, j]) if ux_arr is not None and ux_arr.shape == var_arr.shape else None
-        uy_val = float(uy_arr[i, j]) if uy_arr is not None and uy_arr.shape == var_arr.shape else None
+        ux_val = (
+            float(ux_arr[i, j])
+            if ux_arr is not None and ux_arr.shape == var_arr.shape
+            else None
+        )
+        uy_val = (
+            float(uy_arr[i, j])
+            if uy_arr is not None and uy_arr.shape == var_arr.shape
+            else None
+        )
         val = float(var_arr[i, j])
 
         # Values are reported exactly as stored (raw, no sign flip) — orientation is
         # conveyed by the plot's axis direction, not by negating the data.
 
-        return jsonify({
-            "success": True,
-            "x": _nan_safe(coord_x),
-            "y": _nan_safe(coord_y),
-            "ux": _nan_safe(ux_val),
-            "uy": _nan_safe(uy_val),
-            "value": _nan_safe(val),
-            "i": i,
-            "j": j,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "x": _nan_safe(coord_x),
+                "y": _nan_safe(coord_y),
+                "ux": _nan_safe(ux_val),
+                "uy": _nan_safe(uy_val),
+                "value": _nan_safe(val),
+                "i": i,
+                "j": j,
+            }
+        )
 
     except ValueError as e:
         logger.warning(f"get_stats_value_at_position: validation error: {e}")

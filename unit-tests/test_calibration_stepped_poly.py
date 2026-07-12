@@ -16,9 +16,14 @@ from pivtools_gui.calibration.camera_model import (
     fit_polynomial3d,
 )
 from pivtools_gui.calibration.record import WorldFrame
-from pivtools_gui.calibration.stereo_model import camera_z_sign, reconstruct_3c_at_points
+from pivtools_gui.calibration.stereo_model import (
+    camera_z_sign,
+    reconstruct_3c_at_points,
+)
 
-np.seterr(all="ignore")  # macOS Accelerate raises spurious matmul warnings; results are finite.
+np.seterr(
+    all="ignore"
+)  # macOS Accelerate raises spurious matmul warnings; results are finite.
 
 DOT_SPACING_MM = 28.89
 STEP_MM = 3.0
@@ -33,7 +38,11 @@ def _two_plane_board(n: int = 15) -> np.ndarray:
     X, Y = np.meshgrid(xs, xs)
     peak = np.column_stack([X.ravel(), Y.ravel(), np.zeros(X.size)])
     trough = np.column_stack(
-        [X.ravel() + INTERLEAVE_MM, Y.ravel() + INTERLEAVE_MM, np.full(X.size, -STEP_MM)]
+        [
+            X.ravel() + INTERLEAVE_MM,
+            Y.ravel() + INTERLEAVE_MM,
+            np.full(X.size, -STEP_MM),
+        ]
     )
     return np.vstack([peak, trough])
 
@@ -59,12 +68,16 @@ def world():
 
 @pytest.fixture
 def model(world):
-    img = _synthesise(world, {0: 1024, 1: 900, 4: 20, 10: 8}, {0: 1024, 4: 900, 1: -15, 14: 6})
+    img = _synthesise(
+        world, {0: 1024, 1: 900, 4: 20, 10: 8}, {0: 1024, 4: 900, 1: -15, 14: 6}
+    )
     return fit_polynomial3d(world, img, IMAGE_SIZE)
 
 
 def test_fit_recovers_known_map_to_machine_precision(world):
-    img = _synthesise(world, {0: 1024, 1: 900, 4: 20, 10: 8}, {0: 1024, 4: 900, 1: -15, 14: 6})
+    img = _synthesise(
+        world, {0: 1024, 1: 900, 4: 20, 10: 8}, {0: 1024, 4: 900, 1: -15, 14: 6}
+    )
     m = fit_polynomial3d(world, img, IMAGE_SIZE)
     assert m.model_type == "polynomial3d"
     assert m.rms_px < 1e-6
@@ -73,9 +86,13 @@ def test_fit_recovers_known_map_to_machine_precision(world):
 
 
 def test_requires_two_distinct_planes():
-    flat = np.column_stack([np.random.default_rng(0).normal(size=(40, 2)) * 50, np.zeros(40)])
+    flat = np.column_stack(
+        [np.random.default_rng(0).normal(size=(40, 2)) * 50, np.zeros(40)]
+    )
     with pytest.raises(RuntimeError, match=r">=2 distinct Z planes"):
-        fit_polynomial3d(flat, np.random.default_rng(1).normal(size=(40, 2)), IMAGE_SIZE)
+        fit_polynomial3d(
+            flat, np.random.default_rng(1).normal(size=(40, 2)), IMAGE_SIZE
+        )
 
 
 def test_analytic_jacobian_matches_finite_difference(model, world):
@@ -128,50 +145,78 @@ def test_tilt_convention_matches_pinhole_contract(model):
 
     def plane_residual(world_pts):
         return world_pts[:, 2] - (
-            z0
-            + world_pts[:, 0] * np.tan(tilt_y)
-            + world_pts[:, 1] * np.tan(tilt_x)
+            z0 + world_pts[:, 0] * np.tan(tilt_y) + world_pts[:, 1] * np.tan(tilt_x)
         )
 
     # Polynomial3d: back-project a pixel grid spanning the fitted FOV.
-    px_grid = np.column_stack([
-        np.linspace(900, 1150, 9),
-        np.linspace(900, 1150, 9)[::-1],
-    ])
-    bp_poly = model.back_project_to_plane(px_grid, z_world=z0, tilt_x=tilt_x, tilt_y=tilt_y)
+    px_grid = np.column_stack(
+        [
+            np.linspace(900, 1150, 9),
+            np.linspace(900, 1150, 9)[::-1],
+        ]
+    )
+    bp_poly = model.back_project_to_plane(
+        px_grid, z_world=z0, tilt_x=tilt_x, tilt_y=tilt_y
+    )
     np.testing.assert_allclose(plane_residual(bp_poly), 0.0, atol=1e-6)
 
     # Pinhole: a synthetic camera looking at the board from +Z.
     K = np.array([[2000.0, 0, 1024], [0, 2000.0, 1024], [0, 0, 1]])
     R, _ = cv2.Rodrigues(np.array([np.pi, 0.02, 0.0]))  # board-facing flip
-    t = -R @ np.array([[5.0], [-10.0], [800.0]])        # camera centre at (5,-10,800)
-    cam = CameraModel(K=K, dist=np.zeros(4), R=R, t=t, image_size=(2048, 2048),
-                      distortion_model=DistortionModel.STANDARD, rms=0.0)
-    bp_pin = cam.back_project_to_plane(px_grid, z_world=z0, tilt_x=tilt_x, tilt_y=tilt_y)
+    t = -R @ np.array([[5.0], [-10.0], [800.0]])  # camera centre at (5,-10,800)
+    cam = CameraModel(
+        K=K,
+        dist=np.zeros(4),
+        R=R,
+        t=t,
+        image_size=(2048, 2048),
+        distortion_model=DistortionModel.STANDARD,
+        rms=0.0,
+    )
+    bp_pin = cam.back_project_to_plane(
+        px_grid, z_world=z0, tilt_x=tilt_x, tilt_y=tilt_y
+    )
     np.testing.assert_allclose(plane_residual(bp_pin), 0.0, atol=1e-6)
 
 
 def test_mono_record_round_trips(model, world, tmp_path):
     wf = WorldFrame(
-        mode="clicks", origin_px=np.array([10.0, 10]), x_axis_px=np.array([20.0, 10]),
-        y_axis_px=np.array([10.0, 20]), swap_axes=False, col_sign=1, row_sign=1,
-        origin_grid=np.array([0.0, 0]), origin_mm=np.array([0.0, 0]),
+        mode="clicks",
+        origin_px=np.array([10.0, 10]),
+        x_axis_px=np.array([20.0, 10]),
+        y_axis_px=np.array([10.0, 20]),
+        swap_axes=False,
+        col_sign=1,
+        row_sign=1,
+        origin_grid=np.array([0.0, 0]),
+        origin_mm=np.array([0.0, 0]),
     )
     mr = rec.MonoRecord(
-        camera=1, board_type="stepped", camera_model=model, world_frame=wf,
+        camera=1,
+        board_type="stepped",
+        camera_model=model,
+        world_frame=wf,
         per_view_rms=[model.rms_px],
     )
     loaded = rec.load_mono(rec.save_mono(mr, tmp_path))
     assert isinstance(loaded.camera_model, Polynomial3DModel)
     assert loaded.camera_model.model_type == "polynomial3d"
-    np.testing.assert_allclose(loaded.camera_model.project(world), model.project(world), atol=1e-9)
-    np.testing.assert_allclose(loaded.camera_model.plane_rms_px, model.plane_rms_px, atol=1e-12)
+    np.testing.assert_allclose(
+        loaded.camera_model.project(world), model.project(world), atol=1e-9
+    )
+    np.testing.assert_allclose(
+        loaded.camera_model.plane_rms_px, model.plane_rms_px, atol=1e-12
+    )
 
 
 def _stereo_pair(world):
     """Two genuinely different cameras (independent Z-sensitivity -> W observable)."""
-    img1 = _synthesise(world, {0: 1024, 1: 900, 4: 20, 10: 30}, {0: 1024, 4: 900, 1: -15})
-    img2 = _synthesise(world, {0: 1100, 1: 880, 4: 40}, {0: 980, 4: 870, 1: -30, 10: 30})
+    img1 = _synthesise(
+        world, {0: 1024, 1: 900, 4: 20, 10: 30}, {0: 1024, 4: 900, 1: -15}
+    )
+    img2 = _synthesise(
+        world, {0: 1100, 1: 880, 4: 40}, {0: 980, 4: 870, 1: -30, 10: 30}
+    )
     m1 = fit_polynomial3d(world, img1, IMAGE_SIZE)
     m2 = fit_polynomial3d(world, img2, IMAGE_SIZE)
     return m1, m2
@@ -179,18 +224,35 @@ def _stereo_pair(world):
 
 def test_stereo_record_round_trips_without_pose(world, tmp_path):
     m1, m2 = _stereo_pair(world)
-    wf = WorldFrame(mode="clicks", origin_px=np.array([10.0, 10]), x_axis_px=np.array([20.0, 10]),
-                    y_axis_px=np.array([10.0, 20]), swap_axes=False, col_sign=1, row_sign=1,
-                    origin_grid=np.array([0.0, 0]), origin_mm=np.array([0.0, 0]))
+    wf = WorldFrame(
+        mode="clicks",
+        origin_px=np.array([10.0, 10]),
+        x_axis_px=np.array([20.0, 10]),
+        y_axis_px=np.array([10.0, 20]),
+        swap_axes=False,
+        col_sign=1,
+        row_sign=1,
+        origin_grid=np.array([0.0, 0]),
+        origin_mm=np.array([0.0, 0]),
+    )
     sr = rec.StereoRecord(
-        cam1=1, cam2=2, board_type="stepped", model1=m1, model2=m2,
-        R_stereo=None, T_stereo=None, world_frame=wf,
-        per_view_rms1=[m1.rms_px], per_view_rms2=[m2.rms_px],
+        cam1=1,
+        cam2=2,
+        board_type="stepped",
+        model1=m1,
+        model2=m2,
+        R_stereo=None,
+        T_stereo=None,
+        world_frame=wf,
+        per_view_rms1=[m1.rms_px],
+        per_view_rms2=[m2.rms_px],
     )
     loaded = rec.load_stereo(rec.save_stereo(sr, tmp_path))
     assert isinstance(loaded.model1, Polynomial3DModel)
     assert loaded.R_stereo is None and loaded.T_stereo is None
-    np.testing.assert_allclose(loaded.model2.project(world), m2.project(world), atol=1e-9)
+    np.testing.assert_allclose(
+        loaded.model2.project(world), m2.project(world), atol=1e-9
+    )
 
 
 def test_poly_camera_z_sign_uses_stored_convention(world):

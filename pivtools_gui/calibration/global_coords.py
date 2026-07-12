@@ -15,7 +15,7 @@ not yet placed is skipped (broken chain link) and reported.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -23,7 +23,9 @@ from .apply import calibrate_coordinates
 from .record import MonoRecord
 
 
-def _physical(record: MonoRecord, pixel, z: float, tx: float, ty: float) -> Tuple[float, float]:
+def _physical(
+    record: MonoRecord, pixel, z: float, tx: float, ty: float
+) -> Tuple[float, float]:
     """Back-project a single pixel to world (X, Y) mm via the camera's model."""
     px = np.asarray(pixel, dtype=float).reshape(1, 2)
     w = calibrate_coordinates(record.camera_model, px, z, tx, ty)[0]
@@ -61,7 +63,9 @@ def compute_camera_shifts(
     # Fixpoint pass: a pair places cam_b once cam_a is placed. Repeat until a full
     # pass adds nothing, so multi-hop chains resolve regardless of pair order. A pair
     # whose cam_a is never placed (broken link) is simply left out.
-    ordered = sorted(overlap_pairs, key=lambda p: (int(p["camera_a"]), int(p["camera_b"])))
+    ordered = sorted(
+        overlap_pairs, key=lambda p: (int(p["camera_a"]), int(p["camera_b"]))
+    )
     progressed = True
     while progressed:
         progressed = False
@@ -78,7 +82,10 @@ def compute_camera_shifts(
             sa = shifts[cam_a]
             phys_a_shifted = (phys_a[0] + sa[0], phys_a[1] + sa[1])
             phys_b = _physical(records_by_cam[cam_b], pixel_b, z_world, tilt_x, tilt_y)
-            shifts[cam_b] = (phys_a_shifted[0] - phys_b[0], phys_a_shifted[1] - phys_b[1])
+            shifts[cam_b] = (
+                phys_a_shifted[0] - phys_b[0],
+                phys_a_shifted[1] - phys_b[1],
+            )
             progressed = True
 
     return shifts

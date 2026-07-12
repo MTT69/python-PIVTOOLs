@@ -41,10 +41,25 @@ def triple_lib():
     i32 = np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS")
     lib.bulkxcorr2d_accumulate_triple.restype = ctypes.c_ubyte
     lib.bulkxcorr2d_accumulate_triple.argtypes = [
-        f32, f32, f32, i32, ctypes.c_int, f32, f32, i32,
-        f32, f32, f32, f32, i32, i32,
-        ctypes.c_int, ctypes.c_int,  # bMeanSubtract, bPerPairNorm
-        f32, f32, f32,
+        f32,
+        f32,
+        f32,
+        i32,
+        ctypes.c_int,
+        f32,
+        f32,
+        i32,
+        f32,
+        f32,
+        f32,
+        f32,
+        i32,
+        i32,
+        ctypes.c_int,
+        ctypes.c_int,  # bMeanSubtract, bPerPairNorm
+        f32,
+        f32,
+        f32,
     ]
     return lib
 
@@ -68,16 +83,25 @@ def run_triple(lib, imgs_a, imgs_b, mean_subtract, per_pair_norm):
     aa = np.zeros(WIN * WIN, dtype=np.float32)
     bb = np.zeros(WIN * WIN, dtype=np.float32)
     err = lib.bulkxcorr2d_accumulate_triple(
-        np.ascontiguousarray(imgs_a), np.ascontiguousarray(imgs_b),
-        mask, np.array([IMG, IMG], dtype=np.int32), n,
+        np.ascontiguousarray(imgs_a),
+        np.ascontiguousarray(imgs_b),
+        mask,
+        np.array([IMG, IMG], dtype=np.int32),
+        n,
         np.array([IMG / 2 - 0.5], dtype=np.float32),
         np.array([IMG / 2 - 0.5], dtype=np.float32),
         np.array([1, 1], dtype=np.int32),
-        weights, weights, weights, weights,
+        weights,
+        weights,
+        weights,
+        weights,
         np.array([WIN, WIN], dtype=np.int32),
         np.array([WIN, WIN], dtype=np.int32),
-        mean_subtract, per_pair_norm,
-        ab, aa, bb,
+        mean_subtract,
+        per_pair_norm,
+        ab,
+        aa,
+        bb,
     )
     assert err == 0, f"C error code {err}"
     shape = (WIN, WIN)
@@ -97,14 +121,15 @@ class TestLegacyRegression:
         wa = imgs_a[0, lo:hi, lo:hi].astype(np.float64)
         wb = imgs_b[0, lo:hi, lo:hi].astype(np.float64)
         # Kernel convention: B*conj(A), numpy-ifft normalization, fftshifted
-        ref_ab = np.fft.fftshift(np.real(np.fft.ifft2(
-            np.fft.fft2(wb) * np.conj(np.fft.fft2(wa)))))
+        ref_ab = np.fft.fftshift(
+            np.real(np.fft.ifft2(np.fft.fft2(wb) * np.conj(np.fft.fft2(wa))))
+        )
         rel = np.abs(ab - ref_ab).max() / np.abs(ref_ab).max()
         assert rel < 1e-5
 
         # AA zero-lag equals the window energy sum(x^2) — the identity the
         # per-pair normalization relies on
-        assert np.isclose(aa[CENTER, CENTER], (wa ** 2).sum(), rtol=1e-5)
+        assert np.isclose(aa[CENTER, CENTER], (wa**2).sum(), rtol=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -199,11 +224,22 @@ class TestRoundShifts:
         c_float_p = ctypes.POINTER(ctypes.c_float)
         c_int = ctypes.c_int
         lib.fused_symmetric_warp_batch.argtypes = [
-            c_float_p, c_float_p, c_float_p, c_float_p,
-            c_float_p, c_float_p,
-            c_int, c_int, c_int, c_int, c_int,
-            c_float_p, c_float_p,
-            c_int, c_int, c_int,  # interp_mode, shared_predictor, round_shifts
+            c_float_p,
+            c_float_p,
+            c_float_p,
+            c_float_p,
+            c_float_p,
+            c_float_p,
+            c_int,
+            c_int,
+            c_int,
+            c_int,
+            c_int,
+            c_float_p,
+            c_float_p,
+            c_int,
+            c_int,
+            c_int,  # interp_mode, shared_predictor, round_shifts
         ]
         lib.fused_symmetric_warp_batch.restype = c_int
         return lib
@@ -226,13 +262,22 @@ class TestRoundShifts:
 
         c_float_p = ctypes.POINTER(ctypes.c_float)
         ret = warp_lib.fused_symmetric_warp_batch(
-            img_a.ctypes.data_as(c_float_p), img_b.ctypes.data_as(c_float_p),
-            out_a.ctypes.data_as(c_float_p), out_b.ctypes.data_as(c_float_p),
-            pred_dy.ctypes.data_as(c_float_p), pred_dx.ctypes.data_as(c_float_p),
-            ctypes.c_int(1), ctypes.c_int(H), ctypes.c_int(W),
-            ctypes.c_int(n_p), ctypes.c_int(n_p),
-            ctrs.ctypes.data_as(c_float_p), ctrs.ctypes.data_as(c_float_p),
-            ctypes.c_int(0), ctypes.c_int(1), ctypes.c_int(1),
+            img_a.ctypes.data_as(c_float_p),
+            img_b.ctypes.data_as(c_float_p),
+            out_a.ctypes.data_as(c_float_p),
+            out_b.ctypes.data_as(c_float_p),
+            pred_dy.ctypes.data_as(c_float_p),
+            pred_dx.ctypes.data_as(c_float_p),
+            ctypes.c_int(1),
+            ctypes.c_int(H),
+            ctypes.c_int(W),
+            ctypes.c_int(n_p),
+            ctypes.c_int(n_p),
+            ctrs.ctypes.data_as(c_float_p),
+            ctrs.ctypes.data_as(c_float_p),
+            ctypes.c_int(0),
+            ctypes.c_int(1),
+            ctypes.c_int(1),
         )
         assert ret == 0
 
@@ -241,10 +286,14 @@ class TestRoundShifts:
         # A sampled at i - half -> content shifts down by +half (np.roll +half)
         expect_a = np.roll(img_a[0], half, axis=0)
         expect_b = np.roll(img_b[0], -half, axis=0)
-        assert np.abs(out_a[0][interior, interior]
-                      - expect_a[interior, interior]).max() < 1e-5
-        assert np.abs(out_b[0][interior, interior]
-                      - expect_b[interior, interior]).max() < 1e-5
+        assert (
+            np.abs(out_a[0][interior, interior] - expect_a[interior, interior]).max()
+            < 1e-5
+        )
+        assert (
+            np.abs(out_b[0][interior, interior] - expect_b[interior, interior]).max()
+            < 1e-5
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -254,10 +303,11 @@ class TestFitterSelectionAndValidation:
     def test_kspace_linear_production_recipe_contract(self):
         """The dispatch recipe (joint/refc/gauss) recovers a synthetic
         Gaussian displacement on the 16-element output contract."""
+        from synthetic_correlations import make_mock_config
+
         from pivtools_cli.piv.piv_backend.kspace_linear_fitting import (
             fit_windows_kspace_linear,
         )
-        from synthetic_correlations import make_mock_config
 
         h = w = 32
         n = 4
@@ -265,17 +315,25 @@ class TestFitterSelectionAndValidation:
         cy = cx = h // 2
 
         def g(sx, sy, dx=0.0, dy=0.0):
-            return np.exp(-((x - cx - dx) ** 2 / (2 * sx ** 2)
-                            + (y - cy - dy) ** 2 / (2 * sy ** 2)))
+            return np.exp(
+                -((x - cx - dx) ** 2 / (2 * sx**2) + (y - cy - dy) ** 2 / (2 * sy**2))
+            )
 
         aa = np.stack([g(2.2, 2.2) for _ in range(n)])
         bb = aa.copy()
         ab = np.stack([0.8 * g(2.5, 2.5, 1.3, -0.7) for _ in range(n)])
 
         gauss, status, _ = fit_windows_kspace_linear(
-            aa.ravel(), bb.ravel(), ab.ravel(),
-            np.zeros(n, np.float32), (h, w), make_mock_config(), 0,
-            floor_mode="joint", weight_mode="refc", shape_mode="gauss",
+            aa.ravel(),
+            bb.ravel(),
+            ab.ravel(),
+            np.zeros(n, np.float32),
+            (h, w),
+            make_mock_config(),
+            0,
+            floor_mode="joint",
+            weight_mode="refc",
+            shape_mode="gauss",
         )
         assert gauss.shape == (n, 16)
         assert (status == 0).all()
@@ -290,22 +348,22 @@ class TestFitterSelectionAndValidation:
         from pivtools_core.validation import validate_ensemble_config
 
         class FakeCfg:
-            ensemble_type = ['std']
+            ensemble_type = ["std"]
             ensemble_window_sizes = [[32, 32]]
             ensemble_overlaps = [50]
             ensemble_sum_window = [32, 32]
             ensemble_sum_fitting_window_enabled = False
             ensemble_sum_fitting_window = None
-            ensemble_fit_method = 'kspace'
-            ensemble_background_subtraction_method = 'correlation'
+            ensemble_fit_method = "kspace"
+            ensemble_background_subtraction_method = "correlation"
             ensemble_per_pair_normalization = True
             ensemble_resume_from_pass = 0
             ensemble_num_passes = 1
 
         ok, errors, _ = validate_ensemble_config(FakeCfg())
         assert not ok
-        assert any('per_pair_normalization' in e for e in errors)
+        assert any("per_pair_normalization" in e for e in errors)
 
-        FakeCfg.ensemble_background_subtraction_method = 'window_mean'
+        FakeCfg.ensemble_background_subtraction_method = "window_mean"
         ok, errors, _ = validate_ensemble_config(FakeCfg())
         assert ok, errors

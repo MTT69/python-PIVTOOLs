@@ -46,15 +46,22 @@ def generate_2d_gaussian(shape, cov_matrix, center, amplitude=1.0):
     if det < 1e-20:
         return np.zeros(shape)
 
-    inv_cov = np.array([
-        [cov_matrix[1, 1], -cov_matrix[0, 1]],
-        [-cov_matrix[1, 0], cov_matrix[0, 0]],
-    ]) / det
+    inv_cov = (
+        np.array(
+            [
+                [cov_matrix[1, 1], -cov_matrix[0, 1]],
+                [-cov_matrix[1, 0], cov_matrix[0, 0]],
+            ]
+        )
+        / det
+    )
 
     # Quadratic form: (dx, dy) · inv_cov · (dx, dy)^T
-    quad = (inv_cov[0, 0] * dx ** 2
-            + (inv_cov[0, 1] + inv_cov[1, 0]) * dx * dy
-            + inv_cov[1, 1] * dy ** 2)
+    quad = (
+        inv_cov[0, 0] * dx**2
+        + (inv_cov[0, 1] + inv_cov[1, 0]) * dx * dy
+        + inv_cov[1, 1] * dy**2
+    )
 
     return amplitude * np.exp(-0.5 * quad)
 
@@ -94,10 +101,12 @@ def generate_autocorrelation(
         Auto-correlation plane.
     """
     # Convolution doubles the variance: cov = 2·diag(sigma^2)
-    cov = np.array([
-        [2.0 * sigma_x ** 2, 0.0],
-        [0.0, 2.0 * sigma_y ** 2],
-    ])
+    cov = np.array(
+        [
+            [2.0 * sigma_x**2, 0.0],
+            [0.0, 2.0 * sigma_y**2],
+        ]
+    )
     center = (shape[0] / 2.0, shape[1] / 2.0)
     R = generate_2d_gaussian(shape, cov, center, amplitude) + offset
 
@@ -152,10 +161,12 @@ def generate_crosscorrelation(
         Cross-correlation plane.
     """
     # Total covariance = 2·Sigma_particle + Sigma_stress
-    cov = np.array([
-        [2.0 * sigma_particle_x ** 2 + sigma_stress_xx, sigma_stress_xy],
-        [sigma_stress_xy, 2.0 * sigma_particle_y ** 2 + sigma_stress_yy],
-    ])
+    cov = np.array(
+        [
+            [2.0 * sigma_particle_x**2 + sigma_stress_xx, sigma_stress_xy],
+            [sigma_stress_xy, 2.0 * sigma_particle_y**2 + sigma_stress_yy],
+        ]
+    )
     center = (shape[0] / 2.0 + mu_y, shape[1] / 2.0 + mu_x)
     R = generate_2d_gaussian(shape, cov, center, amplitude) + offset
 
@@ -193,17 +204,36 @@ def generate_correlation_triplet(
     rng = np.random.default_rng(seed)
 
     R_AA = generate_autocorrelation(
-        shape, sigma_particle_x, sigma_particle_y,
-        amplitude, noise_std, rng, offset=offset_A,
+        shape,
+        sigma_particle_x,
+        sigma_particle_y,
+        amplitude,
+        noise_std,
+        rng,
+        offset=offset_A,
     )
     R_BB = generate_autocorrelation(
-        shape, sigma_particle_x, sigma_particle_y,
-        amplitude, noise_std, rng, offset=offset_B,
+        shape,
+        sigma_particle_x,
+        sigma_particle_y,
+        amplitude,
+        noise_std,
+        rng,
+        offset=offset_B,
     )
     R_AB = generate_crosscorrelation(
-        shape, sigma_particle_x, sigma_particle_y,
-        sigma_stress_xx, sigma_stress_yy, sigma_stress_xy,
-        mu_x, mu_y, amplitude, noise_std, rng, offset=offset_AB,
+        shape,
+        sigma_particle_x,
+        sigma_particle_y,
+        sigma_stress_xx,
+        sigma_stress_yy,
+        sigma_stress_xy,
+        mu_x,
+        mu_y,
+        amplitude,
+        noise_std,
+        rng,
+        offset=offset_AB,
     )
     return R_AA, R_BB, R_AB
 
@@ -244,7 +274,7 @@ class _MockConfig:
 
     def __init__(
         self,
-        fit_method='kspace',
+        fit_method="kspace",
         gradient_correction=False,
         ensemble_window_sizes=None,
         ensemble_type=None,
@@ -255,14 +285,14 @@ class _MockConfig:
         self.ensemble_fit_method = fit_method
         self.ensemble_gradient_correction = gradient_correction
         self.ensemble_window_sizes = ensemble_window_sizes or [[32, 32]]
-        self.ensemble_type = ensemble_type or ['std']
+        self.ensemble_type = ensemble_type or ["std"]
         self.ensemble_sum_window = ensemble_sum_window or [64, 64]
         self.ensemble_sum_fitting_window = ensemble_sum_fitting_window
         self.ensemble_kspace_kurtosis = ensemble_kspace_kurtosis
 
 
 def make_mock_config(
-    fit_method='kspace',
+    fit_method="kspace",
     gradient_correction=False,
     ensemble_window_sizes=None,
     ensemble_type=None,
@@ -272,8 +302,11 @@ def make_mock_config(
 ):
     """Create a minimal mock config object."""
     return _MockConfig(
-        fit_method, gradient_correction,
-        ensemble_window_sizes, ensemble_type,
-        ensemble_sum_window, ensemble_sum_fitting_window,
+        fit_method,
+        gradient_correction,
+        ensemble_window_sizes,
+        ensemble_type,
+        ensemble_sum_window,
+        ensemble_sum_fitting_window,
         ensemble_kspace_kurtosis,
     )

@@ -11,14 +11,17 @@ Usage:
     from synthetic_piv import generate_particle_image, generate_displaced_pair
     from synthetic_piv import generate_rs_test_images, generate_gap_verification_images
 """
+
+from pathlib import Path
+from typing import List, Optional, Tuple
+
 import numpy as np
 import tifffile
-from pathlib import Path
-from typing import Optional, Tuple, List
 
 
-def render_particles(shape, x_pos, y_pos, intensities, sigma,
-                     dtype=np.float32, cutoff=3.0):
+def render_particles(
+    shape, x_pos, y_pos, intensities, sigma, dtype=np.float32, cutoff=3.0
+):
     """
     Render particles as Gaussians using local-patch evaluation.
 
@@ -71,8 +74,10 @@ def render_particles(shape, x_pos, y_pos, intensities, sigma,
 # In-memory generators (return ndarray, no disk I/O)
 # ============================================================================
 
-def generate_particle_image(shape, num_particles, particle_diameter, seed=None,
-                            dtype=np.float32):
+
+def generate_particle_image(
+    shape, num_particles, particle_diameter, seed=None, dtype=np.float32
+):
     """
     Generate a synthetic particle image.
 
@@ -104,8 +109,9 @@ def generate_particle_image(shape, num_particles, particle_diameter, seed=None,
     return render_particles(shape, x_pos, y_pos, intensities, sigma, dtype=dtype)
 
 
-def generate_displaced_pair(shape, num_particles, particle_diameter, dx, dy,
-                            seed=None, dtype=np.float32):
+def generate_displaced_pair(
+    shape, num_particles, particle_diameter, dx, dy, seed=None, dtype=np.float32
+):
     """
     Generate a pair of particle images with known displacement.
 
@@ -137,8 +143,9 @@ def generate_displaced_pair(shape, num_particles, particle_diameter, dx, dy,
     intensities = rng.uniform(0.8, 1.0, num_particles)
 
     img_a = render_particles(shape, x_pos, y_pos, intensities, sigma, dtype=dtype)
-    img_b = render_particles(shape, x_pos + dx, y_pos + dy, intensities, sigma,
-                             dtype=dtype)
+    img_b = render_particles(
+        shape, x_pos + dx, y_pos + dy, intensities, sigma, dtype=dtype
+    )
 
     return img_a, img_b
 
@@ -166,13 +173,15 @@ def generate_particles(size, n_particles=200, sigma=1.5):
     y_pos = xy[:, 1]
     intensities = np.ones(n_particles)
 
-    return render_particles((size, size), x_pos, y_pos, intensities, sigma,
-                            dtype=np.float64)
+    return render_particles(
+        (size, size), x_pos, y_pos, intensities, sigma, dtype=np.float64
+    )
 
 
 # ============================================================================
 # Disk-writing generators (write TIFF uint16, return stats dict)
 # ============================================================================
+
 
 def _normalize_to_uint16(img):
     """Normalize image to uint16 range."""
@@ -269,14 +278,17 @@ def generate_rs_test_images(
         img_a = render_particles(image_shape, x_pos, y_pos, intensities, sigma)
 
         # Frame B: displaced (positive dy = upward = lower row index)
-        img_b = render_particles(image_shape, x_pos + dx, y_pos - dy,
-                                 intensities, sigma)
+        img_b = render_particles(
+            image_shape, x_pos + dx, y_pos - dy, intensities, sigma
+        )
 
         # Save as uint16 TIFF
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_A.tif",
-                         _normalize_to_uint16(img_a))
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_B.tif",
-                         _normalize_to_uint16(img_b))
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_A.tif", _normalize_to_uint16(img_a)
+        )
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_B.tif", _normalize_to_uint16(img_b)
+        )
 
         if verbose and pair_idx % 25 == 0:
             print(f"  Generated {pair_idx}/{num_pairs} pairs")
@@ -285,30 +297,34 @@ def generate_rs_test_images(
     all_dy = np.array(all_dy)
 
     stats = {
-        'num_pairs': num_pairs,
-        'actual_mean_dx': np.mean(all_dx),
-        'actual_mean_dy': np.mean(all_dy),
-        'actual_std_dx': np.std(all_dx),
-        'actual_std_dy': np.std(all_dy),
-        'actual_var_dx': np.var(all_dx),
-        'actual_var_dy': np.var(all_dy),
-        'target_mean_dx': mean_dx,
-        'target_mean_dy': mean_dy,
-        'target_std_dx': std_dx,
-        'target_std_dy': std_dy,
-        'particle_diameter': particle_diameter,
-        'image_shape': image_shape,
+        "num_pairs": num_pairs,
+        "actual_mean_dx": np.mean(all_dx),
+        "actual_mean_dy": np.mean(all_dy),
+        "actual_std_dx": np.std(all_dx),
+        "actual_std_dy": np.std(all_dy),
+        "actual_var_dx": np.var(all_dx),
+        "actual_var_dy": np.var(all_dy),
+        "target_mean_dx": mean_dx,
+        "target_mean_dy": mean_dy,
+        "target_std_dx": std_dx,
+        "target_std_dy": std_dy,
+        "particle_diameter": particle_diameter,
+        "image_shape": image_shape,
     }
 
     if verbose:
         print(f"\nGenerated {num_pairs} image pairs in {output_dir}")
         print(f"  Image size: {H}x{W}, Particle diameter: {particle_diameter}px")
         print(f"  Target mean: dx={mean_dx:.2f}, dy={mean_dy:.2f}")
-        print(f"  Actual mean: dx={stats['actual_mean_dx']:.3f}, "
-              f"dy={stats['actual_mean_dy']:.3f}")
+        print(
+            f"  Actual mean: dx={stats['actual_mean_dx']:.3f}, "
+            f"dy={stats['actual_mean_dy']:.3f}"
+        )
         print(f"  Target std:  dx={std_dx:.2f}, dy={std_dy:.2f}")
-        print(f"  Actual std:  dx={stats['actual_std_dx']:.3f}, "
-              f"dy={stats['actual_std_dy']:.3f}")
+        print(
+            f"  Actual std:  dx={stats['actual_std_dx']:.3f}, "
+            f"dy={stats['actual_std_dy']:.3f}"
+        )
         print(f"  Expected RS: UU~{std_dx**2:.2f}, VV~{std_dy**2:.2f}")
 
     return stats
@@ -383,36 +399,46 @@ def generate_spatially_varying_rs_images(
 
         img_b = render_particles(image_shape, new_x, new_y, intensities, sigma)
 
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_A.tif",
-                         _normalize_to_uint16(img_a))
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_B.tif",
-                         _normalize_to_uint16(img_b))
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_A.tif", _normalize_to_uint16(img_a)
+        )
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_B.tif", _normalize_to_uint16(img_b)
+        )
 
         if verbose and pair_idx % 25 == 0:
             print(f"  Generated {pair_idx}/{num_pairs} pairs")
 
     stats = {
-        'num_pairs': num_pairs,
-        'top_var_dx': np.var(top_dx) if top_dx else 0,
-        'top_var_dy': np.var(top_dy) if top_dy else 0,
-        'bot_var_dx': np.var(bot_dx) if bot_dx else 0,
-        'bot_var_dy': np.var(bot_dy) if bot_dy else 0,
-        'expected_bot_var_dx': base_std_dx**2,
-        'expected_bot_var_dy': base_std_dy**2,
-        'expected_top_var_dx': (base_std_dx * gradient_scale)**2,
-        'expected_top_var_dy': (base_std_dy * gradient_scale)**2,
+        "num_pairs": num_pairs,
+        "top_var_dx": np.var(top_dx) if top_dx else 0,
+        "top_var_dy": np.var(top_dy) if top_dy else 0,
+        "bot_var_dx": np.var(bot_dx) if bot_dx else 0,
+        "bot_var_dy": np.var(bot_dy) if bot_dy else 0,
+        "expected_bot_var_dx": base_std_dx**2,
+        "expected_bot_var_dy": base_std_dy**2,
+        "expected_top_var_dx": (base_std_dx * gradient_scale) ** 2,
+        "expected_top_var_dy": (base_std_dy * gradient_scale) ** 2,
     }
 
     if verbose:
         print(f"\nGenerated {num_pairs} spatially varying RS images in {output_dir}")
-        print(f"  Bottom RS (expected): UU={stats['expected_bot_var_dx']:.2f}, "
-              f"VV={stats['expected_bot_var_dy']:.2f}")
-        print(f"  Top RS (expected):    UU={stats['expected_top_var_dx']:.2f}, "
-              f"VV={stats['expected_top_var_dy']:.2f}")
-        print(f"  Bottom RS (actual):   UU={stats['bot_var_dx']:.2f}, "
-              f"VV={stats['bot_var_dy']:.2f}")
-        print(f"  Top RS (actual):      UU={stats['top_var_dx']:.2f}, "
-              f"VV={stats['top_var_dy']:.2f}")
+        print(
+            f"  Bottom RS (expected): UU={stats['expected_bot_var_dx']:.2f}, "
+            f"VV={stats['expected_bot_var_dy']:.2f}"
+        )
+        print(
+            f"  Top RS (expected):    UU={stats['expected_top_var_dx']:.2f}, "
+            f"VV={stats['expected_top_var_dy']:.2f}"
+        )
+        print(
+            f"  Bottom RS (actual):   UU={stats['bot_var_dx']:.2f}, "
+            f"VV={stats['bot_var_dy']:.2f}"
+        )
+        print(
+            f"  Top RS (actual):      UU={stats['top_var_dx']:.2f}, "
+            f"VV={stats['top_var_dy']:.2f}"
+        )
 
     return stats
 
@@ -444,8 +470,8 @@ def generate_gap_verification_images(
     sigma = particle_diameter / 2.355
 
     gap_boundary_pixel = 60
-    gap_velocity_pixel = +10       # DOWN in image
-    measured_velocity_pixel = -5   # UP in image
+    gap_velocity_pixel = +10  # DOWN in image
+    measured_velocity_pixel = -5  # UP in image
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -456,34 +482,39 @@ def generate_gap_verification_images(
         intensities = rng.uniform(200, 255, num_particles)
 
         # Frame A
-        img_a = render_particles(image_shape, x_pos, y_pos_pixel, intensities,
-                                 sigma)
+        img_a = render_particles(image_shape, x_pos, y_pos_pixel, intensities, sigma)
 
         # Frame B: region-dependent displacement
-        dy_pixel = np.where(y_pos_pixel < gap_boundary_pixel,
-                            gap_velocity_pixel, measured_velocity_pixel)
-        img_b = render_particles(image_shape, x_pos, y_pos_pixel + dy_pixel,
-                                 intensities, sigma)
+        dy_pixel = np.where(
+            y_pos_pixel < gap_boundary_pixel,
+            gap_velocity_pixel,
+            measured_velocity_pixel,
+        )
+        img_b = render_particles(
+            image_shape, x_pos, y_pos_pixel + dy_pixel, intensities, sigma
+        )
 
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_A.tif",
-                         _normalize_to_uint16(img_a))
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_B.tif",
-                         _normalize_to_uint16(img_b))
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_A.tif", _normalize_to_uint16(img_a)
+        )
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_B.tif", _normalize_to_uint16(img_b)
+        )
 
     return {
-        'gap_velocity': -gap_velocity_pixel,       # Physical uy
-        'measured_velocity': -measured_velocity_pixel,  # Physical uy
-        'gap_boundary': gap_boundary_pixel,
-        'image_shape': image_shape,
+        "gap_velocity": -gap_velocity_pixel,  # Physical uy
+        "measured_velocity": -measured_velocity_pixel,  # Physical uy
+        "gap_boundary": gap_boundary_pixel,
+        "image_shape": image_shape,
     }
 
 
 if __name__ == "__main__":
     # Quick smoke test
     print("Testing render_particles...")
-    img = render_particles((64, 64),
-                           np.array([32.5]), np.array([32.5]),
-                           np.array([1.0]), sigma=0.85)
+    img = render_particles(
+        (64, 64), np.array([32.5]), np.array([32.5]), np.array([1.0]), sigma=0.85
+    )
     print(f"  Peak value: {img.max():.4f} (expected ~1.0)")
     print(f"  Sum: {img.sum():.4f} (expected ~{2*np.pi*0.85**2:.4f})")
 

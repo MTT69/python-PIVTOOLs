@@ -11,15 +11,17 @@ Entry point for ensemble PIV with true Dask patterns:
 Usage:
     python -m pivtools_core.ensemble
 """
-from pivtools_core.config import Config
+
 import os
+
+from pivtools_core.config import Config
+
 config = Config()
 omp_threads = str(config.omp_threads)
 os.environ["OMP_NUM_THREADS"] = omp_threads
 
 import gc
 import logging
-import numpy as np
 import os
 import shutil
 import signal
@@ -28,35 +30,35 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 from dask.distributed import Client
 
-from pivtools_core.validation import (
-    validate_config,
-    log_validation_result,
-)
-from pivtools_core.image_handling.load_images import (
-    load_images,
-    load_mask_for_camera,
-    compute_vector_mask,
-)
-from pivtools_cli.piv_cluster.cluster import start_cluster
-from pivtools_cli.piv.save_results import (
-    get_ensemble_output_path,
-    save_ensemble_result_distributed,
-    save_ensemble_coordinates_from_config_distributed,
-)
-from pivtools_cli.piv.piv_result import PIVEnsembleResult
 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 from pivtools_cli.piv.piv_backend.single_pass_accumulator import SinglePassAccumulator
+from pivtools_cli.piv.piv_result import PIVEnsembleResult
+from pivtools_cli.piv.save_results import (
+    get_ensemble_output_path,
+    save_ensemble_coordinates_from_config_distributed,
+    save_ensemble_result_distributed,
+)
+from pivtools_cli.piv_cluster.cluster import start_cluster
 from pivtools_cli.processing.dask_pipeline import (
+    correlate_worker_batches,
     create_filter_pipeline,
-    scatter_immutable_data,
+    extract_predictor_field,
     reduce_ensemble_results,
     reduce_warp_sums,
-    extract_predictor_field,
-    correlate_worker_batches,
+    scatter_immutable_data,
 )
-
+from pivtools_core.image_handling.load_images import (
+    compute_vector_mask,
+    load_images,
+    load_mask_for_camera,
+)
+from pivtools_core.validation import (
+    log_validation_result,
+    validate_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +95,9 @@ def process_pass_worker_accumulate(
 
     Then tree-reduces K per-worker results into one final result.
     """
-    from dask.distributed import as_completed, Variable
     import threading
+
+    from dask.distributed import Variable, as_completed
 
     num_workers = len(workers)
     diag_path = str(output_path) if config.ensemble_save_diagnostics else None
@@ -102,6 +105,7 @@ def process_pass_worker_accumulate(
     if images is not None:
         # Persisted mode: discover where Dask placed each chunk, group by home worker
         from dask.distributed import futures_of
+
         all_futures = futures_of(images)
         # futures_of returns one future per chunk (in graph order)
         # Map each to its home worker via who_has
@@ -138,7 +142,7 @@ def process_pass_worker_accumulate(
     # the data; only runs when the method is explicitly selected.
     scattered_mean_images = None
     image_bg_sums = None
-    if config.ensemble_background_subtraction_method == 'image':
+    if config.ensemble_background_subtraction_method == "image":
         logger.info(
             "  'image' background method: phase A sweep (warped image sums "
             "for the ensemble-mean images) — this doubles the passes over the data"
@@ -147,15 +151,17 @@ def process_pass_worker_accumulate(
         for worker, chunk_info in worker_chunks.items():
             chunk_indices = [idx for idx, _ in chunk_info]
             chunk_futs = [fut for _, fut in chunk_info]
-            batch_images = chunk_futs if all(f is not None for f in chunk_futs) else None
+            batch_images = (
+                chunk_futs if all(f is not None for f in chunk_futs) else None
+            )
             fut = client.submit(
                 correlate_worker_batches,
                 batch_indices=chunk_indices,
                 config=scattered_config,
                 pass_idx=pass_idx,
                 predictor_field=scattered_predictor,
-                cache=scattered['cache'],
-                masks=scattered['masks'],
+                cache=scattered["cache"],
+                masks=scattered["masks"],
                 camera_num=camera_num,
                 source_path=str(source_path),
                 pixel_mask=pixel_mask,
@@ -170,10 +176,14 @@ def process_pass_worker_accumulate(
             merged = []
             for i in range(0, len(sums_futures), 2):
                 if i + 1 < len(sums_futures):
-                    merged.append(client.submit(
-                        reduce_warp_sums, sums_futures[i], sums_futures[i + 1],
-                        pure=False,
-                    ))
+                    merged.append(
+                        client.submit(
+                            reduce_warp_sums,
+                            sums_futures[i],
+                            sums_futures[i + 1],
+                            pure=False,
+                        )
+                    )
                 else:
                     merged.append(sums_futures[i])
             sums_futures = merged
@@ -205,8 +215,8 @@ def process_pass_worker_accumulate(
             config=scattered_config,
             pass_idx=pass_idx,
             predictor_field=scattered_predictor,
-            cache=scattered['cache'],
-            masks=scattered['masks'],
+            cache=scattered["cache"],
+            masks=scattered["masks"],
             camera_num=camera_num,
             source_path=str(source_path),
             pixel_mask=pixel_mask,
@@ -297,7 +307,9 @@ def process_pass_worker_accumulate(
         for i in range(0, len(futures), 2):
             if i + 1 < len(futures):
                 merged = client.submit(
-                    reduce_ensemble_results, futures[i], futures[i + 1],
+                    reduce_ensemble_results,
+                    futures[i],
+                    futures[i + 1],
                     pure=False,
                 )
                 new_futures.append(merged)
@@ -354,15 +366,26 @@ def signal_handler(signum, frame):
     """Handle termination signals for clean shutdown."""
     global _shutdown_requested
     _shutdown_requested = True
-    sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    sig_name = (
+        signal.Signals(signum).name if hasattr(signal, "Signals") else str(signum)
+    )
     logger.info(f"Received signal {sig_name}, initiating clean shutdown...")
     print(f"\n[CANCELLED] Received signal {sig_name}, shutting down...", flush=True)
 
     # Suppress noisy distributed logs during teardown
     import logging as _logging
-    for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
-                 "distributed.core", "distributed.comm", "distributed.comm.tcp",
-                 "distributed.batched", "tornado.application", "tornado.general"]:
+
+    for name in [
+        "distributed.worker",
+        "distributed.scheduler",
+        "distributed.nanny",
+        "distributed.core",
+        "distributed.comm",
+        "distributed.comm.tcp",
+        "distributed.batched",
+        "tornado.application",
+        "tornado.general",
+    ]:
         _logging.getLogger(name).setLevel(_logging.CRITICAL)
 
     # Close Dask client and cluster if they exist
@@ -382,6 +405,7 @@ def signal_handler(signum, frame):
 
     # Small delay to let workers finish cleanly
     import time as _time
+
     _time.sleep(0.5)
 
     try:
@@ -446,7 +470,9 @@ def run_ensemble_piv(
     batch_size = config.batch_size
     logger.info(f"Loading images for camera {camera_num} (batch_size={batch_size})...")
     images = load_images(camera_num, config, source=source_path, batch_size=batch_size)
-    logger.info(f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
+    logger.info(
+        f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks of size {images.chunks[0][0]}"
+    )
 
     # 2. Scatter immutable data once
     logger.info("Scattering immutable data...")
@@ -457,7 +483,9 @@ def run_ensemble_piv(
     # 3. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
     save_intermediate = base_path if config.filters else None
-    images = create_filter_pipeline(images, config, pixel_mask, save_intermediate_base=save_intermediate)
+    images = create_filter_pipeline(
+        images, config, pixel_mask, save_intermediate_base=save_intermediate
+    )
 
     # 4. Decide memory strategy based on dataset size
     num_chunks = len(images.chunks[0])
@@ -465,7 +493,10 @@ def run_ensemble_piv(
     if num_chunks == 1:
         # Small dataset: all images fit in one batch, persist to avoid re-loading per pass
         from dask.distributed import wait
-        logger.info(f"Small dataset ({num_chunks} chunk): persisting to avoid re-load per pass")
+
+        logger.info(
+            f"Small dataset ({num_chunks} chunk): persisting to avoid re-load per pass"
+        )
         images = images.persist()
         wait(images)
     elif config.ensemble_persist_images:
@@ -473,13 +504,18 @@ def run_ensemble_piv(
         # With batch-loading (no rechunk), tasks are fully independent —
         # workers distribute batch-loads evenly from the start
         from dask.distributed import wait
-        logger.info(f"Persisting {num_chunks} filtered image chunks to worker RAM (ensemble_persist_images=true)...")
+
+        logger.info(
+            f"Persisting {num_chunks} filtered image chunks to worker RAM (ensemble_persist_images=true)..."
+        )
         images = images.persist()
         wait(images)
         logger.info("  All filtered images cached in worker RAM")
     else:
         # Desktop / memory-constrained: workers re-load from disk per pass
-        logger.info(f"Large dataset ({num_chunks} chunks): workers load from disk per pass")
+        logger.info(
+            f"Large dataset ({num_chunks} chunks): workers load from disk per pass"
+        )
     num_passes = config.ensemble_num_passes
     accumulator = SinglePassAccumulator(config, vector_masks)
     predictor_field = None
@@ -510,12 +546,17 @@ def run_ensemble_piv(
                 f"Ensure previous passes completed successfully."
             )
 
-        logger.info(f"Resuming from pass {resume_from_pass} (loading passes 1-{resume_from_pass-1})...")
+        logger.info(
+            f"Resuming from pass {resume_from_pass} (loading passes 1-{resume_from_pass-1})..."
+        )
 
         from pivtools_cli.piv.save_results import load_ensemble_result
+
         loaded_result, n_loaded = load_ensemble_result(
             existing_result_path,
-            passes_to_load=list(range(start_pass_idx))  # Load passes 0..start_pass_idx-1
+            passes_to_load=list(
+                range(start_pass_idx)
+            ),  # Load passes 0..start_pass_idx-1
         )
 
         # Validate loaded passes
@@ -536,10 +577,14 @@ def run_ensemble_piv(
         logger.info(f"  Loaded {n_loaded} passes from {existing_result_path}")
 
         # Backup pre-resume result before any intermediate saves overwrite it
-        backup_path = output_path / f"ensemble_result_before_pass{resume_from_pass}.mat.bak"
+        backup_path = (
+            output_path / f"ensemble_result_before_pass{resume_from_pass}.mat.bak"
+        )
         shutil.copy2(existing_result_path, backup_path)
         logger.info(f"  Backed up previous result to {backup_path}")
-        logger.info(f"  Predictor extracted from pass {start_pass_idx} (shape: {predictor_field.shape})")
+        logger.info(
+            f"  Predictor extracted from pass {start_pass_idx} (shape: {predictor_field.shape})"
+        )
 
     # Scatter config once to avoid repeated serialization
     scattered_config = client.scatter(config, broadcast=True)
@@ -558,7 +603,9 @@ def run_ensemble_piv(
     del temp_correlator
     gradient_correction = config.ensemble_gradient_correction
 
-    logger.info(f"Processing passes {start_pass_idx + 1} to {num_passes} with {num_chunks} chunks each...")
+    logger.info(
+        f"Processing passes {start_pass_idx + 1} to {num_passes} with {num_chunks} chunks each..."
+    )
 
     for pass_idx in range(start_pass_idx, num_passes):
         if _shutdown_requested:
@@ -572,10 +619,10 @@ def run_ensemble_piv(
         scattered_predictor = None
         if predictor_field is not None:
             scattered_predictor = client.scatter(predictor_field, broadcast=True)
-            logger.info(f"  Broadcast predictor field from previous pass")
+            logger.info("  Broadcast predictor field from previous pass")
 
         workers = list(client.ncores().keys())
-        num_workers = len(workers)
+        len(workers)
 
         pass_start = time.time()
 
@@ -602,7 +649,10 @@ def run_ensemble_piv(
         finalize_start = time.time()
         accumulator.accumulate_batch(accumulated, pass_idx=pass_idx)
         pass_result = accumulator.finalize_pass(
-            client=client, pass_idx=pass_idx, predictor_field=predictor_field, output_path=output_path
+            client=client,
+            pass_idx=pass_idx,
+            predictor_field=predictor_field,
+            output_path=output_path,
         )
         # NOTE: finalize_pass() already appends to passes_results internally
         finalize_elapsed = time.time() - finalize_start
@@ -681,7 +731,7 @@ def main():
     start_time = time.time()
 
     # Load configuration
-    #config = Config()
+    # config = Config()
 
     # Validate configuration
     is_valid, error_msg, warnings = validate_config(config)
@@ -692,7 +742,7 @@ def main():
 
     # Set up environment
     os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
-    worker_omp_threads = str(config.omp_threads)
+    str(config.omp_threads)
 
     global _client, _cluster
 
@@ -700,10 +750,10 @@ def main():
         # Start Dask cluster
         logger.info("Starting Dask cluster...")
         cluster, client = start_cluster(
-            #n_workers_per_node=config.dask_workers_per_node,
-            #memory_limit=config.dask_memory_limit,
+            # n_workers_per_node=config.dask_workers_per_node,
+            # memory_limit=config.dask_memory_limit,
             config=config,
-            #worker_omp_threads=worker_omp_threads,
+            # worker_omp_threads=worker_omp_threads,
         )
         _cluster = cluster
         _client = client
@@ -711,6 +761,7 @@ def main():
         print(f"Dask dashboard available at: {client.dashboard_link}", flush=True)
         if config.open_dashboard:
             import webbrowser
+
             webbrowser.open(client.dashboard_link)
 
         # Log worker info
@@ -720,6 +771,7 @@ def main():
 
         # Generate run timestamp for config traceability
         from datetime import datetime
+
         run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # Process each path and camera
@@ -729,7 +781,9 @@ def main():
         logger.info("")
         logger.info("=" * 80)
         logger.info("ENSEMBLE PIV PROCESSING (DASK-NATIVE)")
-        logger.info(f"Processing {len(active_path_indices)} path(s), {len(camera_numbers)} camera(s)")
+        logger.info(
+            f"Processing {len(active_path_indices)} path(s), {len(camera_numbers)} camera(s)"
+        )
         logger.info("=" * 80)
 
         for path_set_num, path_idx in enumerate(active_path_indices, start=1):
@@ -741,7 +795,9 @@ def main():
             base_path = config.base_paths[path_idx]
 
             # Save timestamped config copy for traceability
-            config_copy_path = config.save_timestamped_copy(base_path, timestamp=run_timestamp)
+            config_copy_path = config.save_timestamped_copy(
+                base_path, timestamp=run_timestamp
+            )
             logger.info(f"Config saved to: {config_copy_path}")
 
             logger.info("")
@@ -758,8 +814,12 @@ def main():
                 logger.info(f"Processing camera {camera_num}...")
 
                 # Load mask
-                mask = load_mask_for_camera(camera_num, config, source_path_idx=path_idx)
-                logger.debug(f"mask loaded = {mask is not None}, masking_enabled = {config.masking_enabled}")
+                mask = load_mask_for_camera(
+                    camera_num, config, source_path_idx=path_idx
+                )
+                logger.debug(
+                    f"mask loaded = {mask is not None}, masking_enabled = {config.masking_enabled}"
+                )
                 if mask is not None:
                     logger.debug(f"pixel mask shape = {mask.shape}")
 
@@ -773,7 +833,9 @@ def main():
                     for i, vm in enumerate(vector_masks):
                         logger.info(f"    Pass {i}: mask shape = {vm.shape}")
                 else:
-                    logger.debug(f"Skipping vector mask computation (enabled={config.masking_enabled}, mask={mask is not None})")
+                    logger.debug(
+                        f"Skipping vector mask computation (enabled={config.masking_enabled}, mask={mask is not None})"
+                    )
 
                 # Get output path
                 output_path = get_ensemble_output_path(
@@ -815,18 +877,27 @@ def main():
 
     except Exception as e:
         import traceback
+
         logger.error(f"Error: {e}")
         traceback.print_exc()
 
     finally:
         # Clean shutdown - suppress noisy distributed logs during teardown
+        import io as _io
         import logging as _logging
         import sys as _sys
-        import io as _io
 
-        for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
-                     "distributed.core", "distributed.comm", "distributed.comm.tcp",
-                     "distributed.batched", "tornado.application", "tornado.general"]:
+        for name in [
+            "distributed.worker",
+            "distributed.scheduler",
+            "distributed.nanny",
+            "distributed.core",
+            "distributed.comm",
+            "distributed.comm.tcp",
+            "distributed.batched",
+            "tornado.application",
+            "tornado.general",
+        ]:
             _logging.getLogger(name).setLevel(_logging.CRITICAL)
 
         # Suppress stderr during cluster shutdown to hide Tornado tracebacks
@@ -836,7 +907,7 @@ def main():
         try:
             if _client is not None:
                 _client.close(timeout=5)
-        except Exception as e:
+        except Exception:
             pass  # Suppress errors during shutdown
 
         # Small delay to let workers finish cleanly
@@ -845,7 +916,7 @@ def main():
         try:
             if _cluster is not None:
                 _cluster.close(timeout=5)
-        except Exception as e:
+        except Exception:
             pass  # Suppress errors during shutdown
 
         # Wait a bit more for async cleanup to complete

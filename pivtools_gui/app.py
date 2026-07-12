@@ -5,44 +5,61 @@ from pathlib import Path
 # Add parent directory to path so pivtools_gui can be imported
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pathlib import Path
-import time
+import os
 import threading
+import time
 import webbrowser
+from pathlib import Path
+
 import dask
 import dask.array as da
 import numpy as np
 import yaml
 from dask import config as dask_config
 from flask import Blueprint, Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
 from flask_compress import Compress
+from flask_cors import CORS
 from loguru import logger
-import os
-from pivtools_core.config import get_config, reload_config, Config
-from pivtools_core.fft_sizes import BUILT_FFT_SIZES
-from pivtools_core.image_handling.load_images import create_piv_frame_reader, read_pair, load_mask_for_camera
-from pivtools_core.image_handling.path_utils import build_piv_camera_path, validate_images_generic
-from pivtools_gui.masking.app.views import masking_bp
-from pivtools_core.paths import get_data_paths
-from pivtools_gui.piv_runner import get_runner
-from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
-# Transform endpoints (per-file storage with backup/restore, used by frontend)
-from pivtools_gui.plotting.app.transform_views import transform_bp
+
 # Note: transforms/app/transform_views.py exists for CLI batch usage via TransformProcessor
 # but is NOT registered as a Flask blueprint - the frontend uses the plotting transform API
 from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
+from pivtools_core.config import Config, get_config, reload_config
+from pivtools_core.fft_sizes import BUILT_FFT_SIZES
+from pivtools_core.image_handling.load_images import (
+    create_piv_frame_reader,
+    load_mask_for_camera,
+    read_pair,
+)
+from pivtools_core.image_handling.path_utils import (
+    build_piv_camera_path,
+    validate_images_generic,
+)
+from pivtools_core.paths import get_data_paths
+from pivtools_gui.masking.app.views import masking_bp
+from pivtools_gui.piv_runner import get_runner
+from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
+
+# Transform endpoints (per-file storage with backup/restore, used by frontend)
+from pivtools_gui.plotting.app.transform_views import transform_bp
+
 # from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
-from pivtools_gui.utils import camera_number, numpy_to_png_base64, numpy_to_base64, get_display_contrast_stats
-from pivtools_gui.vector_statistics.app.views import statistics_bp
+from pivtools_gui.utils import (
+    camera_number,
+    get_display_contrast_stats,
+    numpy_to_base64,
+    numpy_to_png_base64,
+)
 from pivtools_gui.vector_merging.app.views import merging_bp
+from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.video_maker.app.views import video_maker_bp
 
-app = Flask(__name__, static_folder='static', static_url_path='')
+app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 Compress(app)
-app.config['COMPRESS_MIN_SIZE'] = 500
+app.config["COMPRESS_MIN_SIZE"] = 500
 dask_config.set(scheduler="threads")
+
 
 # Configure loguru logging level from config
 def configure_logging():
@@ -63,25 +80,27 @@ def configure_logging():
         # If config isn't available yet, keep default loguru config
         logger.warning(f"Could not configure logging from config: {e}")
 
+
 configure_logging()
 
 # Create API blueprint with /backend prefix
-api_bp = Blueprint('api', __name__, url_prefix='/backend')
+api_bp = Blueprint("api", __name__, url_prefix="/backend")
 
 # Register existing blueprints with /backend prefix
-app.register_blueprint(vector_plot_bp, url_prefix='/backend/plot')
-app.register_blueprint(transform_bp, url_prefix='/backend/plot')
-app.register_blueprint(masking_bp, url_prefix='/backend')
+app.register_blueprint(vector_plot_bp, url_prefix="/backend/plot")
+app.register_blueprint(transform_bp, url_prefix="/backend/plot")
+app.register_blueprint(masking_bp, url_prefix="/backend")
 # Calibration is calibration (the legacy v1 `calibration` package was retired — its
 # shared leaves relocated to pivtools_gui/services, calibration/detection, and
 # stereo_reconstruction).
 from pivtools_gui.calibration.app import calibration_bp, calibration_stepped_bp
-app.register_blueprint(calibration_bp, url_prefix='/backend')
-app.register_blueprint(calibration_stepped_bp, url_prefix='/backend')
-app.register_blueprint(video_maker_bp, url_prefix='/backend/video')
+
+app.register_blueprint(calibration_bp, url_prefix="/backend")
+app.register_blueprint(calibration_stepped_bp, url_prefix="/backend")
+app.register_blueprint(video_maker_bp, url_prefix="/backend/video")
 # app.register_blueprint(stereo_bp, url_prefix='/backend')
-app.register_blueprint(statistics_bp, url_prefix='/backend')
-app.register_blueprint(merging_bp, url_prefix='/backend')
+app.register_blueprint(statistics_bp, url_prefix="/backend")
+app.register_blueprint(merging_bp, url_prefix="/backend")
 # --- In-memory stores ---
 processed_store = {"processed": {}}
 processing = False
@@ -93,10 +112,10 @@ RAW_CACHE_MAX_SIZE = 20  # Maximum number of frame pairs to cache
 FRAME_1_KEYS = set()  # Track frame 1 keys to pin them in cache
 
 # Thread safety for cache access
-import threading
 cache_lock = threading.Lock()
 
 # --- Utility Functions ---
+
 
 def manage_cache_size():
     """LRU eviction with frame 1 pinning. Thread-safe."""
@@ -126,10 +145,18 @@ def _log_cache_contents():
     """Log cache contents: raw frames + processed frames (if any)."""
     with cache_lock:
         # Get raw frame indices
-        raw_frames = sorted([key[2] for key in raw_image_cache.keys()]) if raw_image_cache else []
+        raw_frames = (
+            sorted([key[2] for key in raw_image_cache.keys()])
+            if raw_image_cache
+            else []
+        )
 
         # Get processed frame indices
-        proc_frames = sorted(processed_store.get("processed", {}).keys()) if processed_store.get("processed") else []
+        proc_frames = (
+            sorted(processed_store.get("processed", {}).keys())
+            if processed_store.get("processed")
+            else []
+        )
 
         if not raw_frames:
             return
@@ -148,7 +175,9 @@ def cam_folder_key(camera, cfg):
     return cfg.get_camera_folder(camera_number(camera))
 
 
-def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: str, cfg) -> tuple:
+def make_raw_cache_key(
+    source_path_idx: int, camera: int, idx: int, img_format: str, cfg
+) -> tuple:
     """Generate consistent cache key for raw images. Include all parameters that affect output."""
     image_type = cfg.image_type
     # For .set files, source_path IS the .set file; for others, may need camera folder
@@ -156,7 +185,11 @@ def make_raw_cache_key(source_path_idx: int, camera: int, idx: int, img_format: 
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera)
-        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+        source_path = (
+            cfg.source_paths[source_path_idx] / folder
+            if folder
+            else cfg.source_paths[source_path_idx]
+        )
     return (str(source_path), camera, idx, img_format)
 
 
@@ -168,7 +201,11 @@ def cache_key(source_path_idx, camera, cfg):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
-        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+        source_path = (
+            cfg.source_paths[source_path_idx] / folder
+            if folder
+            else cfg.source_paths[source_path_idx]
+        )
     return (str(source_path), str(camera))
 
 
@@ -198,7 +235,6 @@ def _resolve_loop_read(cfg, source_path_idx, pair_idx, camera):
     folder = cfg.get_camera_folder(camera)
     source = effective_base / folder if folder else effective_base
     return source, local_pair
-
 
 
 def get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits=False):
@@ -259,20 +295,33 @@ def get_calibration_method_params(cfg, method: str):
     return cal.get(method, {})
 
 
-def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: int, cfg, window: int = 10, img_format: str = "jpeg", auto_limits: bool = False):
+def _preload_surrounding_frames(
+    source_path_idx: int,
+    camera: int,
+    current_idx: int,
+    cfg,
+    window: int = 10,
+    img_format: str = "jpeg",
+    auto_limits: bool = False,
+):
     """
     Background task to preload frames starting from current_idx.
     Loads 'window' frames forward from current_idx. Thread-safe.
     """
     import time as time_module
+
     try:
-        format_str = cfg.image_format[0]
+        cfg.image_format[0]
         image_type = cfg.image_type
         if image_type in ("lavision_set", "lavision_im7"):
             source_path = cfg.source_paths[source_path_idx]
         else:
             folder = cfg.get_camera_folder(camera)
-            source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+            source_path = (
+                cfg.source_paths[source_path_idx] / folder
+                if folder
+                else cfg.source_paths[source_path_idx]
+            )
 
         num_pairs = cfg.num_frame_pairs
 
@@ -284,7 +333,9 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
         for idx in range(start_idx, end_idx + 1):
 
             # Use consistent cache key function
-            cache_key_tuple = make_raw_cache_key(source_path_idx, camera, idx, img_format, cfg)
+            cache_key_tuple = make_raw_cache_key(
+                source_path_idx, camera, idx, img_format, cfg
+            )
 
             # Thread-safe check if already cached
             with cache_lock:
@@ -293,7 +344,9 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
             try:
                 # Multi-loop: resolve global pair index to loop-specific source
-                resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
+                resolved_source, local_idx = _resolve_loop_read(
+                    cfg, source_path_idx, idx, camera
+                )
                 pair = read_pair(local_idx, resolved_source, camera, cfg)
 
                 # numpy_to_base64 handles sqrt + percentile clipping internally
@@ -307,7 +360,12 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
                 # Thread-safe cache write with timestamp
                 access_time = time_module.time()
                 with cache_lock:
-                    raw_image_cache[cache_key_tuple] = (b64_a, b64_b, stats, access_time)
+                    raw_image_cache[cache_key_tuple] = (
+                        b64_a,
+                        b64_b,
+                        stats,
+                        access_time,
+                    )
                     # Pin frame 1 entries
                     if idx == 1:
                         FRAME_1_KEYS.add(cache_key_tuple)
@@ -318,7 +376,9 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 
         manage_cache_size()
         if preloaded > 0:
-            logger.debug(f"Preloaded {preloaded} {img_format} frames for camera {camera}")
+            logger.debug(
+                f"Preloaded {preloaded} {img_format} frames for camera {camera}"
+            )
             _log_cache_contents()
     except Exception as e:
         logger.debug(f"Error in background preload: {e}")
@@ -330,6 +390,7 @@ def _preload_surrounding_frames(source_path_idx: int, camera: int, current_idx: 
 @api_bp.route("/get_frame_pair", methods=["GET"])
 def get_frame_pair():
     import time as time_module
+
     cfg = get_config()
     camera = request.args.get("camera", type=int)
     idx = request.args.get("idx", type=int)
@@ -347,13 +408,17 @@ def get_frame_pair():
     # Determine source path for reading (if cache miss)
     if not cfg.image_format:
         return jsonify({"error": "No image format configured"}), 400
-    format_str = cfg.image_format[0]
+    cfg.image_format[0]
     image_type = cfg.image_type
     if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera)
-        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+        source_path = (
+            cfg.source_paths[source_path_idx] / folder
+            if folder
+            else cfg.source_paths[source_path_idx]
+        )
 
     # Thread-safe cache check
     hit_response = None
@@ -375,24 +440,40 @@ def get_frame_pair():
 
     try:
         # Multi-loop: resolve global pair index to loop-specific source and local index
-        resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
+        resolved_source, local_idx = _resolve_loop_read(
+            cfg, source_path_idx, idx, camera
+        )
         pair = read_pair(local_idx, resolved_source, camera, cfg)
     except FileNotFoundError as e:
         # Provide detailed error with search path and patterns
         image_format = cfg.image_format
-        patterns_info = f"patterns: {image_format}" if isinstance(image_format, list) else f"pattern: {image_format}"
-        return jsonify({
-            "error": f"File not found in {source_path}",
-            "file": str(e),
-            "source_path": str(source_path),
-            "patterns": image_format,
-            "detail": f"Searched in {source_path} using {patterns_info}"
-        }), 404
+        patterns_info = (
+            f"patterns: {image_format}"
+            if isinstance(image_format, list)
+            else f"pattern: {image_format}"
+        )
+        return (
+            jsonify(
+                {
+                    "error": f"File not found in {source_path}",
+                    "file": str(e),
+                    "source_path": str(source_path),
+                    "patterns": image_format,
+                    "detail": f"Searched in {source_path} using {patterns_info}",
+                }
+            ),
+            404,
+        )
     except Exception as e:
-        return jsonify({
-            "error": f"Error reading image: {str(e)}",
-            "source_path": str(source_path)
-        }), 500
+        return (
+            jsonify(
+                {
+                    "error": f"Error reading image: {str(e)}",
+                    "source_path": str(source_path),
+                }
+            ),
+            500,
+        )
 
     # numpy_to_base64 handles sqrt + percentile clipping internally.
     # get_display_contrast_stats computes a tighter auto-scale window
@@ -491,18 +572,20 @@ def preload_images():
     threading.Thread(
         target=_preload_surrounding_frames,
         args=(source_path_idx, camera, start_idx, cfg, count, img_format, auto_limits),
-        daemon=True
+        daemon=True,
     ).start()
 
-    return jsonify({
-        "status": "preloading",
-        "camera": camera,
-        "start_idx": start_idx,
-        "count": count,
-        "source_path_idx": source_path_idx,
-        "format": img_format,
-        "auto_limits": auto_limits
-    })
+    return jsonify(
+        {
+            "status": "preloading",
+            "camera": camera,
+            "start_idx": start_idx,
+            "count": count,
+            "source_path_idx": source_path_idx,
+            "format": img_format,
+            "auto_limits": auto_limits,
+        }
+    )
 
 
 @api_bp.route("/filter", methods=["POST"])
@@ -515,13 +598,13 @@ def filter_images_endpoint():
     start_idx = int(data.get("start_idx", 1))
     filters = data.get("filters", None)
     masking = data.get("masking", None)
-    
+
     # Handle source_path_idx safely (default to 0 if missing or None)
     source_path_idx = data.get("source_path_idx")
     if source_path_idx is None:
         source_path_idx = 0
     source_path_idx = int(source_path_idx)
-    
+
     if filters is not None:
         cfg.data["filters"] = filters
 
@@ -534,24 +617,28 @@ def filter_images_endpoint():
     # Use batch size from config
     batch_length = cfg.data.get("batches", {}).get("size", 30)
     batch_len_reason = "config.batches.size"
-    
+
     if batch_length < 1:
         batch_length = 1
-    
+
     batch_start, batch_end = compute_batch_window(
         start_idx, batch_length, cfg.num_frame_pairs
     )
     indices = list(range(batch_start, batch_end + 1))
-    
+
     # For .set and .im7 files, don't append camera folder - all cameras are in the source directory
-    format_str = cfg.image_format[0]
+    cfg.image_format[0]
     image_type = cfg.image_type
 
     if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
-        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
+        source_path = (
+            cfg.source_paths[source_path_idx] / folder
+            if folder
+            else cfg.source_paths[source_path_idx]
+        )
 
     def load_pairs_parallel():
         """Load pairs in parallel using ThreadPoolExecutor."""
@@ -559,7 +646,9 @@ def filter_images_endpoint():
 
         def _read_one_pair(idx):
             """Read a single pair, resolving loop if needed."""
-            resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, idx, camera)
+            resolved_source, local_idx = _resolve_loop_read(
+                cfg, source_path_idx, idx, camera
+            )
             return read_pair(local_idx, resolved_source, camera, cfg)
 
         # Use thread pool for I/O-bound image reading
@@ -568,8 +657,7 @@ def filter_images_endpoint():
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_idx = {
-                executor.submit(_read_one_pair, idx): i
-                for i, idx in enumerate(indices)
+                executor.submit(_read_one_pair, idx): i for i, idx in enumerate(indices)
             }
 
             for future in as_completed(future_to_idx):
@@ -586,21 +674,29 @@ def filter_images_endpoint():
             darr = load_pairs_parallel()
 
             # Compute to numpy array first (required for apply_filters_to_batch)
-            batch_np = dask.compute(darr, scheduler='threads')[0]
+            batch_np = dask.compute(darr, scheduler="threads")[0]
 
             # Load mask
             mask = load_mask_for_camera(camera, cfg, source_path_idx)
             if mask is not None:
-                logger.info(f"Preview mask loaded: shape={mask.shape}, dtype={mask.dtype}")
+                logger.info(
+                    f"Preview mask loaded: shape={mask.shape}, dtype={mask.dtype}"
+                )
                 if batch_np.shape[-2:] != mask.shape:
-                    logger.error(f"Mask shape mismatch! Batch: {batch_np.shape}, Mask: {mask.shape}")
+                    logger.error(
+                        f"Mask shape mismatch! Batch: {batch_np.shape}, Mask: {mask.shape}"
+                    )
             else:
                 if not cfg.masking_enabled:
                     logger.info("Masking is DISABLED in config.")
                 else:
                     expected_path = cfg.get_mask_path(camera, source_path_idx)
-                    logger.info(f"Masking ENABLED. Expected mask path: {expected_path}. Exists: {expected_path.exists()}")
-                logger.info("No mask loaded for preview (masking disabled or file not found)")
+                    logger.info(
+                        f"Masking ENABLED. Expected mask path: {expected_path}. Exists: {expected_path.exists()}"
+                    )
+                logger.info(
+                    "No mask loaded for preview (masking disabled or file not found)"
+                )
 
             # Apply ALL filters (spatial + batch) using unified function
             processed_all = apply_filters_to_batch(
@@ -609,7 +705,7 @@ def filter_images_endpoint():
                 save_diagnostics=False,
                 output_dir=None,
                 batch_idx=0,
-                pixel_mask=mask
+                pixel_mask=mask,
             )
 
             # Store results
@@ -619,17 +715,19 @@ def filter_images_endpoint():
             # Batch update dictionary — store as (b64_A, b64_B, stats) at insertion time.
             # numpy_to_png_base64 handles sqrt + percentile clipping internally.
             # get_display_contrast_stats provides a tighter auto-scale window.
-            processed_store["processed"][k].update({
-                abs_idx: (
-                    numpy_to_png_base64(processed_all[rel][0]),
-                    numpy_to_png_base64(processed_all[rel][1]),
-                    {
-                        "A": get_display_contrast_stats(processed_all[rel][0]),
-                        "B": get_display_contrast_stats(processed_all[rel][1]),
-                    },
-                )
-                for rel, abs_idx in enumerate(indices)
-            })
+            processed_store["processed"][k].update(
+                {
+                    abs_idx: (
+                        numpy_to_png_base64(processed_all[rel][0]),
+                        numpy_to_png_base64(processed_all[rel][1]),
+                        {
+                            "A": get_display_contrast_stats(processed_all[rel][0]),
+                            "B": get_display_contrast_stats(processed_all[rel][1]),
+                        },
+                    )
+                    for rel, abs_idx in enumerate(indices)
+                }
+            )
             _log_cache_contents()
 
         except Exception as e:
@@ -679,7 +777,9 @@ def get_processed_pair():
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     auto_limits = request.args.get("auto_limits", default="false").lower() == "true"
 
-    b64_a, b64_b, stats = get_cached_pair(frame, typ, camera, source_path_idx, cfg, auto_limits)
+    b64_a, b64_b, stats = get_cached_pair(
+        frame, typ, camera, source_path_idx, cfg, auto_limits
+    )
 
     response = {"status": "ok", "A": b64_a, "B": b64_b}
     if stats:
@@ -707,23 +807,34 @@ def filter_single_frame():
     # Check if any batch filters are present (should use /filter endpoint instead)
     batch_filters = [f for f in filters if f.get("type") in ("time", "pod")]
     if batch_filters:
-        return jsonify({
-            "error": "Batch filters (time, pod) not supported in single-frame mode. Use /filter endpoint."
-        }), 400
-    
+        return (
+            jsonify(
+                {
+                    "error": "Batch filters (time, pod) not supported in single-frame mode. Use /filter endpoint."
+                }
+            ),
+            400,
+        )
+
     # For .set and .im7 files, don't append camera folder
-    format_str = cfg.image_format[0]
+    cfg.image_format[0]
     image_type = cfg.image_type
 
     if image_type in ("lavision_set", "lavision_im7"):
         source_path = cfg.source_paths[source_path_idx]
     else:
         folder = cfg.get_camera_folder(camera_number(camera))
-        source_path = cfg.source_paths[source_path_idx] / folder if folder else cfg.source_paths[source_path_idx]
-    
+        source_path = (
+            cfg.source_paths[source_path_idx] / folder
+            if folder
+            else cfg.source_paths[source_path_idx]
+        )
+
     try:
         # Multi-loop: resolve global pair index to loop-specific source and local index
-        resolved_source, local_idx = _resolve_loop_read(cfg, source_path_idx, frame_idx, camera)
+        resolved_source, local_idx = _resolve_loop_read(
+            cfg, source_path_idx, frame_idx, camera
+        )
         pair = read_pair(local_idx, resolved_source, camera, cfg)
 
         arr = np.stack([pair], axis=0)  # Shape: (1, 2, H, W)
@@ -733,29 +844,37 @@ def filter_single_frame():
 
         if filters or mask is not None:
             # Single-frame preview: exclude temporal filters (need multiple frames)
-            from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim, TEMPORAL_FILTERS
-            single_frame_specs = [f for f in filters if f.get("type") not in TEMPORAL_FILTERS]
-            arr = apply_all_filters_slim(arr, filter_specs=single_frame_specs, pixel_mask=mask)
+            from pivtools_cli.processing.dask_pipeline import (
+                TEMPORAL_FILTERS,
+                apply_all_filters_slim,
+            )
+
+            single_frame_specs = [
+                f for f in filters if f.get("type") not in TEMPORAL_FILTERS
+            ]
+            arr = apply_all_filters_slim(
+                arr, filter_specs=single_frame_specs, pixel_mask=mask
+            )
 
         result = arr
-        
+
         # Extract the single processed pair
         processed_pair = result[0]  # Shape: (2, H, W)
-        
+
         response = {
             "status": "ok",
             "A": numpy_to_png_base64(processed_pair[0]),
-            "B": numpy_to_png_base64(processed_pair[1])
+            "B": numpy_to_png_base64(processed_pair[1]),
         }
-        
+
         if auto_limits:
             response["stats"] = {
                 "A": get_display_contrast_stats(processed_pair[0]),
                 "B": get_display_contrast_stats(processed_pair[1]),
             }
-            
+
         return jsonify(response)
-        
+
     except Exception as e:
         logger.error(f"Error processing single frame: {e}")
         return jsonify({"error": str(e)}), 500
@@ -772,27 +891,28 @@ def download_image():
     base64_data = data.get("data")  # Base64 PNG data
     frame_idx = data.get("frame_idx", 1)
     camera = data.get("camera", 1)
-    
+
     if not base64_data:
         return jsonify({"error": "No image data provided"}), 400
-    
+
     try:
         import base64
         from io import BytesIO
+
         from flask import send_file
-        
+
         # Decode base64 to binary
         image_bytes = base64.b64decode(base64_data)
-        
+
         # Create filename
         filename = f"Cam{camera}_frame{frame_idx:05d}_{frame}_{image_type}.png"
-        
+
         # Send as downloadable file
         return send_file(
             BytesIO(image_bytes),
-            mimetype='image/png',
+            mimetype="image/png",
             as_attachment=True,
-            download_name=filename
+            download_name=filename,
         )
     except Exception as e:
         logger.error(f"Error downloading image: {e}")
@@ -843,7 +963,11 @@ def validate_files():
             num_pairs = cfg.num_frame_pairs
 
             # Get all patterns (may be single pattern or A/B patterns)
-            patterns = cfg.image_format if isinstance(cfg.image_format, (list, tuple)) else [cfg.image_format]
+            patterns = (
+                cfg.image_format
+                if isinstance(cfg.image_format, (list, tuple))
+                else [cfg.image_format]
+            )
             format_str = patterns[0]  # Primary pattern for generic validation
 
             # Create a frame reader function for preview generation
@@ -878,7 +1002,12 @@ def validate_files():
             if len(pattern_validations) == 2:
                 count_a = pattern_validations[0].get("found_count", 0)
                 count_b = pattern_validations[1].get("found_count", 0)
-                if isinstance(count_a, int) and isinstance(count_b, int) and count_a > 0 and count_b > 0:
+                if (
+                    isinstance(count_a, int)
+                    and isinstance(count_b, int)
+                    and count_a > 0
+                    and count_b > 0
+                ):
                     diff_ratio = abs(count_a - count_b) / max(count_a, count_b)
                     if diff_ratio > 0.1:
                         ab_count_warning = f"A/B count mismatch: {count_a} A files vs {count_b} B files"
@@ -897,7 +1026,9 @@ def validate_files():
             # PIV-specific: Test first and last pairs
             first_frame_status = "missing"
             last_frame_status = "missing"
-            first_frame_error = None  # actual read exception, if the file exists but won't decode
+            first_frame_error = (
+                None  # actual read exception, if the file exists but won't decode
+            )
             color_detected = False
 
             if cfg.is_container_format:
@@ -916,13 +1047,17 @@ def validate_files():
                         color_detected = True
                 except Exception as e:
                     first_frame_error = e
-                    logger.debug(f"First frame check failed for camera {camera_num}: {e}")
+                    logger.debug(
+                        f"First frame check failed for camera {camera_num}: {e}"
+                    )
 
                 try:
                     read_pair(num_pairs, camera_path, camera_num, cfg)
                     last_frame_status = "exists"
                 except Exception as e:
-                    logger.debug(f"Last frame check failed for camera {camera_num}: {e}")
+                    logger.debug(
+                        f"Last frame check failed for camera {camera_num}: {e}"
+                    )
 
             # PIV-specific: Check for indexing mismatch (only for standard formats)
             indexing_warning = None
@@ -930,7 +1065,7 @@ def validate_files():
                 try:
                     indices = []
                     for fname in validation["sample_files"]:
-                        match = re_module.search(r'(\d+)', fname)
+                        match = re_module.search(r"(\d+)", fname)
                         if match:
                             indices.append(int(match.group(1)))
                     if indices:
@@ -984,9 +1119,13 @@ def validate_files():
                 elif image_type == "lavision_set":
                     error_msg = f"First frame not found. Container file: {format_str}"
                 elif image_type == "cine":
-                    error_msg = f"First frame not found. CINE file: {format_str % camera_num}"
+                    error_msg = (
+                        f"First frame not found. CINE file: {format_str % camera_num}"
+                    )
                 else:
-                    error_msg = f"First frame not found. Looking for: {format_str % start_idx}"
+                    error_msg = (
+                        f"First frame not found. Looking for: {format_str % start_idx}"
+                    )
                 # Append folder contents hint from generic validator (only when the
                 # file is genuinely missing — for a decode failure the reason already
                 # names the file, and "Found files" would just repeat the contradiction)
@@ -994,7 +1133,9 @@ def validate_files():
                     if validation.get("sample_files"):
                         error_msg += f". Found files: {', '.join(validation['sample_files'][:5])}"
                     if validation.get("suggested_pattern"):
-                        error_msg += f". Did you mean: {validation['suggested_pattern']}"
+                        error_msg += (
+                            f". Did you mean: {validation['suggested_pattern']}"
+                        )
 
             elif last_frame_status == "missing":
                 status = "error"
@@ -1002,17 +1143,25 @@ def validate_files():
                 if image_type == "lavision_set":
                     error_msg = f"Last frame not found. Container file: {format_str}"
                 elif image_type == "cine":
-                    error_msg = f"Last frame not found. CINE file: {format_str % camera_num}"
+                    error_msg = (
+                        f"Last frame not found. CINE file: {format_str % camera_num}"
+                    )
                 else:
-                    error_msg = f"Last frame not found. Expected: {format_str % end_idx}"
+                    error_msg = (
+                        f"Last frame not found. Expected: {format_str % end_idx}"
+                    )
 
             elif isinstance(actual_count, int) and actual_count > num_images:
                 # More files than expected - user processing subset (this is fine!)
                 status = "ok"
-                error_msg = f"Processing subset: {num_images} of {actual_count} files available"
+                error_msg = (
+                    f"Processing subset: {num_images} of {actual_count} files available"
+                )
 
             # Check if any per-pattern validation failed
-            any_pattern_invalid = any(not pv.get("valid", True) for pv in pattern_validations)
+            any_pattern_invalid = any(
+                not pv.get("valid", True) for pv in pattern_validations
+            )
             if any_pattern_invalid:
                 status = "error"
                 # Build per-pattern error summary
@@ -1028,7 +1177,9 @@ def validate_files():
             if loop_errors:
                 status = "error"
                 loop_error_msg = "; ".join(loop_errors)
-                error_msg = f"{error_msg}; {loop_error_msg}" if error_msg else loop_error_msg
+                error_msg = (
+                    f"{error_msg}; {loop_error_msg}" if error_msg else loop_error_msg
+                )
 
             if status == "error":
                 overall_valid = False
@@ -1065,10 +1216,7 @@ def validate_files():
 
         except Exception as e:
             logger.error(f"Validation error for camera {camera_num}: {e}")
-            results[f"camera_{camera_num}"] = {
-                "status": "error",
-                "error": str(e)
-            }
+            results[f"camera_{camera_num}"] = {"status": "error", "error": str(e)}
             overall_valid = False
 
     # If validation passed, preload first 10 frames for each camera in background
@@ -1077,9 +1225,11 @@ def validate_files():
             threading.Thread(
                 target=_preload_surrounding_frames,
                 args=(source_path_idx, camera_num, 1, cfg, 10, "jpeg", True),
-                daemon=True
+                daemon=True,
             ).start()
-        logger.debug(f"Validation passed - preloading first 10 frames for {len(camera_numbers)} camera(s)")
+        logger.debug(
+            f"Validation passed - preloading first 10 frames for {len(camera_numbers)} camera(s)"
+        )
 
     # Extract detected_count and image_shape from first camera (all cameras should match)
     top_detected_count = None
@@ -1102,16 +1252,19 @@ def validate_files():
     memory_warning = None
     if overall_valid:
         from pivtools_core.validation import validate_memory_for_images
+
         memory_warning = validate_memory_for_images(cfg) or None
         if memory_warning:
             overall_valid = False
 
-    return jsonify({
-        "valid": overall_valid,
-        "detected_count": top_detected_count,
-        "memory_warning": memory_warning,
-        "details": results
-    })
+    return jsonify(
+        {
+            "valid": overall_valid,
+            "detected_count": top_detected_count,
+            "memory_warning": memory_warning,
+            "details": results,
+        }
+    )
 
 
 def _normalize_dict_keys(obj):
@@ -1173,9 +1326,17 @@ def preview_frame_pairs():
     per_loop = cfg.per_loop_frame_pairs
     img_format = cfg.image_format
     if not img_format:
-        return jsonify({"pairs": [], "total_pairs": 0, "num_images": 0,
-                        "preset": cfg.pairing_preset, "frame_stride": 0,
-                        "pair_stride": 1, "start_index": 0})
+        return jsonify(
+            {
+                "pairs": [],
+                "total_pairs": 0,
+                "num_images": 0,
+                "preset": cfg.pairing_preset,
+                "frame_stride": 0,
+                "pair_stride": 1,
+                "start_index": 0,
+            }
+        )
     format_str = img_format[0]
     has_ab = len(img_format) == 2
     is_multi_loop = num_loops > 1
@@ -1195,7 +1356,11 @@ def preview_frame_pairs():
             pair_entry = {
                 "pair": p,
                 "frame_a": f"{loop_label} frame {local_idx_a}",
-                "frame_b": f"{loop_label} frame {local_idx_b}" if cfg.frame_stride > 0 else "(internal B)",
+                "frame_b": (
+                    f"{loop_label} frame {local_idx_b}"
+                    if cfg.frame_stride > 0
+                    else "(internal B)"
+                ),
                 "loop": loop_idx,
                 "local_pair": local_pair,
             }
@@ -1284,8 +1449,7 @@ def update_config():
 
     # Check if paths or image format are changing (these affect cache validity)
     paths_changing = "paths" in data and (
-        "source_paths" in data.get("paths", {}) or
-        "base_paths" in data.get("paths", {})
+        "source_paths" in data.get("paths", {}) or "base_paths" in data.get("paths", {})
     )
     format_changing = "images" in data and "image_format" in data.get("images", {})
 
@@ -1364,7 +1528,9 @@ def update_config():
                 "overlap_points": [],
                 "overlap_pairs": [],
             }
-            logger.info("Calibration sources changed — reset pixel-dependent global coordinate fields")
+            logger.info(
+                "Calibration sources changed — reset pixel-dependent global coordinate fields"
+            )
             # Per-model clicks (fiducials/clicked_level/pose_levels) are NOT stored in config —
             # they live in the per-model sidecar inputs.mat, which is keyed by source, so a source
             # change naturally selects the right sidecar. Nothing to reset here.
@@ -1415,7 +1581,7 @@ def update_config():
         if not valid_numbers:
             valid_numbers = list(range(1, new_camera_count + 1))
         cfg.data["paths"]["camera_numbers"] = valid_numbers
-    
+
     with open(cfg.config_path, "w", encoding="utf-8") as f:
         yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
     reload_config()
@@ -1472,13 +1638,13 @@ def run_piv():
 def piv_status():
     """
     Get status of PIV job(s).
-    
+
     Query parameters:
     - job_id: Specific job ID (optional, if omitted returns all jobs)
     """
     runner = get_runner()
     job_id = request.args.get("job_id")
-    
+
     if job_id:
         status = runner.get_job_status(job_id)
         if status:
@@ -1494,7 +1660,7 @@ def piv_status():
 def cancel_piv():
     """
     Cancel a running PIV job.
-    
+
     Request body:
     {
         "job_id": "piv_20231005_143022"
@@ -1502,13 +1668,13 @@ def cancel_piv():
     """
     data = request.get_json() or {}
     job_id = data.get("job_id")
-    
+
     if not job_id:
         return jsonify({"error": "job_id required"}), 400
-    
+
     runner = get_runner()
     success = runner.cancel_job(job_id)
-    
+
     if success:
         return jsonify({"status": "cancelled", "job_id": job_id})
     return jsonify({"error": "Failed to cancel job or job not found"}), 404
@@ -1518,7 +1684,7 @@ def cancel_piv():
 def get_piv_logs():
     """
     Get log content for a PIV job.
-    
+
     Query parameters:
     - job_id: Specific job ID (optional)
     - lines: Number of lines to return from end (optional, default all)
@@ -1528,7 +1694,7 @@ def get_piv_logs():
     job_id = request.args.get("job_id")
     lines = request.args.get("lines", type=int)
     offset = request.args.get("offset", default=0, type=int)
-    
+
     if not job_id:
         # If no job_id, try to get the most recent job
         jobs = runner.list_jobs()
@@ -1537,19 +1703,19 @@ def get_piv_logs():
         # Sort by start time and get most recent
         jobs.sort(key=lambda x: x.get("start_time", ""), reverse=True)
         job_id = jobs[0].get("job_id")
-    
+
     status = runner.get_job_status(job_id)
     if not status:
         return jsonify({"error": "Job not found"}), 404
-    
+
     log_file = Path(status["log_file"])
     if not log_file.exists():
         return jsonify({"logs": "", "job_id": job_id, "running": status["running"]})
-    
+
     try:
         with open(log_file, "r", encoding="utf-8", errors="replace") as f:
             all_lines = f.readlines()
-        
+
         # Apply offset and line limit
         if lines:
             start_idx = max(0, len(all_lines) - lines - offset)
@@ -1557,16 +1723,18 @@ def get_piv_logs():
             log_lines = all_lines[start_idx:end_idx]
         else:
             log_lines = all_lines
-        
+
         log_content = "".join(log_lines)
-        
-        return jsonify({
-            "logs": log_content,
-            "job_id": job_id,
-            "running": status["running"],
-            "total_lines": len(all_lines),
-            "returned_lines": len(log_lines),
-        })
+
+        return jsonify(
+            {
+                "logs": log_content,
+                "job_id": job_id,
+                "running": status["running"],
+                "total_lines": len(all_lines),
+                "returned_lines": len(log_lines),
+            }
+        )
     except Exception as e:
         logger.error(f"Error reading log file: {e}")
         return jsonify({"error": f"Failed to read log file: {str(e)}"}), 500
@@ -1635,8 +1803,10 @@ def get_ensemble_progress_from_logs(job_id: str, cfg) -> dict:
 
 
 # Time-based cache for get_uncalibrated_count directory scans
-_uncalibrated_count_cache: dict = {}  # key: (basepath_idx, type_name) -> {"time": float, "result": dict}
-_UNCALIBRATED_COUNT_CACHE_TTL = 1.0   # seconds
+_uncalibrated_count_cache: dict = (
+    {}
+)  # key: (basepath_idx, type_name) -> {"time": float, "result": dict}
+_UNCALIBRATED_COUNT_CACHE_TTL = 1.0  # seconds
 
 
 @api_bp.route("/get_uncalibrated_count", methods=["GET"])
@@ -1707,12 +1877,16 @@ def get_uncalibrated_count():
 
         camera_progress[f"Cam{camera_num}"] = {
             "count": len(found),
-            "percent": int((len(found) / num_pairs) * 100) if num_pairs else 0
+            "percent": int((len(found) / num_pairs) * 100) if num_pairs else 0,
         }
         total_found_files += len(found)
 
     # Calculate overall progress across all cameras
-    percent = int((total_found_files / total_expected_files) * 100) if total_expected_files else 0
+    percent = (
+        int((total_found_files / total_expected_files) * 100)
+        if total_expected_files
+        else 0
+    )
 
     result = {
         "count": total_found_files,
@@ -1736,9 +1910,15 @@ def check_output_exists():
     active_paths_str = request.args.get("active_paths", "")
     active_paths = [int(p) for p in active_paths_str.split(",") if p.strip()]
     mode = request.args.get("mode", "")  # "instantaneous" or "ensemble"
-    types_to_check = [mode] if mode in ("instantaneous", "ensemble") else ["instantaneous", "ensemble"]
+    types_to_check = (
+        [mode]
+        if mode in ("instantaneous", "ensemble")
+        else ["instantaneous", "ensemble"]
+    )
 
-    logger.info(f"[check_output_exists] Checking paths: {active_paths}, mode: {mode}, types: {types_to_check}")
+    logger.info(
+        f"[check_output_exists] Checking paths: {active_paths}, mode: {mode}, types: {types_to_check}"
+    )
 
     if not active_paths:
         logger.info("[check_output_exists] No active paths provided")
@@ -1768,16 +1948,22 @@ def check_output_exists():
                     base, cfg.num_frame_pairs, cam_num, type_name, use_uncalibrated=True
                 )
                 data_dir = data_paths["data_dir"]
-                logger.info(f"[check_output_exists] {type_name} dir: {data_dir}, exists: {data_dir.exists()}")
+                logger.info(
+                    f"[check_output_exists] {type_name} dir: {data_dir}, exists: {data_dir.exists()}"
+                )
                 if data_dir.exists():
                     try:
                         files = list(data_dir.iterdir())
-                        logger.info(f"[check_output_exists] Found {len(files)} files in {type_name} dir")
+                        logger.info(
+                            f"[check_output_exists] Found {len(files)} files in {type_name} dir"
+                        )
                         if files:
                             exists = True
                             details[path_key][cam_key][type_name] = True
                     except Exception as e:
-                        logger.error(f"[check_output_exists] Error listing {type_name} dir: {e}")
+                        logger.error(
+                            f"[check_output_exists] Error listing {type_name} dir: {e}"
+                        )
 
     logger.info(f"[check_output_exists] Final result: exists={exists}")
     return jsonify({"exists": exists, "details": details})
@@ -1792,7 +1978,11 @@ def clear_output():
     active_paths = data.get("active_paths", [])
     camera_numbers = data.get("camera_numbers", [])
     mode = data.get("mode", "")
-    types_to_clear = [mode] if mode in ("instantaneous", "ensemble") else ["instantaneous", "ensemble"]
+    types_to_clear = (
+        [mode]
+        if mode in ("instantaneous", "ensemble")
+        else ["instantaneous", "ensemble"]
+    )
 
     cfg = get_config()
     cleared = []
@@ -1822,33 +2012,40 @@ def clear_output():
                         cleared.append(str(data_dir))
                         logger.info(f"Cleared output directory: {data_dir}")
                 except Exception as e:
-                    errors.append(f"Failed to clear {type_name} for path {path_idx}, cam {cam_num}: {str(e)}")
+                    errors.append(
+                        f"Failed to clear {type_name} for path {path_idx}, cam {cam_num}: {str(e)}"
+                    )
                     logger.error(f"Error clearing output: {e}")
 
-    return jsonify({
-        "status": "cleared" if not errors else "partial",
-        "directories": cleared,
-        "errors": errors
-    })
+    return jsonify(
+        {
+            "status": "cleared" if not errors else "partial",
+            "directories": cleared,
+            "errors": errors,
+        }
+    )
+
 
 @api_bp.route("/system_info", methods=["GET"])
 def system_info():
     """Return system diagnostics: version, platform, Dask config, C library status."""
     import platform
-    import ctypes
 
     cfg = get_config()
 
     # Version
     try:
         from pivtools_cli import __version__
+
         version = __version__
     except Exception:
         version = "unknown"
 
     # Dask config
     dask_info = {
-        "workers_per_node": cfg.data.get("processing", {}).get("dask_workers_per_node", 1),
+        "workers_per_node": cfg.data.get("processing", {}).get(
+            "dask_workers_per_node", 1
+        ),
         "memory_limit": cfg.data.get("processing", {}).get("dask_memory_limit", "12GB"),
         "backend": cfg.data.get("processing", {}).get("backend", "cpu"),
         "omp_threads": cfg.data.get("processing", {}).get("omp_threads", 1),
@@ -1865,34 +2062,38 @@ def system_info():
             "path": str(lib_path) if lib_path.is_file() else None,
         }
 
-    return jsonify({
-        "version": version,
-        "python_version": platform.python_version(),
-        "platform": platform.platform(),
-        "architecture": platform.machine(),
-        "dask": dask_info,
-        "c_libraries": c_libs,
-    })
+    return jsonify(
+        {
+            "version": version,
+            "python_version": platform.python_version(),
+            "platform": platform.platform(),
+            "architecture": platform.machine(),
+            "dask": dask_info,
+            "c_libraries": c_libs,
+        }
+    )
 
 
 # Register the main API blueprint
 app.register_blueprint(api_bp)
 
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
 def serve_react_app(path):
-    if path != "" and os.path.exists(app.static_folder + '/' + path):
+    if path != "" and os.path.exists(app.static_folder + "/" + path):
         # This serves static files like .js, .css, images
         return send_from_directory(app.static_folder, path)
     else:
         # This serves 'index.html' for any page request
         # that isn't an API route or a static file.
-        return send_from_directory(app.static_folder, 'index.html')
+        return send_from_directory(app.static_folder, "index.html")
 
 
 def ensure_config_exists():
     """Ensure config.yaml exists in the current directory, create if not."""
     import shutil
+
     cwd = Path.cwd()
     config_path = cwd / "config.yaml"
 
@@ -1902,6 +2103,7 @@ def ensure_config_exists():
     # Try to copy from pivtools_core package
     try:
         import pivtools_core
+
         default_config = Path(pivtools_core.__file__).parent / "config.yaml"
 
         if default_config.exists():
@@ -1911,28 +2113,31 @@ def ensure_config_exists():
             print(f"Warning: Default config not found at {default_config}")
             print("Run 'pivtools-cli init' to create a config file")
     except ImportError:
-        print("Warning: pivtools_core not found. Run 'pivtools-cli init' to create a config file")
+        print(
+            "Warning: pivtools_core not found. Run 'pivtools-cli init' to create a config file"
+        )
 
 
 def main():
     """Run the PIVTOOLs GUI"""
     # Suppress Werkzeug startup logs (uses standard logging, not loguru)
     import logging
-    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     # Ensure config.yaml exists before starting
     ensure_config_exists()
 
     print("Starting PIVTOOLs GUI...")
     print("Open your browser to http://localhost:5000")
-    
+
     # Automatically open browser after a short delay
     def open_browser():
-        webbrowser.open('http://localhost:5000')
-    
+        webbrowser.open("http://localhost:5000")
+
     threading.Thread(target=open_browser, daemon=True).start()
-    
-    app.run(host='0.0.0.0', port=5000, debug=False)
+
+    app.run(host="0.0.0.0", port=5000, debug=False)
 
 
 if __name__ == "__main__":

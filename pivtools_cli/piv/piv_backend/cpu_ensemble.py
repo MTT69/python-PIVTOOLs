@@ -14,24 +14,26 @@ import logging
 import os
 import time
 import traceback
-from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from typing import List, Optional
-import matplotlib.pyplot as plt
+
 import cv2
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
+from pivtools_cli.piv.piv_backend.base import CrossCorrelator
 from pivtools_core.config import Config
 from pivtools_core.window_utils import (
     compute_window_centers,
     compute_window_centers_single_mode,
 )
-from pivtools_cli.piv.piv_backend.base import CrossCorrelator
-from pivtools_cli.piv.piv_result import PIVEnsembleBlockResult
 
-import matplotlib
-matplotlib.use("Agg") 
+matplotlib.use("Agg")
+
+
 class EnsembleCorrelatorCPU(CrossCorrelator):
     """
     Ensemble PIV correlator using CPU with Levenberg-Marquardt Gaussian
@@ -94,43 +96,79 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # New ensemble accumulation function (Option C: window-parallel)
         self.lib.bulkxcorr2d_accumulate.restype = ctypes.c_ubyte
         self.lib.bulkxcorr2d_accumulate.argtypes = [
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fImageA_stack
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fImageB_stack
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
-            ctypes.c_int,                                                      # N_images
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+            ctypes.c_int,  # N_images
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize (FFT computation)
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output size)
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fWindowWeightA
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fWindowWeightB
+            np.ctypeslib.ndpointer(
+                dtype=np.int32, flags="C_CONTIGUOUS"
+            ),  # nWindowSize (FFT computation)
+            np.ctypeslib.ndpointer(
+                dtype=np.int32, flags="C_CONTIGUOUS"
+            ),  # nFitWindowSize (output size)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fCorrelPlane_Sum (output)
         ]
 
         # Fused triple correlation function (AB + AA + BB in one C call)
         self.lib.bulkxcorr2d_accumulate_triple.restype = ctypes.c_ubyte
         self.lib.bulkxcorr2d_accumulate_triple.argtypes = [
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fImageA_stack
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fImageB_stack
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
-            ctypes.c_int,                                                      # N_images
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+            ctypes.c_int,  # N_images
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA_AB
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB_AB
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fAutoWeightA
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fAutoWeightB
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize (FFT)
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize (output)
-            ctypes.c_int,                                                      # bMeanSubtract
-            ctypes.c_int,                                                      # bPerPairNorm
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrAB_Sum (output)
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrAA_Sum (output)
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrBB_Sum (output)
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fWindowWeightA_AB
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fWindowWeightB_AB
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fAutoWeightA
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fAutoWeightB
+            np.ctypeslib.ndpointer(
+                dtype=np.int32, flags="C_CONTIGUOUS"
+            ),  # nWindowSize (FFT)
+            np.ctypeslib.ndpointer(
+                dtype=np.int32, flags="C_CONTIGUOUS"
+            ),  # nFitWindowSize (output)
+            ctypes.c_int,  # bMeanSubtract
+            ctypes.c_int,  # bPerPairNorm
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fCorrAB_Sum (output)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fCorrAA_Sum (output)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fCorrBB_Sum (output)
         ]
 
         # Initialize window weights for each pass
@@ -147,13 +185,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             runtype = config.ensemble_type[pass_idx]
             sum_window = tuple(config.ensemble_sum_window)
 
-            if runtype == 'single':
+            if runtype == "single":
                 # Single mode: Frame A uses small weighted window
                 weight_A = np.ascontiguousarray(
-                    self._window_weight_fun(win_size, 'singlepix', sum_window)
+                    self._window_weight_fun(win_size, "singlepix", sum_window)
                 )
                 weight_B = np.ascontiguousarray(
-                    self._window_weight_fun(sum_window, 'bsingle', sum_window)
+                    self._window_weight_fun(sum_window, "bsingle", sum_window)
                 )
                 # Computation uses full sum_window for FFT
                 self.window_sizes_for_computation.append(sum_window)
@@ -189,7 +227,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # When active_pass_idx is set, only allocate for that single pass —
         # saves ~491 MB per worker for a 4-pass config at 2048x2048.
         passes_to_allocate = (
-            [active_pass_idx] if active_pass_idx is not None
+            [active_pass_idx]
+            if active_pass_idx is not None
             else range(config.ensemble_num_passes)
         )
         self._corr_buffers = {}
@@ -202,9 +241,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
             # Pre-allocate buffers for AA, BB, AB
             self._corr_buffers[pass_idx] = {
-                'AA': np.zeros(plane_size, dtype=np.float32),
-                'BB': np.zeros(plane_size, dtype=np.float32),
-                'AB': np.zeros(plane_size, dtype=np.float32),
+                "AA": np.zeros(plane_size, dtype=np.float32),
+                "BB": np.zeros(plane_size, dtype=np.float32),
+                "AB": np.zeros(plane_size, dtype=np.float32),
             }
 
             logging.debug(
@@ -257,7 +296,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Load cross-correlation library
         lib_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "lib", f"libbulkxcorr2d{lib_extension}"
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "lib",
+            f"libbulkxcorr2d{lib_extension}",
         )
         lib_path = os.path.abspath(lib_path)
 
@@ -279,20 +322,30 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         cls._lib_fw = ctypes.CDLL(fw_path)
         cls._lib_fw.fused_symmetric_warp_batch.restype = ctypes.c_int
         cls._lib_fw.fused_symmetric_warp_batch.argtypes = [
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # imgs_a (N,H,W)
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # imgs_b (N,H,W)
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_a (N,H,W)
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # outs_b (N,H,W)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # imgs_a (N,H,W)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # imgs_b (N,H,W)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # outs_a (N,H,W)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # outs_b (N,H,W)
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dy
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # pred_dx
-            ctypes.c_int,                # N
-            ctypes.c_int, ctypes.c_int,  # H, W
-            ctypes.c_int, ctypes.c_int,  # nPY, nPX
+            ctypes.c_int,  # N
+            ctypes.c_int,
+            ctypes.c_int,  # H, W
+            ctypes.c_int,
+            ctypes.c_int,  # nPY, nPX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_y
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # ctrs_x
-            ctypes.c_int,                # interp_mode
-            ctypes.c_int,                # shared_predictor
-            ctypes.c_int,                # round_shifts
+            ctypes.c_int,  # interp_mode
+            ctypes.c_int,  # shared_predictor
+            ctypes.c_int,  # round_shifts
         ]
 
         cls._lib_corr.bulkxcorr2d.restype = ctypes.c_ubyte
@@ -322,18 +375,28 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # New ensemble accumulation function (Option C: window-parallel)
         cls._lib_corr.bulkxcorr2d_accumulate.restype = ctypes.c_ubyte
         cls._lib_corr.bulkxcorr2d_accumulate.argtypes = [
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fImageA_stack
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fImageB_stack
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
-            ctypes.c_int,                                                      # N_images
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+            ctypes.c_int,  # N_images
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
-            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
-            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fWindowWeightA
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fWindowWeightB
+            np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindowSize
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fCorrelPlane_Sum (output)
         ]
 
     def _run_correlation_kernel(
@@ -364,8 +427,23 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             (error_code, out_plane)
         """
         # Unpack common args
-        (N, img_size, wx, wy, n_win, w_size, n_peaks, i_peak, pk_x, pk_y,
-         pk_h, sx, sy, sxy, out_plane) = common_args
+        (
+            N,
+            img_size,
+            wx,
+            wy,
+            n_win,
+            w_size,
+            n_peaks,
+            i_peak,
+            pk_x,
+            pk_y,
+            pk_h,
+            sx,
+            sy,
+            sxy,
+            out_plane,
+        ) = common_args
 
         # Clear output plane before use
         out_plane.fill(0)
@@ -376,14 +454,22 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             b_mask,
             img_size,
             N,
-            wx, wy, n_win,
+            wx,
+            wy,
+            n_win,
             weight1,
             True,  # b_ensemble
             weight2,
             w_size,
-            n_peaks, i_peak,
-            pk_x, pk_y, pk_h, sx, sy, sxy,
-            out_plane
+            n_peaks,
+            i_peak,
+            pk_x,
+            pk_y,
+            pk_h,
+            sx,
+            sy,
+            sxy,
+            out_plane,
         )
         return err, out_plane
 
@@ -460,8 +546,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             n_windows,
             weight_a,
             weight_b,
-            win_size_arr,   # FFT computation size
-            fit_size_arr,   # Output size (may be smaller for central extraction)
+            win_size_arr,  # FFT computation size
+            fit_size_arr,  # Output size (may be smaller for central extraction)
             correl_sum,
         )
 
@@ -588,29 +674,33 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Check if this pass uses single mode
         runtype = config.ensemble_type[pass_idx]
 
-        if runtype == 'single':
+        if runtype == "single":
             # Single mode: use sum window for positioning
             result = compute_window_centers_single_mode(
                 image_shape=config.image_shape,
                 window_size=(win_y, win_x),
                 sum_window=tuple(config.ensemble_sum_window),
                 overlap=overlap,
-                validate=True
+                validate=True,
             )
             padding = result.padding  # (top, bottom, left, right)
             # Convert from padded coords to original image coords.
             # Single mode returns centers in padded image space; subtract
             # padding so all passes use the same coordinate system.
             # Padding is added back at C library call sites only.
-            win_ctrs_x = np.ascontiguousarray(result.win_ctrs_x - padding[2])  # subtract pad_left
-            win_ctrs_y = np.ascontiguousarray(result.win_ctrs_y - padding[0])  # subtract pad_top
+            win_ctrs_x = np.ascontiguousarray(
+                result.win_ctrs_x - padding[2]
+            )  # subtract pad_left
+            win_ctrs_y = np.ascontiguousarray(
+                result.win_ctrs_y - padding[0]
+            )  # subtract pad_top
         else:
             # Standard mode
             result = compute_window_centers(
                 image_shape=config.image_shape,
                 window_size=(win_y, win_x),
                 overlap=overlap,
-                validate=True
+                validate=True,
             )
             padding = (0, 0, 0, 0)  # No padding for standard mode
             win_ctrs_x = np.ascontiguousarray(result.win_ctrs_x)
@@ -637,55 +727,57 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
     def _load_precomputed_cache(self, cache: dict) -> None:
         """Load precomputed cache data for ensemble PIV."""
-        self.win_ctrs_x = cache['win_ctrs_x']
-        self.win_ctrs_y = cache['win_ctrs_y']
-        self.win_spacing_x = cache['win_spacing_x']
-        self.win_spacing_y = cache['win_spacing_y']
-        self.win_ctrs_x_all = cache['win_ctrs_x_all']
-        self.win_ctrs_y_all = cache['win_ctrs_y_all']
-        self.n_pre_all = cache['n_pre_all']
-        self.n_post_all = cache['n_post_all']
-        self.ksize_filt = cache['ksize_filt']
-        self.sd = cache['sd']
-        self.G_smooth_predictor = cache['G_smooth_predictor']
-        self.H = cache['H']
-        self.W = cache['W']
-        self.im_mesh = cache['im_mesh']
-        self.cached_dense_maps = cache['cached_dense_maps']
-        self.cached_predictor_maps = cache['cached_predictor_maps']
-        self.win_weights_A = cache.get('win_weights_A', [])
-        self.win_weights_B = cache.get('win_weights_B', [])
-        self.window_sizes_for_corr = cache.get('window_sizes_for_corr', [])
-        self.padding_per_pass = cache.get('padding_per_pass', [])
-        self.predictor_bcs = cache.get('predictor_bcs', [])
+        self.win_ctrs_x = cache["win_ctrs_x"]
+        self.win_ctrs_y = cache["win_ctrs_y"]
+        self.win_spacing_x = cache["win_spacing_x"]
+        self.win_spacing_y = cache["win_spacing_y"]
+        self.win_ctrs_x_all = cache["win_ctrs_x_all"]
+        self.win_ctrs_y_all = cache["win_ctrs_y_all"]
+        self.n_pre_all = cache["n_pre_all"]
+        self.n_post_all = cache["n_post_all"]
+        self.ksize_filt = cache["ksize_filt"]
+        self.sd = cache["sd"]
+        self.G_smooth_predictor = cache["G_smooth_predictor"]
+        self.H = cache["H"]
+        self.W = cache["W"]
+        self.im_mesh = cache["im_mesh"]
+        self.cached_dense_maps = cache["cached_dense_maps"]
+        self.cached_predictor_maps = cache["cached_predictor_maps"]
+        self.win_weights_A = cache.get("win_weights_A", [])
+        self.win_weights_B = cache.get("win_weights_B", [])
+        self.window_sizes_for_corr = cache.get("window_sizes_for_corr", [])
+        self.padding_per_pass = cache.get("padding_per_pass", [])
+        self.predictor_bcs = cache.get("predictor_bcs", [])
 
     def get_cache_data(self) -> dict:
         """Extract cache data for sharing across workers."""
         return {
-            'win_ctrs_x': self.win_ctrs_x,
-            'win_ctrs_y': self.win_ctrs_y,
-            'win_spacing_x': self.win_spacing_x,
-            'win_spacing_y': self.win_spacing_y,
-            'win_ctrs_x_all': self.win_ctrs_x_all,
-            'win_ctrs_y_all': self.win_ctrs_y_all,
-            'n_pre_all': self.n_pre_all,
-            'n_post_all': self.n_post_all,
-            'ksize_filt': self.ksize_filt,
-            'sd': self.sd,
-            'G_smooth_predictor': self.G_smooth_predictor,
-            'H': self.H,
-            'W': self.W,
-            'im_mesh': self.im_mesh,
-            'cached_dense_maps': self.cached_dense_maps,
-            'cached_predictor_maps': self.cached_predictor_maps,
-            'win_weights_A': self.win_weights_A,
-            'win_weights_B': self.win_weights_B,
-            'window_sizes_for_corr': self.window_sizes_for_corr,
-            'padding_per_pass': self.padding_per_pass,
-            'predictor_bcs': getattr(self, 'predictor_bcs', []),
+            "win_ctrs_x": self.win_ctrs_x,
+            "win_ctrs_y": self.win_ctrs_y,
+            "win_spacing_x": self.win_spacing_x,
+            "win_spacing_y": self.win_spacing_y,
+            "win_ctrs_x_all": self.win_ctrs_x_all,
+            "win_ctrs_y_all": self.win_ctrs_y_all,
+            "n_pre_all": self.n_pre_all,
+            "n_post_all": self.n_post_all,
+            "ksize_filt": self.ksize_filt,
+            "sd": self.sd,
+            "G_smooth_predictor": self.G_smooth_predictor,
+            "H": self.H,
+            "W": self.W,
+            "im_mesh": self.im_mesh,
+            "cached_dense_maps": self.cached_dense_maps,
+            "cached_predictor_maps": self.cached_predictor_maps,
+            "win_weights_A": self.win_weights_A,
+            "win_weights_B": self.win_weights_B,
+            "window_sizes_for_corr": self.window_sizes_for_corr,
+            "padding_per_pass": self.padding_per_pass,
+            "predictor_bcs": getattr(self, "predictor_bcs", []),
         }
 
-    def correlate_batch(self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None):
+    def correlate_batch(
+        self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None
+    ):
         """
         Not used for ensemble PIV - use correlate_batch_for_accumulation instead.
 
@@ -765,14 +857,14 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Check if single mode
         runtype = config.ensemble_type[pass_idx]
-        is_single_mode = (runtype == 'single')
+        is_single_mode = runtype == "single"
 
         N, _, H, W = images.shape
 
         # Reuse pre-allocated correlation buffers
-        correl_AA_sum = self._corr_buffers[pass_idx]['AA']
-        correl_BB_sum = self._corr_buffers[pass_idx]['BB']
-        correl_AB_sum = self._corr_buffers[pass_idx]['AB']
+        correl_AA_sum = self._corr_buffers[pass_idx]["AA"]
+        correl_BB_sum = self._corr_buffers[pass_idx]["BB"]
+        correl_AB_sum = self._corr_buffers[pass_idx]["AB"]
 
         # Clear buffers (faster than reallocation)
         if clear_buffers:
@@ -803,9 +895,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                             f"Cannot perform image warping. Correlating unwarped images."
                         )
                     else:
-                        delta_ab_pred = self._get_im_mesh(
-                            pass_idx, predictor_field
-                        )
+                        delta_ab_pred = self._get_im_mesh(pass_idx, predictor_field)
                         smoothed_predictor = delta_ab_pred
                         logging.debug(
                             f"Pass {pass_idx + 1}: Got smoothed predictor field "
@@ -831,20 +921,24 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             with self._profile_section(pass_idx, "warp_sum"):
                 warp_A_sum = images_a_prime.sum(axis=0)
                 warp_B_sum = images_b_prime.sum(axis=0)
-            logging.debug(f"Pass {pass_idx}: warp_A_sum shape {warp_A_sum.shape} (expected {H}x{W})")
+            logging.debug(
+                f"Pass {pass_idx}: warp_A_sum shape {warp_A_sum.shape} (expected {H}x{W})"
+            )
 
             # Apply padding for single mode (for correlation only)
             with self._profile_section(pass_idx, "single_mode_padding"):
                 if is_single_mode:
                     sum_window = tuple(config.ensemble_sum_window)
                     images_a_prime, _ = apply_single_mode_padding(
-                            images_a_prime, win_size, sum_window, pad_value=0.0
-                        )
+                        images_a_prime, win_size, sum_window, pad_value=0.0
+                    )
                     images_b_prime, _ = apply_single_mode_padding(
-                            images_b_prime, win_size, sum_window, pad_value=0.0
-                        )
+                        images_b_prime, win_size, sum_window, pad_value=0.0
+                    )
                     H_padded, W_padded = images_a_prime.shape[-2:]
-                    image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
+                    image_size = np.ascontiguousarray(
+                        np.array([H_padded, W_padded], dtype=np.int32)
+                    )
                 else:
                     image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
@@ -854,13 +948,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         try:
             corr_size = self.window_sizes_for_corr[pass_idx]
-            plane_size = total_windows * corr_size[0] * corr_size[1]
+            total_windows * corr_size[0] * corr_size[1]
 
             # Use pre-allocated buffers (cleared above when clear_buffers=True)
 
             # Create mask for C library
             if vector_mask is not None:
-                b_mask = np.ascontiguousarray(vector_mask.ravel(order='C').astype(np.float32))
+                b_mask = np.ascontiguousarray(
+                    vector_mask.ravel(order="C").astype(np.float32)
+                )
             else:
                 b_mask = np.zeros(total_windows, dtype=np.float32)
 
@@ -869,20 +965,33 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             # halving the number of forward FFTs vs 3× separate calls.
             with self._profile_section(pass_idx, "xcorr"):
                 error_code = self._run_correlation_accumulate_triple(
-                    images_a_prime, images_b_prime,
-                    self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],  # AB weights
-                    self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
-                    b_mask, pass_idx,
-                    correl_AB_sum, correl_AA_sum, correl_BB_sum,
-                    mean_subtract=(config.ensemble_background_subtraction_method
-                                   == 'window_mean'),
+                    images_a_prime,
+                    images_b_prime,
+                    self.win_weights_A[pass_idx],
+                    self.win_weights_B[pass_idx],  # AB weights
+                    self.win_weights_B[pass_idx],
+                    self.win_weights_B[pass_idx],  # AA/BB auto weights
+                    b_mask,
+                    pass_idx,
+                    correl_AB_sum,
+                    correl_AA_sum,
+                    correl_BB_sum,
+                    mean_subtract=(
+                        config.ensemble_background_subtraction_method == "window_mean"
+                    ),
                     per_pair_norm=config.ensemble_per_pair_normalization,
                 )
 
             # Reshape to (windows, corr_h, corr_w) for downstream processing
-            correl_AA_sum = correl_AA_sum.reshape(total_windows, corr_size[0], corr_size[1])
-            correl_AB_sum = correl_AB_sum.reshape(total_windows, corr_size[0], corr_size[1])
-            correl_BB_sum = correl_BB_sum.reshape(total_windows, corr_size[0], corr_size[1])
+            correl_AA_sum = correl_AA_sum.reshape(
+                total_windows, corr_size[0], corr_size[1]
+            )
+            correl_AB_sum = correl_AB_sum.reshape(
+                total_windows, corr_size[0], corr_size[1]
+            )
+            correl_BB_sum = correl_BB_sum.reshape(
+                total_windows, corr_size[0], corr_size[1]
+            )
 
             if error_code != 0:
                 logging.error(f"Fused triple correlation error code: {error_code}")
@@ -906,12 +1015,18 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     "n_win_x": n_win_x,
                     "n_win_y": n_win_y,
                     "smoothed_predictor": smoothed_predictor,
-                    "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 else None,
+                    "padded_predictor": (
+                        self.delta_ab_old.copy() if pass_idx > 0 else None
+                    ),
                     "vector_mask": vector_mask,
                     "n_pre": self.n_pre_all[pass_idx],
                     "n_post": self.n_post_all[pass_idx],
-                    "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
-                    "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
+                    "first_pair_A": (
+                        images_a_prime[0].copy() if is_first_batch else None
+                    ),
+                    "first_pair_B": (
+                        images_b_prime[0].copy() if is_first_batch else None
+                    ),
                 }
             else:
                 # Lightweight return — correlation planes stay in self._corr_buffers
@@ -921,13 +1036,23 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     "n_images": N,
                     "n_win_x": n_win_x,
                     "n_win_y": n_win_y,
-                    "smoothed_predictor": smoothed_predictor if is_first_batch else None,
-                    "padded_predictor": self.delta_ab_old.copy() if pass_idx > 0 and is_first_batch else None,
+                    "smoothed_predictor": (
+                        smoothed_predictor if is_first_batch else None
+                    ),
+                    "padded_predictor": (
+                        self.delta_ab_old.copy()
+                        if pass_idx > 0 and is_first_batch
+                        else None
+                    ),
                     "vector_mask": vector_mask if is_first_batch else None,
                     "n_pre": self.n_pre_all[pass_idx] if is_first_batch else None,
                     "n_post": self.n_post_all[pass_idx] if is_first_batch else None,
-                    "first_pair_A": images_a_prime[0].copy() if is_first_batch else None,
-                    "first_pair_B": images_b_prime[0].copy() if is_first_batch else None,
+                    "first_pair_A": (
+                        images_a_prime[0].copy() if is_first_batch else None
+                    ),
+                    "first_pair_B": (
+                        images_b_prime[0].copy() if is_first_batch else None
+                    ),
                 }
         return result
 
@@ -938,12 +1063,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         n_win_x = len(self.win_ctrs_x[pass_idx])
         total_windows = n_win_y * n_win_x
         return {
-            "corr_AA_sum": self._corr_buffers[pass_idx]['AA'].reshape(
-                total_windows, corr_size[0], corr_size[1]).copy(),
-            "corr_BB_sum": self._corr_buffers[pass_idx]['BB'].reshape(
-                total_windows, corr_size[0], corr_size[1]).copy(),
-            "corr_AB_sum": self._corr_buffers[pass_idx]['AB'].reshape(
-                total_windows, corr_size[0], corr_size[1]).copy(),
+            "corr_AA_sum": self._corr_buffers[pass_idx]["AA"]
+            .reshape(total_windows, corr_size[0], corr_size[1])
+            .copy(),
+            "corr_BB_sum": self._corr_buffers[pass_idx]["BB"]
+            .reshape(total_windows, corr_size[0], corr_size[1])
+            .copy(),
+            "corr_AB_sum": self._corr_buffers[pass_idx]["AB"]
+            .reshape(total_windows, corr_size[0], corr_size[1])
+            .copy(),
         }
 
     def compute_warp_sums_only(
@@ -996,9 +1124,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Warp images if predictor field is provided (pass > 0)
         if pass_idx > 0 and predictor_field is not None:
-            delta_ab_pred = self._get_im_mesh(
-                pass_idx, predictor_field
-            )
+            delta_ab_pred = self._get_im_mesh(pass_idx, predictor_field)
             smoothed_predictor = delta_ab_pred
             logging.debug(
                 f"Pass {pass_idx + 1} [warp-only]: Got smoothed predictor field "
@@ -1099,7 +1225,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         total_windows = n_win_y * n_win_x
 
         runtype = config.ensemble_type[pass_idx]
-        is_single_mode = (runtype == 'single')
+        is_single_mode = runtype == "single"
 
         N, _, H, W = images.shape
         smoothed_predictor = None
@@ -1116,9 +1242,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
 
         # Warp images if predictor field is provided (pass > 0)
         if pass_idx > 0 and predictor_field is not None:
-            delta_ab_pred = self._get_im_mesh(
-                pass_idx, predictor_field
-            )
+            delta_ab_pred = self._get_im_mesh(pass_idx, predictor_field)
             smoothed_predictor = delta_ab_pred
 
             if vector_mask is not None:
@@ -1147,7 +1271,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Save diagnostics if requested
         if save_diagnostics and is_first_batch and output_path is not None:
             from pathlib import Path
+
             from pivtools_cli.preprocessing.diagnostics import save_warped_diagnostics
+
             save_warped_diagnostics(
                 image_a_warped=images_a_prime[0],
                 image_b_warped=images_b_prime[0],
@@ -1168,7 +1294,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 images_b_centered, win_size, sum_window, pad_value=0.0
             )
             H_padded, W_padded = images_a_centered.shape[-2:]
-            image_size = np.ascontiguousarray(np.array([H_padded, W_padded], dtype=np.int32))
+            image_size = np.ascontiguousarray(
+                np.array([H_padded, W_padded], dtype=np.int32)
+            )
         else:
             image_size = np.ascontiguousarray(np.array([H, W], dtype=np.int32))
 
@@ -1181,17 +1309,25 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         correl_BB_sum = np.zeros(plane_size, dtype=np.float32)
 
         if vector_mask is not None:
-            b_mask = np.ascontiguousarray(vector_mask.ravel(order='C').astype(np.float32))
+            b_mask = np.ascontiguousarray(
+                vector_mask.ravel(order="C").astype(np.float32)
+            )
         else:
             b_mask = np.zeros(total_windows, dtype=np.float32)
 
         # Fused triple cross-correlation: AB + AA + BB in one C call
         error_code = self._run_correlation_accumulate_triple(
-            images_a_centered, images_b_centered,
-            self.win_weights_A[pass_idx], self.win_weights_B[pass_idx],  # AB weights
-            self.win_weights_B[pass_idx], self.win_weights_B[pass_idx],  # AA/BB auto weights
-            b_mask, pass_idx,
-            correl_AB_sum, correl_AA_sum, correl_BB_sum,
+            images_a_centered,
+            images_b_centered,
+            self.win_weights_A[pass_idx],
+            self.win_weights_B[pass_idx],  # AB weights
+            self.win_weights_B[pass_idx],
+            self.win_weights_B[pass_idx],  # AA/BB auto weights
+            b_mask,
+            pass_idx,
+            correl_AB_sum,
+            correl_AA_sum,
+            correl_BB_sum,
         )
 
         # Reshape to (windows, corr_h, corr_w)
@@ -1220,11 +1356,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         }
 
     def _set_lib_arguments_ensemble(
-        self,
-        config: Config,
-        win_size: list,
-        pass_idx: int,
-        N: int
+        self, config: Config, win_size: list, pass_idx: int, N: int
     ):
         """
         Set up arguments for the cross-correlation library call.
@@ -1246,7 +1378,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 self.vector_masks[pass_idx].astype(np.float32)
             )
         else:
-            b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
+            b_mask = np.ascontiguousarray(
+                np.zeros((n_win_y, n_win_x), dtype=np.float32)
+            )
 
         n_peaks = config.ensemble_num_peaks
         i_peak_finder = config.ensemble_peak_finder
@@ -1254,11 +1388,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         correl_plane_out = np.ascontiguousarray(
             np.zeros(N * total_windows * corr_size[0] * corr_size[1], dtype=np.float32)
         )
-        out_shape = (N, n_peaks, n_win_y, n_win_x)
+        (N, n_peaks, n_win_y, n_win_x)
 
         pk_loc_x = pk_loc_y = pk_height = sx = sy = sxy = np.ascontiguousarray(
-                np.zeros((1,), dtype=np.float32)
-            )
+            np.zeros((1,), dtype=np.float32)
+        )
         point_spread_a = np.zeros_like(correl_plane_out)
         point_spread_b = np.zeros_like(correl_plane_out)
 
@@ -1299,11 +1433,19 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         pred_dx = np.ascontiguousarray(self.delta_ab_old[..., 1], dtype=np.float32)
 
         ret = self._fw_lib.fused_symmetric_warp_batch(
-            images_a, images_b,
-            out_a, out_b,
-            pred_dy, pred_dx,
-            N, H, W, nPY, nPX,
-            self._fused_ctrs_y, self._fused_ctrs_x,
+            images_a,
+            images_b,
+            out_a,
+            out_b,
+            pred_dy,
+            pred_dx,
+            N,
+            H,
+            W,
+            nPY,
+            nPX,
+            self._fused_ctrs_y,
+            self._fused_ctrs_x,
             self._fused_interp_mode,
             1,  # shared_predictor=1 → ensemble mode
             1 if self.config.ensemble_predictor_rounding else 0,  # round_shifts
@@ -1312,7 +1454,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             raise RuntimeError(f"fused_symmetric_warp_batch failed (ret={ret})")
 
         return out_a, out_b
-    
+
     def _get_im_mesh(self, pass_idx: int, predictor_field: Optional[np.ndarray]):
         """Compute image meshes with predictor field warping.
 
@@ -1340,7 +1482,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             # Verify incoming predictor has expected shape (previous pass grid)
             expected_y = len(self.win_ctrs_y[prev_pass])
             expected_x = len(self.win_ctrs_x[prev_pass])
-            if predictor_field.shape[0] != expected_y or predictor_field.shape[1] != expected_x:
+            if (
+                predictor_field.shape[0] != expected_y
+                or predictor_field.shape[1] != expected_x
+            ):
                 logging.warning(
                     f"Pass {pass_idx}: Predictor shape mismatch! "
                     f"Got {predictor_field.shape[:2]}, expected ({expected_y}, {expected_x}). "
@@ -1367,7 +1512,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             # Verify padded shape matches expected interpolation grid
             expected_padded_y = len(self.win_ctrs_y_all[prev_pass])
             expected_padded_x = len(self.win_ctrs_x_all[prev_pass])
-            if predictor_field.shape[0] != expected_padded_y or predictor_field.shape[1] != expected_padded_x:
+            if (
+                predictor_field.shape[0] != expected_padded_y
+                or predictor_field.shape[1] != expected_padded_x
+            ):
                 logging.error(
                     f"Pass {pass_idx}: CRITICAL - Padded predictor shape mismatch! "
                     f"Got {predictor_field.shape[:2]}, expected ({expected_padded_y}, {expected_padded_x}). "
@@ -1389,8 +1537,11 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             if self.predictor_bcs:
                 padded_ctrs_y = self.win_ctrs_y_all[prev_pass]
                 for bc in self.predictor_bcs:
-                    bc_y_img = float(self.H - 1 - bc["y_position"]) if bc["edge"] == "bottom" \
-                               else float(bc["y_position"])
+                    bc_y_img = (
+                        float(self.H - 1 - bc["y_position"])
+                        if bc["edge"] == "bottom"
+                        else float(bc["y_position"])
+                    )
                     bc_uy = bc["uy"]
                     bc_ux = bc["ux"]
 
@@ -1418,13 +1569,15 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                 self.delta_ab_old[..., 0] = gaussian_filter(
                     predictor_field[..., 0],
                     sigma=self.sd[pass_idx],
-                    truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                    truncate=(self.ksize_filt[pass_idx][0] - 1)
+                    / (2 * self.sd[pass_idx]),
                     mode="nearest",
                 )
                 self.delta_ab_old[..., 1] = gaussian_filter(
                     predictor_field[..., 1],
                     sigma=self.sd[pass_idx],
-                    truncate=(self.ksize_filt[pass_idx][0] - 1) / (2 * self.sd[pass_idx]),
+                    truncate=(self.ksize_filt[pass_idx][0] - 1)
+                    / (2 * self.sd[pass_idx]),
                     mode="nearest",
                 )
             else:
@@ -1461,7 +1614,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         with self._profile_section(pass_idx, "pc_predictor_remap"):
             map_x, map_y = self.cached_predictor_maps[pass_idx]
             if map_x is None or map_y is None:
-                raise ValueError(f"Predictor interpolation maps missing for pass {pass_idx}")
+                raise ValueError(
+                    f"Predictor interpolation maps missing for pass {pass_idx}"
+                )
 
             for d in range(2):
                 delta_ab_pred[..., d] = cv2.remap(
@@ -1496,19 +1651,27 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         if pass_idx > 0:
             prev_pass = pass_idx - 1
             self._fused_ctrs_y = np.ascontiguousarray(
-                self.win_ctrs_y_all[prev_pass], dtype=np.float32)
+                self.win_ctrs_y_all[prev_pass], dtype=np.float32
+            )
             self._fused_ctrs_x = np.ascontiguousarray(
-                self.win_ctrs_x_all[prev_pass], dtype=np.float32)
+                self.win_ctrs_x_all[prev_pass], dtype=np.float32
+            )
         else:
             self._fused_ctrs_y = np.ascontiguousarray(
-                self.win_ctrs_y_all[0], dtype=np.float32)
+                self.win_ctrs_y_all[0], dtype=np.float32
+            )
             self._fused_ctrs_x = np.ascontiguousarray(
-                self.win_ctrs_x_all[0], dtype=np.float32)
+                self.win_ctrs_x_all[0], dtype=np.float32
+            )
 
-        image_interp = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
-        self._fused_interp_mode = 0 if image_interp == 'cubic' else 1
+        image_interp = getattr(
+            self.config, "ensemble_image_warp_interpolation", "cubic"
+        )
+        self._fused_interp_mode = 0 if image_interp == "cubic" else 1
 
         return delta_ab_pred
+
+
 def plot_corr_planes(corr_avg_flat, n_win_y, n_win_x, win_h, win_w, pass_idx):
     """
     Visualize ensemble-averaged correlation planes for PIV in a grid

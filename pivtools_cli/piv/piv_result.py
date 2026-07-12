@@ -18,6 +18,11 @@ class PIVPassResult:
     window_size: Optional[tuple[int, int]] = None
     win_ctrs_x: Optional[np.ndarray] = None
     win_ctrs_y: Optional[np.ndarray] = None
+    # int8 (n_win_y, n_win_x) — codes in piv_backend/nan_reason_codes.py
+    nan_reason: Optional[np.ndarray] = None
+    # correlation-plane dump payload (dump_correlation_planes only);
+    # never written to the .mat struct
+    debug_dump: Optional[dict] = None
 
 
 @dataclass
@@ -34,13 +39,12 @@ class PIVResult:
                 f"  Pass {i + 1}: ux.shape="
                 f"{None if p.ux_mat is None else p.ux_mat.shape}, "
             )
-            s += (
-                f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}\n"
-            )
+            s += f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}\n"
         return s
 
 
 # --- Ensemble PIV Result Classes ---
+
 
 @dataclass
 class PIVEnsembleBlockResult:
@@ -49,6 +53,7 @@ class PIVEnsembleBlockResult:
 
     Contains averaged correlation planes and point spreads across all images.
     """
+
     correlation_plane_mean: Optional[np.ndarray] = None
     predictor_field: Optional[np.ndarray] = None
     point_spread_a_mean: Optional[np.ndarray] = None
@@ -72,6 +77,7 @@ class PIVEnsemblePassResult:
     Contains velocity fields and uncertainty/stress tensor information
     derived from the Levenberg-Marquardt Gaussian fitting.
     """
+
     # Core velocity fields
     ux_mat: Optional[np.ndarray] = None
     uy_mat: Optional[np.ndarray] = None
@@ -129,6 +135,7 @@ class PIVEnsembleResult:
     """
     Complete result from ensemble PIV processing across all passes.
     """
+
     passes: List[PIVEnsemblePassResult] = field(default_factory=list)
 
     def add_pass(self, pass_result: PIVEnsemblePassResult):
@@ -141,10 +148,6 @@ class PIVEnsembleResult:
                 f"  Pass {i + 1}: ux.shape="
                 f"{None if p.ux_mat is None else p.ux_mat.shape}, "
             )
-            s += (
-                f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}, "
-            )
-            s += (
-                f"UU_stress.shape={None if p.UU_stress is None else p.UU_stress.shape}\n"
-            )
+            s += f"uy.shape={None if p.uy_mat is None else p.uy_mat.shape}, "
+            s += f"UU_stress.shape={None if p.UU_stress is None else p.UU_stress.shape}\n"
         return s

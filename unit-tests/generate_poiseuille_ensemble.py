@@ -11,11 +11,12 @@ Velocity field:
 
 Output: unit-tests/poiseuille_ensemble/B{00001..00020}_A.tif, B{00001..00020}_B.tif, params.json
 """
+
 import json
+from pathlib import Path
 
 import numpy as np
 import tifffile
-from pathlib import Path
 from synthetic_piv import render_particles
 
 # ── Parameters ──────────────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ IMAGE_SHAPE = (500, 500)
 NUM_PARTICLES = 30_000
 PARTICLE_DIAMETER = 3.0
 SIGMA = PARTICLE_DIAMETER / 2.355  # FWHM to Gaussian sigma
-U_MAX = 5.0                        # max displacement in pixels
+U_MAX = 5.0  # max displacement in pixels
 NUM_PAIRS = 20
 BASE_SEED = 100
 
@@ -59,16 +60,21 @@ def main():
 
         # Poiseuille displacement: u_x(y) = U_MAX * (1 - (2y/H - 1)^2), u_y = 0
         y_norm = 2.0 * y_pos / H - 1.0
-        dx_image = U_MAX * (1.0 - y_norm ** 2)
+        dx_image = U_MAX * (1.0 - y_norm**2)
         dy_image = np.zeros_like(dx_image)
 
         # Render frames
         img_a = render_particles(IMAGE_SHAPE, x_pos, y_pos, intensities, SIGMA)
-        img_b = render_particles(IMAGE_SHAPE, x_pos + dx_image, y_pos + dy_image,
-                                 intensities, SIGMA)
+        img_b = render_particles(
+            IMAGE_SHAPE, x_pos + dx_image, y_pos + dy_image, intensities, SIGMA
+        )
 
-        tifffile.imwrite(OUTPUT_DIR / f"B{pair_idx:05d}_A.tif", _normalize_uint16(img_a))
-        tifffile.imwrite(OUTPUT_DIR / f"B{pair_idx:05d}_B.tif", _normalize_uint16(img_b))
+        tifffile.imwrite(
+            OUTPUT_DIR / f"B{pair_idx:05d}_A.tif", _normalize_uint16(img_a)
+        )
+        tifffile.imwrite(
+            OUTPUT_DIR / f"B{pair_idx:05d}_B.tif", _normalize_uint16(img_b)
+        )
 
         if pair_idx % 5 == 0:
             print(f"  Generated {pair_idx}/{NUM_PAIRS} pairs")

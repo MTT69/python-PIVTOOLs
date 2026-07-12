@@ -29,21 +29,27 @@ def _load_lib():
         return _lib
 
     lib_extension = ".dll" if os.name == "nt" else ".so"
-    path = os.path.abspath(os.path.join(
-        os.path.dirname(__file__), '..', 'pivtools_cli', 'lib',
-        f'libbulkxcorr2d{lib_extension}',
-    ))
+    path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "pivtools_cli",
+            "lib",
+            f"libbulkxcorr2d{lib_extension}",
+        )
+    )
     if not os.path.isfile(path):
         raise FileNotFoundError(f"libbulkxcorr2d not found at {path}")
 
     lib = ctypes.CDLL(path)
 
     lib.lsqpeaklocate_lm.argtypes = [
-        np.ctypeslib.ndpointer(dtype=np.float32, flags='C_CONTIGUOUS'),
-        np.ctypeslib.ndpointer(dtype=np.int32, flags='C_CONTIGUOUS'),
-        np.ctypeslib.ndpointer(dtype=np.float32, flags='C_CONTIGUOUS'),
-        ctypes.c_int, ctypes.c_int,
-        np.ctypeslib.ndpointer(dtype=np.float32, flags='C_CONTIGUOUS'),
+        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),
+        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+        ctypes.c_int,
+        ctypes.c_int,
+        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
     ]
     lib.lsqpeaklocate_lm.restype = None
 
@@ -59,12 +65,16 @@ def _load_lib():
     lib.bulkxcorr2d_peakfit_batch_available.restype = ctypes.c_int
 
     lib.lsqpeaklocate_lm_batch.argtypes = [
-        np.ctypeslib.ndpointer(dtype=np.float32, flags='C_CONTIGUOUS'),  # planes
-        ctypes.c_int,                                                    # L_real
-        np.ctypeslib.ndpointer(dtype=np.int32, flags='C_CONTIGUOUS'),    # N
-        ctypes.c_int,                                                    # iFitType
-        np.ctypeslib.ndpointer(dtype=np.float32, flags='C_CONTIGUOUS'),  # peak_loc [3][W]
-        np.ctypeslib.ndpointer(dtype=np.float32, flags='C_CONTIGUOUS'),  # std_dev  [3][W]
+        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # planes
+        ctypes.c_int,  # L_real
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # N
+        ctypes.c_int,  # iFitType
+        np.ctypeslib.ndpointer(
+            dtype=np.float32, flags="C_CONTIGUOUS"
+        ),  # peak_loc [3][W]
+        np.ctypeslib.ndpointer(
+            dtype=np.float32, flags="C_CONTIGUOUS"
+        ),  # std_dev  [3][W]
     ]
     lib.lsqpeaklocate_lm_batch.restype = None
 
@@ -80,11 +90,13 @@ except Exception:
     _LIB, _AVAILABLE, _LANES = None, False, 0
 
 pytestmark = pytest.mark.skipif(
-    _LIB is None, reason="libbulkxcorr2d C library not available",
+    _LIB is None,
+    reason="libbulkxcorr2d C library not available",
 )
 
 needs_batch = pytest.mark.skipif(
-    not _AVAILABLE, reason="batch peak fitter not compiled in (plain MSVC cl build)",
+    not _AVAILABLE,
+    reason="batch peak fitter not compiled in (plain MSVC cl build)",
 )
 
 PLANE_N = 33
@@ -95,12 +107,13 @@ CENTER = (PLANE_N - 1) / 2
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _gauss_plane(rng, fit_type):
     """One clean synthetic plane matching the C model for the fit type."""
     di, dj = rng.uniform(-0.45, 0.45, 2)
     amp = rng.uniform(100.0, 1000.0)
     s1, s2 = rng.uniform(1.0, 2.5, 2)
-    ii, jj = np.meshgrid(np.arange(PLANE_N), np.arange(PLANE_N), indexing='ij')
+    ii, jj = np.meshgrid(np.arange(PLANE_N), np.arange(PLANE_N), indexing="ij")
     y = ii - CENTER - di
     x = jj - CENTER - dj
     if fit_type == 4:
@@ -109,7 +122,9 @@ def _gauss_plane(rng, fit_type):
         z = amp * np.exp(-(y * y / (s1 * s1) + x * x / (s2 * s2)))
     else:
         cov = rng.uniform(-0.2, 0.2) / (s1 * s2)
-        z = amp * np.exp(-0.5 * (y * y / (s1 * s1) + x * x / (s2 * s2) + 2 * y * x * cov))
+        z = amp * np.exp(
+            -0.5 * (y * y / (s1 * s1) + x * x / (s2 * s2) + 2 * y * x * cov)
+        )
     return z.astype(np.float32)
 
 
@@ -129,7 +144,9 @@ def _run_batch(planes, L_real, fit_type):
     N = np.array([h, w], dtype=np.int32)
     loc = np.zeros(3 * _LANES, dtype=np.float32)
     std = np.zeros(3 * _LANES, dtype=np.float32)
-    _LIB.lsqpeaklocate_lm_batch(np.ascontiguousarray(buf), L_real, N, fit_type, loc, std)
+    _LIB.lsqpeaklocate_lm_batch(
+        np.ascontiguousarray(buf), L_real, N, fit_type, loc, std
+    )
     return loc.reshape(3, _LANES), std.reshape(3, _LANES)
 
 
@@ -137,11 +154,14 @@ def _run_batch(planes, L_real, fit_type):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSelector:
     """No-silent-fallback semantics of the runtime selector."""
 
     def test_availability_consistent(self):
-        assert _LIB.bulkxcorr2d_peakfit_batch_available() == _LIB.peakfit_batch_available()
+        assert (
+            _LIB.bulkxcorr2d_peakfit_batch_available() == _LIB.peakfit_batch_available()
+        )
 
     def test_default_is_scalar(self):
         assert _LIB.bulkxcorr2d_get_peakfit_impl() == 0
@@ -202,7 +222,7 @@ class TestOracleAgreement:
         """
         rng = np.random.RandomState(2000 + fit_type)
         sigma = 15.0
-        boundary = np.sqrt(1e-3)              # trust rule: sigma/A at the NaN boundary
+        boundary = np.sqrt(1e-3)  # trust rule: sigma/A at the NaN boundary
         n_batches = 16
         safe_flips = 0
         marginal_flips = 0
@@ -216,7 +236,9 @@ class TestOracleAgreement:
                 p = _gauss_plane(rng2, fit_type)
                 p *= amps[l] / p.max()
                 planes.append(p)
-            planes = np.stack(planes) + rng.normal(0, sigma, (_LANES, PLANE_N, PLANE_N)).astype(np.float32)
+            planes = np.stack(planes) + rng.normal(
+                0, sigma, (_LANES, PLANE_N, PLANE_N)
+            ).astype(np.float32)
             bloc, _ = _run_batch(planes, _LANES, fit_type)
             for l in range(_LANES):
                 sloc, _ = _run_scalar(planes[l], fit_type)
@@ -230,7 +252,9 @@ class TestOracleAgreement:
                 if not in_safe_band:
                     marginal_total += 1
                 if not sn and not bn:
-                    p99_pool.append(np.hypot(sloc[0] - bloc[0, l], sloc[1] - bloc[1, l]))
+                    p99_pool.append(
+                        np.hypot(sloc[0] - bloc[0, l], sloc[1] - bloc[1, l])
+                    )
         assert safe_flips == 0, (
             f"type {fit_type}: {safe_flips} NaN flips on GOOD fits (safe band) — "
             "this must never happen; suspect a lockstep-logic regression "
@@ -238,9 +262,9 @@ class TestOracleAgreement:
         )
         if marginal_total:
             rate = marginal_flips / marginal_total
-            assert rate < 0.10, (
-                f"type {fit_type}: boundary-band flip rate {rate:.1%} exceeds 10%"
-            )
+            assert (
+                rate < 0.10
+            ), f"type {fit_type}: boundary-band flip rate {rate:.1%} exceeds 10%"
         if p99_pool:
             assert float(np.percentile(p99_pool, 99)) < 1e-3
 
@@ -266,7 +290,9 @@ class TestFailureMasks:
     @pytest.mark.parametrize("fit_type", [4, 5, 6])
     def test_masks_match(self, fit_type):
         rng = np.random.RandomState(3000 + fit_type)
-        kinds = (["flat", "noise_spike", "nan_window", "clean"] * ((_LANES // 4) + 1))[:_LANES]
+        kinds = (["flat", "noise_spike", "nan_window", "clean"] * ((_LANES // 4) + 1))[
+            :_LANES
+        ]
         planes = np.stack([self._pathological(k, rng) for k in kinds])
         bloc, bstd = _run_batch(planes, _LANES, fit_type)
         for l in range(_LANES):

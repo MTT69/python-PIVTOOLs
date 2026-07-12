@@ -402,7 +402,9 @@ class BuildCLibraries(build):
             libomp = pathlib.Path(self.compiler).resolve().parent / "libomp.dll"
             if libomp.is_file():
                 shutil.copy2(libomp, self.build_dir / "libomp.dll")
-                print(f"Staged OpenMP runtime: {libomp} -> {self.build_dir / 'libomp.dll'}")
+                print(
+                    f"Staged OpenMP runtime: {libomp} -> {self.build_dir / 'libomp.dll'}"
+                )
             else:
                 raise RuntimeError(
                     f"clang-cl /openmp build but libomp.dll not found at {libomp}.\n"
@@ -447,7 +449,12 @@ class BuildCLibraries(build):
         if vsinstall:
             cand = (
                 pathlib.Path(vsinstall)
-                / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang-cl.exe"
+                / "VC"
+                / "Tools"
+                / "Llvm"
+                / "x64"
+                / "bin"
+                / "clang-cl.exe"
             )
             if cand.is_file():
                 return str(cand)

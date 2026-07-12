@@ -47,11 +47,13 @@ def get_transform_constraints():
     """
     cfg = get_config()
 
-    return jsonify({
-        "allowed_source_endpoints": cfg.get_allowed_endpoints("transforms"),
-        "is_stereo": cfg.is_stereo_setup,
-        # No blocking constraints for transforms - all endpoints allowed
-    })
+    return jsonify(
+        {
+            "allowed_source_endpoints": cfg.get_allowed_endpoints("transforms"),
+            "is_stereo": cfg.is_stereo_setup,
+            # No blocking constraints for transforms - all endpoints allowed
+        }
+    )
 
 
 # =============================================================================
@@ -79,10 +81,15 @@ def add_transform():
         logger.info(f"add_transform: camera={camera}, transformation={transformation}")
 
         if transformation not in VALID_TRANSFORMATIONS:
-            return jsonify({
-                "success": False,
-                "error": f"Invalid transformation. Valid: {VALID_TRANSFORMATIONS}"
-            }), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Invalid transformation. Valid: {VALID_TRANSFORMATIONS}",
+                    }
+                ),
+                400,
+            )
 
         config = get_config()
 
@@ -97,16 +104,20 @@ def add_transform():
         config.set_camera_transforms(camera, simplified_ops)
         config.save()
 
-        logger.info(f"add_transform: simplified {len(new_ops)} -> {len(simplified_ops)} operations")
+        logger.info(
+            f"add_transform: simplified {len(new_ops)} -> {len(simplified_ops)} operations"
+        )
 
-        return jsonify({
-            "success": True,
-            "camera": camera,
-            "operations": simplified_ops,
-            "original_count": len(new_ops),
-            "simplified_count": len(simplified_ops),
-            "message": f"Added {transformation}, simplified to {len(simplified_ops)} operation(s)",
-        })
+        return jsonify(
+            {
+                "success": True,
+                "camera": camera,
+                "operations": simplified_ops,
+                "original_count": len(new_ops),
+                "simplified_count": len(simplified_ops),
+                "message": f"Added {transformation}, simplified to {len(simplified_ops)} operation(s)",
+            }
+        )
 
     except Exception as e:
         logger.exception(f"add_transform error: {e}")
@@ -139,11 +150,13 @@ def clear_transform():
         config.clear_camera_transforms(camera)
         config.save()
 
-        return jsonify({
-            "success": True,
-            "camera": camera,
-            "message": f"Cleared all transforms for camera {camera}",
-        })
+        return jsonify(
+            {
+                "success": True,
+                "camera": camera,
+                "message": f"Cleared all transforms for camera {camera}",
+            }
+        )
 
     except Exception as e:
         logger.exception(f"clear_transform error: {e}")
@@ -172,12 +185,14 @@ def get_transform_status():
         config = get_config()
         operations = config.get_camera_transforms(camera)
 
-        return jsonify({
-            "success": True,
-            "camera": camera,
-            "operations": operations,
-            "has_pending": len(operations) > 0,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "camera": camera,
+                "operations": operations,
+                "has_pending": len(operations) > 0,
+            }
+        )
 
     except Exception as e:
         logger.exception(f"get_transform_status error: {e}")
@@ -201,11 +216,13 @@ def get_all_transform_status():
         config = get_config()
         all_transforms = config.transforms_cameras
 
-        return jsonify({
-            "success": True,
-            "cameras": all_transforms,
-            "has_any_pending": any(len(ops) > 0 for ops in all_transforms.values()),
-        })
+        return jsonify(
+            {
+                "success": True,
+                "cameras": all_transforms,
+                "has_any_pending": any(len(ops) > 0 for ops in all_transforms.values()),
+            }
+        )
 
     except Exception as e:
         logger.exception(f"get_all_transform_status error: {e}")
@@ -234,12 +251,14 @@ def preview_simplify():
 
         simplified = simplify_transformations(operations)
 
-        return jsonify({
-            "success": True,
-            "original": operations,
-            "simplified": simplified,
-            "reduced_by": len(operations) - len(simplified),
-        })
+        return jsonify(
+            {
+                "success": True,
+                "original": operations,
+                "simplified": simplified,
+                "reduced_by": len(operations) - len(simplified),
+            }
+        )
 
     except Exception as e:
         logger.exception(f"preview_simplify error: {e}")
@@ -279,24 +298,33 @@ def apply_transforms():
 
         # Validate base_path_idx
         if base_path_idx >= len(config.base_paths):
-            return jsonify({
-                "success": False,
-                "error": f"Invalid base_path_idx: {base_path_idx}. Only {len(config.base_paths)} base paths configured."
-            }), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Invalid base_path_idx: {base_path_idx}. Only {len(config.base_paths)} base paths configured.",
+                    }
+                ),
+                400,
+            )
 
         # Get cameras with pending transforms
         all_transforms = config.transforms_cameras
 
         if cameras:
-            camera_transforms = {c: all_transforms.get(c, []) for c in cameras if all_transforms.get(c)}
+            camera_transforms = {
+                c: all_transforms.get(c, []) for c in cameras if all_transforms.get(c)
+            }
         else:
             camera_transforms = {c: ops for c, ops in all_transforms.items() if ops}
 
         if not camera_transforms:
-            return jsonify({
-                "success": False,
-                "error": "No pending transformations to apply"
-            }), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "No pending transformations to apply"}
+                ),
+                400,
+            )
 
         # Create job
         job_id = job_manager.create_job(
@@ -337,7 +365,9 @@ def apply_transforms():
 
                     job_manager.complete_job(
                         job_id,
-                        camera_results={str(k): v for k, v in result["camera_results"].items()},
+                        camera_results={
+                            str(k): v for k, v in result["camera_results"].items()
+                        },
                         statistics_warning="Statistics files were NOT transformed. Please recalculate statistics if needed.",
                     )
                 else:
@@ -351,12 +381,14 @@ def apply_transforms():
         thread.daemon = True
         thread.start()
 
-        return jsonify({
-            "job_id": job_id,
-            "status": "starting",
-            "cameras": list(camera_transforms.keys()),
-            "message": "Transformations started. Note: Statistics will need to be recalculated.",
-        })
+        return jsonify(
+            {
+                "job_id": job_id,
+                "status": "starting",
+                "cameras": list(camera_transforms.keys()),
+                "message": "Transformations started. Note: Statistics will need to be recalculated.",
+            }
+        )
 
     except Exception as e:
         logger.exception(f"apply_transforms error: {e}")
@@ -417,10 +449,12 @@ def apply_transforms_batch():
         camera_transforms = {c: ops for c, ops in all_transforms.items() if ops}
 
         if not camera_transforms:
-            return jsonify({
-                "success": False,
-                "error": "No pending transformations to apply"
-            }), 400
+            return (
+                jsonify(
+                    {"success": False, "error": "No pending transformations to apply"}
+                ),
+                400,
+            )
 
         # Build targets based on process_merged/process_stereo flags
         targets = []
@@ -433,34 +467,40 @@ def apply_transforms_batch():
             else:
                 stereo_camera_pair = (1, 2)
             cam_transforms = list(camera_transforms.values())[0]
-            targets.append({
-                "camera": stereo_camera_pair[0],
-                "is_merged": False,
-                "is_stereo": True,
-                "stereo_camera_pair": stereo_camera_pair,
-                "label": f"Stereo Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}",
-                "operations": cam_transforms,
-            })
+            targets.append(
+                {
+                    "camera": stereo_camera_pair[0],
+                    "is_merged": False,
+                    "is_stereo": True,
+                    "stereo_camera_pair": stereo_camera_pair,
+                    "label": f"Stereo Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}",
+                    "operations": cam_transforms,
+                }
+            )
         elif process_merged:
             # Process merged data only - use first camera's transforms
             cam_transforms = list(camera_transforms.values())[0]
-            targets.append({
-                "camera": None,
-                "is_merged": True,
-                "is_stereo": False,
-                "label": "Merged",
-                "operations": cam_transforms,
-            })
+            targets.append(
+                {
+                    "camera": None,
+                    "is_merged": True,
+                    "is_stereo": False,
+                    "label": "Merged",
+                    "operations": cam_transforms,
+                }
+            )
         else:
             # Process all cameras with pending transforms
             for cam_num, cam_transforms in camera_transforms.items():
-                targets.append({
-                    "camera": cam_num,
-                    "is_merged": False,
-                    "is_stereo": False,
-                    "label": f"Cam{cam_num}",
-                    "operations": cam_transforms,
-                })
+                targets.append(
+                    {
+                        "camera": cam_num,
+                        "is_merged": False,
+                        "is_stereo": False,
+                        "label": f"Cam{cam_num}",
+                        "operations": cam_transforms,
+                    }
+                )
 
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
@@ -496,12 +536,14 @@ def apply_transforms_batch():
                 parent_job_id=parent_job_id,
                 operations=cam_transforms,
             )
-            sub_jobs.append({
-                "job_id": job_id,
-                "type": job_type,
-                "path_idx": base_path_idx,
-                "label": target["label"],
-            })
+            sub_jobs.append(
+                {
+                    "job_id": job_id,
+                    "type": job_type,
+                    "path_idx": base_path_idx,
+                    "label": target["label"],
+                }
+            )
 
             # Launch thread
             thread = threading.Thread(
@@ -529,15 +571,17 @@ def apply_transforms_batch():
             config.clear_camera_transforms(cam)
         config.save()
 
-        return jsonify({
-            "parent_job_id": parent_job_id,
-            "sub_jobs": sub_jobs,
-            "total_targets": len(targets),
-            "processed_targets": len(sub_jobs),
-            "status": "starting",
-            "message": f"Transformations started for {len(sub_jobs)} target(s). "
-            "Note: Statistics will need to be recalculated.",
-        })
+        return jsonify(
+            {
+                "parent_job_id": parent_job_id,
+                "sub_jobs": sub_jobs,
+                "total_targets": len(targets),
+                "processed_targets": len(sub_jobs),
+                "status": "starting",
+                "message": f"Transformations started for {len(sub_jobs)} target(s). "
+                "Note: Statistics will need to be recalculated.",
+            }
+        )
 
     except Exception as e:
         logger.exception(f"apply_transforms_batch error: {e}")
@@ -662,7 +706,9 @@ def get_valid_transformations():
     Returns:
         JSON with valid transformations list
     """
-    return jsonify({
-        "success": True,
-        "valid_transformations": VALID_TRANSFORMATIONS,
-    })
+    return jsonify(
+        {
+            "success": True,
+            "valid_transformations": VALID_TRANSFORMATIONS,
+        }
+    )

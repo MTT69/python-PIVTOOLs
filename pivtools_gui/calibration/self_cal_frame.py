@@ -79,7 +79,7 @@ def plane_to_world_correction(
     e3 = np.array([0.0, 0.0, 1.0], dtype=np.float64)
     axis = np.cross(e3, normal)
     sin_a = float(np.linalg.norm(axis))
-    if sin_a < 1e-15:                       # no tilt -> identity rotation
+    if sin_a < 1e-15:  # no tilt -> identity rotation
         R_corr = np.eye(3, dtype=np.float64)
     else:
         angle = math.atan2(sin_a, float(np.dot(e3, normal)))

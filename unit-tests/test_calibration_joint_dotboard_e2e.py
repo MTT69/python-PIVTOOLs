@@ -16,17 +16,16 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
-from pivtools_gui.calibration.joint_driver import run_joint_from_spec
-from pivtools_gui.calibration.record import load_joint, load_mono
-from pivtools_gui.calibration.camera_model import PolynomialModel
-
 from test_calibration_global_grid import (  # noqa: E402  (sibling-test reuse, as elsewhere)
-    SPACING,
     _N_VIEWS,
+    SPACING,
     _make_dataset,
     _spec,
 )
+
+from pivtools_gui.calibration.camera_model import PolynomialModel
+from pivtools_gui.calibration.joint_driver import run_joint_from_spec
+from pivtools_gui.calibration.record import load_joint, load_mono
 
 # The synthetic projects around principal point (640, 512) with a 1280x1024-ish sensor.
 _IMAGE_SIZE = (1280, 1024)
@@ -47,9 +46,18 @@ def test_dotboard_joint_pinhole_end_to_end(tmp_path):
     cams = sorted(detections)
 
     res = run_joint_from_spec(
-        detections, _image_size_by_cam(detections), source=tmp_path, board="dotboard",
-        model_type="pinhole", spacing_mm=SPACING, datum_camera=1, datum_view=0,
-        spec=spec, cameras=cams, n_views=_N_VIEWS)
+        detections,
+        _image_size_by_cam(detections),
+        source=tmp_path,
+        board="dotboard",
+        model_type="pinhole",
+        spacing_mm=SPACING,
+        datum_camera=1,
+        datum_view=0,
+        spec=spec,
+        cameras=cams,
+        n_views=_N_VIEWS,
+    )
 
     assert res.board_type == "dotboard"
     assert res.model_type == "pinhole"
@@ -61,7 +69,9 @@ def test_dotboard_joint_pinhole_end_to_end(tmp_path):
     assert res.rms_units == "px"
     for c in cams:
         assert res.per_camera_rms[c] < 1.0
-    assert res.n_board_dots > 40  # a real shared board (cols 0..11 x rows 0..8, partial per cam)
+    assert (
+        res.n_board_dots > 40
+    )  # a real shared board (cols 0..11 x rows 0..8, partial per cam)
 
     # The record is on disk and reloads with the same shape.
     assert len(res.paths) == 1
@@ -84,9 +94,18 @@ def test_dotboard_joint_polynomial_end_to_end(tmp_path):
     cams = sorted(detections)
 
     res = run_joint_from_spec(
-        detections, _image_size_by_cam(detections), source=tmp_path, board="dotboard",
-        model_type="polynomial", spacing_mm=SPACING, datum_camera=1, datum_view=0,
-        spec=spec, cameras=cams, n_views=_N_VIEWS)
+        detections,
+        _image_size_by_cam(detections),
+        source=tmp_path,
+        board="dotboard",
+        model_type="polynomial",
+        spacing_mm=SPACING,
+        datum_camera=1,
+        datum_view=0,
+        spec=spec,
+        cameras=cams,
+        n_views=_N_VIEWS,
+    )
 
     assert res.model_type == "polynomial"
     assert res.rms_units == "mm"
@@ -105,15 +124,25 @@ def test_dotboard_joint_polynomial_end_to_end(tmp_path):
 def test_dotboard_joint_shared_frame_invariant(tmp_path):
     """The defining shared-frame property: a physical dot two cameras both see gets ONE world
     position. Dot (5,3) is in cam1 (cols 0..6) and cam2 (cols 4..9) at view 0; after the joint
-    solve its released-board coordinate is identical regardless of which camera observed it."""
+    solve its released-board coordinate is identical regardless of which camera observed it.
+    """
     detections, truth, pixel_of = _make_dataset(0)
     spec = _spec(pixel_of)
     cams = sorted(detections)
 
     res = run_joint_from_spec(
-        detections, _image_size_by_cam(detections), source=tmp_path, board="dotboard",
-        model_type="pinhole", spacing_mm=SPACING, datum_camera=1, datum_view=0,
-        spec=spec, cameras=cams, n_views=_N_VIEWS)
+        detections,
+        _image_size_by_cam(detections),
+        source=tmp_path,
+        board="dotboard",
+        model_type="pinhole",
+        spacing_mm=SPACING,
+        datum_camera=1,
+        datum_view=0,
+        spec=spec,
+        cameras=cams,
+        n_views=_N_VIEWS,
+    )
 
     jr = load_joint(res.paths[0])
     # The shared board is keyed by global index; (5,3) resolves to one coordinate full stop.

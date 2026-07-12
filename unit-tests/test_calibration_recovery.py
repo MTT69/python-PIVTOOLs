@@ -19,24 +19,36 @@ import cv2
 import numpy as np
 import pytest
 
-from pivtools_gui.calibration.detection.charuco import CharucoBoardDetector, CharucoParams
+from pivtools_cli.generate_synthetic_charuco import generate_charuco_dataset
+from pivtools_cli.generate_synthetic_stereo import (
+    DOT_COLS,
+    DOT_ROWS,
+    DOT_SPACING_MM,
+    compose_stereo_poses,
+    generate_charuco_images,
+    generate_dotboard_images,
+    make_camera_matrix,
+    make_poses,
+    make_stereo_transform,
+)
+from pivtools_gui.calibration import record as REC
+from pivtools_gui.calibration import runio
+from pivtools_gui.calibration import world_frame as WF
+from pivtools_gui.calibration.camera_model import (
+    CameraModel,
+    DistortionModel,
+    fit_intrinsics,
+    fit_pose,
+)
+from pivtools_gui.calibration.detection.charuco import (
+    CharucoBoardDetector,
+    CharucoParams,
+)
 from pivtools_gui.calibration.detection.dotboard import DotboardDetector, DotboardParams
 from pivtools_gui.calibration.pipeline import Calibrator
 from pivtools_gui.calibration.stereo_model import (
-    StereoCalibrator, reconstruct_3c_at_points,
-)
-from pivtools_gui.calibration.camera_model import (
-    CameraModel, DistortionModel, fit_intrinsics, fit_pose,
-)
-from pivtools_gui.calibration import world_frame as WF
-from pivtools_gui.calibration import record as REC
-from pivtools_gui.calibration import runio
-
-from pivtools_cli.generate_synthetic_charuco import generate_charuco_dataset
-from pivtools_cli.generate_synthetic_stereo import (
-    make_camera_matrix, make_poses, compose_stereo_poses, make_stereo_transform,
-    generate_charuco_images, generate_dotboard_images,
-    DOT_COLS, DOT_ROWS, DOT_SPACING_MM,
+    StereoCalibrator,
+    reconstruct_3c_at_points,
 )
 
 FIG_DIR = Path(__file__).resolve().parent.parent / "figures" / "debug"
@@ -53,16 +65,24 @@ def _figpath(slug: str) -> Path:
 # Fixtures (session-scoped renders)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def charuco_planar(tmp_path_factory):
     out = tmp_path_factory.mktemp("charuco") / "imgs"
     generate_charuco_dataset(
-        output_dir=out, n_views=12, megapixels=1.0,
-        sq_h=10, sq_v=7, sq_size=0.030, marker_ratio=0.5,
+        output_dir=out,
+        n_views=12,
+        megapixels=1.0,
+        sq_h=10,
+        sq_v=7,
+        sq_size=0.030,
+        marker_ratio=0.5,
         dict_id=cv2.aruco.DICT_4X4_1000,
     )
     gt = np.load(out.parent / "ground_truth.npz")
-    imgs = [cv2.imread(str(f), cv2.IMREAD_GRAYSCALE) for f in sorted(out.glob("calib*.png"))]
+    imgs = [
+        cv2.imread(str(f), cv2.IMREAD_GRAYSCALE) for f in sorted(out.glob("calib*.png"))
+    ]
     return imgs, gt
 
 
@@ -89,7 +109,9 @@ def stereo_render(tmp_path_factory):
     generate_dotboard_images(d / "dot2", cam, dp2, W, H)
     load = lambda p: [cv2.imread(str(f), 0) for f in sorted(p.glob("calib*.png"))]
     return {
-        "cam": cam, "R_stereo": Rs, "T_stereo": Ts,
+        "cam": cam,
+        "R_stereo": Rs,
+        "T_stereo": Ts,
         "charuco": (load(d / "ch1"), load(d / "ch2")),
         "dotboard": (load(d / "dot1"), load(d / "dot2"), dp1, dp2),
     }
@@ -98,6 +120,7 @@ def stereo_render(tmp_path_factory):
 # ---------------------------------------------------------------------------
 # ChArUco
 # ---------------------------------------------------------------------------
+
 
 def test_charuco_id_ordering():
     """grid_index = (id % (sh-1), id // (sh-1)) is row-major col-fast (runtime check)."""
@@ -114,7 +137,9 @@ def test_charuco_id_ordering():
 def test_charuco_mono_recovery(charuco_planar):
     imgs, gt = charuco_planar
     det = CharucoBoardDetector(CHARUCO)
-    rec = Calibrator(det, "charuco").run_mono(imgs, camera=1, spacing_mm=CHARUCO.square_size_mm)
+    rec = Calibrator(det, "charuco").run_mono(
+        imgs, camera=1, spacing_mm=CHARUCO.square_size_mm
+    )
     fx_gt = float(gt["camera_matrix"][0, 0])
     assert rec.camera_model.rms < 0.2
     assert abs(rec.camera_model.K[0, 0] - fx_gt) / fx_gt < 0.01
@@ -132,7 +157,9 @@ def test_distortion_recovery_exact():
     objs, imgs = [], []
     for v in range(14):
         rvec = np.zeros(3) if v == 0 else rng.uniform(-0.25, 0.25, 3) * [1, 1, 0.4]
-        tvec = np.array([rng.uniform(-20, 20), rng.uniform(-20, 20), 700 + rng.uniform(-40, 40)])
+        tvec = np.array(
+            [rng.uniform(-20, 20), rng.uniform(-20, 20), 700 + rng.uniform(-40, 40)]
+        )
         p, _ = cv2.projectPoints(board, rvec, tvec, K_true, dist_true)
         objs.append(board)
         imgs.append(p.reshape(-1, 2))
@@ -163,13 +190,19 @@ def test_charuco_y_not_inverted(charuco_planar):
     """Regression: calibration output must be physics-correct in Y (no inversion)."""
     imgs, _ = charuco_planar
     det = CharucoBoardDetector(CHARUCO)
-    rec = Calibrator(det, "charuco").run_mono(imgs, camera=1, spacing_mm=CHARUCO.square_size_mm)
+    rec = Calibrator(det, "charuco").run_mono(
+        imgs, camera=1, spacing_mm=CHARUCO.square_size_mm
+    )
     d0 = det.detect(imgs[0])
     ids = d0.point_ids.tolist()
     cols = CHARUCO.interior_cols
     w = WF.apply_world_frame(d0.grid_indices, CHARUCO.square_size_mm, rec.world_frame)
-    R, t = fit_pose(w, d0.image_points, rec.camera_model.K, rec.camera_model.dist, planar=True)
-    cam = CameraModel(rec.camera_model.K, rec.camera_model.dist, R, t, rec.camera_model.image_size)
+    R, t = fit_pose(
+        w, d0.image_points, rec.camera_model.K, rec.camera_model.dist, planar=True
+    )
+    cam = CameraModel(
+        rec.camera_model.K, rec.camera_model.dist, R, t, rec.camera_model.image_size
+    )
     # A feature one row in +Y must back-project to world Y > 0.
     wb = cam.back_project_to_plane(d0.image_points[ids.index(cols)][None, :])[0]
     assert wb[1] > 0
@@ -179,9 +212,15 @@ def test_charuco_stereo_recovery(stereo_render):
     imgs1, imgs2 = stereo_render["charuco"]
     det = CharucoBoardDetector(CHARUCO)
     rec = StereoCalibrator(det, "charuco").run_stereo(
-        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm)
-    ang = np.degrees(np.arccos(np.clip(
-        (np.trace(rec.R_stereo @ stereo_render["R_stereo"].T) - 1) / 2, -1, 1)))
+        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm
+    )
+    ang = np.degrees(
+        np.arccos(
+            np.clip(
+                (np.trace(rec.R_stereo @ stereo_render["R_stereo"].T) - 1) / 2, -1, 1
+            )
+        )
+    )
     assert ang < 0.3
     assert float(np.linalg.norm(rec.T_stereo)) == pytest.approx(50.0, abs=1.0)
 
@@ -190,18 +229,23 @@ def test_charuco_stereo_recovery(stereo_render):
 # Dotboard
 # ---------------------------------------------------------------------------
 
+
 def test_dotboard_mono_recovery(stereo_render, make_figures):
     imgs1, _imgs2, _p1, _p2 = stereo_render["dotboard"]
     det = DotboardDetector(DotboardParams(DOT_SPACING_MM))
     d0 = det.detect(imgs1[0])
     assert d0.success and d0.n >= 170
-    rec = Calibrator(det, "dotboard").run_mono(imgs1, camera=1, spacing_mm=DOT_SPACING_MM)
+    rec = Calibrator(det, "dotboard").run_mono(
+        imgs1, camera=1, spacing_mm=DOT_SPACING_MM
+    )
     assert rec.camera_model.rms < 1.0
     assert abs(rec.camera_model.K[0, 0] - 1000) / 1000 < 0.01
     if make_figures:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.imshow(imgs1[0], cmap="gray")
         ax.scatter(d0.image_points[:, 0], d0.image_points[:, 1], s=8, c="lime")
@@ -223,11 +267,21 @@ def test_dotboard_stereo_recovery(stereo_render):
         return {"origin": pr[0], "x_axis": pr[1], "y_axis": pr[2]}
 
     rec = StereoCalibrator(det, "dotboard").run_stereo(
-        imgs1, imgs2, 1, 2,
-        clicks=clicks_for(p1[0]), clicks2=clicks_for(p2[0]),
-        spacing_mm=DOT_SPACING_MM)
-    ang = np.degrees(np.arccos(np.clip(
-        (np.trace(rec.R_stereo @ stereo_render["R_stereo"].T) - 1) / 2, -1, 1)))
+        imgs1,
+        imgs2,
+        1,
+        2,
+        clicks=clicks_for(p1[0]),
+        clicks2=clicks_for(p2[0]),
+        spacing_mm=DOT_SPACING_MM,
+    )
+    ang = np.degrees(
+        np.arccos(
+            np.clip(
+                (np.trace(rec.R_stereo @ stereo_render["R_stereo"].T) - 1) / 2, -1, 1
+            )
+        )
+    )
     assert ang < 0.5
     assert float(np.linalg.norm(rec.T_stereo)) == pytest.approx(50.0, abs=1.5)
 
@@ -252,9 +306,15 @@ def test_stereo_origin_mm_reaches_cam2(stereo_render):
     def run(origin_mm):
         det = DotboardDetector(DotboardParams(DOT_SPACING_MM))
         return StereoCalibrator(det, "dotboard").run_stereo(
-            imgs1, imgs2, 1, 2,
-            clicks=clicks_for(p1[0]), clicks2=clicks_for(p2[0]),
-            spacing_mm=DOT_SPACING_MM, origin_mm=origin_mm)
+            imgs1,
+            imgs2,
+            1,
+            2,
+            clicks=clicks_for(p1[0]),
+            clicks2=clicks_for(p2[0]),
+            spacing_mm=DOT_SPACING_MM,
+            origin_mm=origin_mm,
+        )
 
     base = run(None)
     shifted = run((50.0, -20.0))
@@ -271,11 +331,13 @@ def test_stereo_origin_mm_reaches_cam2(stereo_render):
 # 3C reconstruction + apply file IO
 # ---------------------------------------------------------------------------
 
+
 def test_3c_reconstruction(stereo_render):
     imgs1, imgs2 = stereo_render["charuco"]
     det = CharucoBoardDetector(CHARUCO)
     rec = StereoCalibrator(det, "charuco").run_stereo(
-        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm)
+        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm
+    )
     d1 = det.detect(imgs1[0])
     wp = WF.apply_world_frame(d1.grid_indices, CHARUCO.square_size_mm, rec.world_frame)
     s = (wp[:, 1] - wp[:, 1].min()) / (np.ptp(wp[:, 1]) + 1e-9)
@@ -293,9 +355,14 @@ def test_3c_reconstruction(stereo_render):
 def test_apply_mono_fileio(tmp_path):
     """Round-trip the production coordinates.mat + B*.mat apply path; no Y flip."""
     import scipy.io
+
     K = np.array([[8000.0, 0, 800], [0, 8000, 600], [0, 0, 1]])
-    cam = CameraModel(K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200))
-    rec = REC.MonoRecord(camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame())
+    cam = CameraModel(
+        K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200)
+    )
+    rec = REC.MonoRecord(
+        camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame()
+    )
     X, Y = np.meshgrid(np.linspace(200, 1400, 20) + 1, np.linspace(150, 1050, 16) + 1)
     ud, od = tmp_path / "u", tmp_path / "c"
     ud.mkdir()
@@ -324,9 +391,14 @@ def test_apply_mono_skips_diagnostic_mats(tmp_path):
     'piv_result'. Apply must skip them and calibrate only the real vector file.
     """
     import scipy.io
+
     K = np.array([[8000.0, 0, 800], [0, 8000, 600], [0, 0, 1]])
-    cam = CameraModel(K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200))
-    rec = REC.MonoRecord(camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame())
+    cam = CameraModel(
+        K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200)
+    )
+    rec = REC.MonoRecord(
+        camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame()
+    )
     X, Y = np.meshgrid(np.linspace(200, 1400, 20) + 1, np.linspace(150, 1050, 16) + 1)
     ud, od = tmp_path / "u", tmp_path / "c"
     ud.mkdir()
@@ -339,8 +411,16 @@ def test_apply_mono_skips_diagnostic_mats(tmp_path):
     ps["b_mask"][0] = np.ones(X.shape, bool)
     scipy.io.savemat(str(ud / "00001.mat"), {"piv_result": ps}, oned_as="row")
     # Diagnostic sidecars — no piv_result/ensemble_result struct; must be ignored.
-    scipy.io.savemat(str(ud / "planes_pass_1.mat"), {"AA": np.zeros((2, 2)), "pass_idx": 0}, oned_as="row")
-    scipy.io.savemat(str(ud / "warped_pass_1.mat"), {"A_warped": np.zeros((2, 2)), "pass_idx": 0}, oned_as="row")
+    scipy.io.savemat(
+        str(ud / "planes_pass_1.mat"),
+        {"AA": np.zeros((2, 2)), "pass_idx": 0},
+        oned_as="row",
+    )
+    scipy.io.savemat(
+        str(ud / "warped_pass_1.mat"),
+        {"A_warped": np.zeros((2, 2)), "pass_idx": 0},
+        oned_as="row",
+    )
 
     written = runio.calibrate_mono_run(rec, ud, od, dt=0.001, vector_glob="*.mat")
 
@@ -351,13 +431,31 @@ def test_apply_mono_skips_diagnostic_mats(tmp_path):
 
 def test_record_save_load_roundtrip(tmp_path):
     K = np.array([[5000.0, 0, 400], [0, 5000, 300], [0, 0, 1]])
-    cam = CameraModel(K, np.array([-0.01, 0.02, 0.0, 0.0, 0.0]), np.eye(3),
-                      np.array([[1.0], [2.0], [900.0]]), (800, 600))
-    wf = REC.WorldFrame(mode="clicks", origin_px=np.array([1.0, 2.0]),
-                        x_axis_px=np.array([3.0, 4.0]), y_axis_px=np.array([5.0, 6.0]),
-                        swap_axes=True, col_sign=-1, row_sign=1, origin_grid=np.array([2.0, 3.0]))
-    rec = REC.MonoRecord(camera=2, board_type="charuco", camera_model=cam, world_frame=wf,
-                         per_view_rms=[0.1, 0.2], board_meta={"spacing_mm": 30.0, "n_views": 2})
+    cam = CameraModel(
+        K,
+        np.array([-0.01, 0.02, 0.0, 0.0, 0.0]),
+        np.eye(3),
+        np.array([[1.0], [2.0], [900.0]]),
+        (800, 600),
+    )
+    wf = REC.WorldFrame(
+        mode="clicks",
+        origin_px=np.array([1.0, 2.0]),
+        x_axis_px=np.array([3.0, 4.0]),
+        y_axis_px=np.array([5.0, 6.0]),
+        swap_axes=True,
+        col_sign=-1,
+        row_sign=1,
+        origin_grid=np.array([2.0, 3.0]),
+    )
+    rec = REC.MonoRecord(
+        camera=2,
+        board_type="charuco",
+        camera_model=cam,
+        world_frame=wf,
+        per_view_rms=[0.1, 0.2],
+        board_meta={"spacing_mm": 30.0, "n_views": 2},
+    )
     p = REC.save_mono(rec, tmp_path)
     r2 = REC.load_mono(p)
     assert np.allclose(r2.camera_model.K, cam.K)
@@ -371,9 +469,9 @@ def test_stereo_correspondence_matches_and_empties():
     """The cross-camera matcher pairs shared world points and yields nothing when the
     two cameras share none (the fail-loud signal run_stereo raises on for a non-same-side
     pair)."""
+    from pivtools_gui.calibration.detection.base import DetectionResult
     from pivtools_gui.calibration.stereo_model import _stereo_correspondence
     from pivtools_gui.calibration.world_frame import resolve_world_frame_from_grid
-    from pivtools_gui.calibration.detection.base import DetectionResult
 
     wf = resolve_world_frame_from_grid([0, 0], [1, 0], [0, 1])
 
@@ -394,7 +492,9 @@ def test_stereo_correspondence_matches_and_empties():
             diagnostics={},
         )
 
-    shared = [[c, r] for r in range(3) for c in range(3)]  # 9 shared dots (> MIN_SHARED_POINTS)
+    shared = [
+        [c, r] for r in range(3) for c in range(3)
+    ]  # 9 shared dots (> MIN_SHARED_POINTS)
     obj, i1, i2 = _stereo_correspondence([det(shared)], [det(shared)], wf, wf, 1.0)
     assert len(obj) == 1 and obj[0].shape == (9, 3)
     assert i1[0].shape == (9, 2) and i2[0].shape == (9, 2)
@@ -413,7 +513,12 @@ def test_stereo_figures_render(stereo_render, tmp_path):
     det = CharucoBoardDetector(CHARUCO)
     figd = tmp_path / "figures"
     rec = StereoCalibrator(det, "charuco").run_stereo(
-        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm,
+        imgs1,
+        imgs2,
+        1,
+        2,
+        clicks=None,
+        spacing_mm=CHARUCO.square_size_mm,
         figure_dir=figd,
     )
     assert rec.board_meta["stereo_method"] == "stereoCalibrate"

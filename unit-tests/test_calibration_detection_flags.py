@@ -25,14 +25,14 @@ from pivtools_gui.calibration.pipeline import view_diagnostics_summary
 OUT_DIR = Path(__file__).resolve().parent / "test_output" / "detection_flags"
 
 N_COLS, N_ROWS = 10, 8
-SPACING_PX = 40          # dot pitch
+SPACING_PX = 40  # dot pitch
 DOT_RADIUS = 8
 MARGIN = 60
 # Displacement for the droplet-biased dot: above the refine threshold (2 px)
 # but inside the step-2 RANSAC gate (0.15 * spacing = 6 px), so the dot survives
 # grid assembly and is caught + infilled by _refine_grid_outliers.
 INFILL_SHIFT_PX = 4
-FAINT_GRAY = 235         # faint dot: missed by the blob detector, NCC still ~1
+FAINT_GRAY = 235  # faint dot: missed by the blob detector, NCC still ~1
 
 
 def _dot_grid_image(displace=None, faint=None) -> np.ndarray:
@@ -93,10 +93,13 @@ def test_forced_infill_mask_matches_diagnostics(make_figures):
 
     if make_figures:
         from pivtools_gui.calibration import figures
+
         det = DotboardDetector(DotboardParams(dot_spacing_mm=15.0)).detect(img)
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         figures.write_detection_figure(
-            img, det, OUT_DIR / "forced_infill_detection.png",
+            img,
+            det,
+            OUT_DIR / "forced_infill_detection.png",
             title="Forced infill (displaced dot) + faint-dot rescue",
         )
 
@@ -118,15 +121,21 @@ def test_extra_cluster_does_not_corrupt_mask():
     ox = MARGIN + (N_COLS - 1) * SPACING_PX + 3 * SPACING_PX
     for r in range(3):
         for c in range(3):
-            cv2.circle(img, (ox + c * SPACING_PX, MARGIN + r * SPACING_PX),
-                       DOT_RADIUS, 0, -1, lineType=cv2.LINE_AA)
+            cv2.circle(
+                img,
+                (ox + c * SPACING_PX, MARGIN + r * SPACING_PX),
+                DOT_RADIUS,
+                0,
+                -1,
+                lineType=cv2.LINE_AA,
+            )
 
     ok, grid, info = detect_grid_automatic(img)
     assert ok
     mask = grid["synthetic_mask"]
     centers = grid["centers"]
-    assert len(mask) == len(centers)                       # alignment invariant
-    assert info["n_grid_points"] == N_COLS * N_ROWS        # island excluded
+    assert len(mask) == len(centers)  # alignment invariant
+    assert info["n_grid_points"] == N_COLS * N_ROWS  # island excluded
     assert int(mask.sum()) == info["n_rescued"] + info["n_infilled"]
     assert info["n_synthetic"] == int(mask.sum())
 
@@ -142,7 +151,10 @@ def test_detection_result_carries_mask_and_diagnostics():
     # info scalars now reach DetectionResult.diagnostics (B4 feedstock)
     for key in ("n_rescued", "n_infilled", "ransac_n_rejected", "edge_fraction"):
         assert key in det.diagnostics
-    assert det.diagnostics["n_infilled"] == int(det.synthetic_mask.sum()) - det.diagnostics["n_rescued"]
+    assert (
+        det.diagnostics["n_infilled"]
+        == int(det.synthetic_mask.sum()) - det.diagnostics["n_rescued"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -150,17 +162,23 @@ def test_detection_result_carries_mask_and_diagnostics():
 # ---------------------------------------------------------------------------
 
 
-def _fake_detection(success=True, n=12, n_rescued=0, n_infilled=0,
-                    warning=None) -> DetectionResult:
-    diag = {"n_rescued": n_rescued, "n_infilled": n_infilled,
-            "ransac_n_rejected": 1, "edge_fraction": 0.05}
+def _fake_detection(
+    success=True, n=12, n_rescued=0, n_infilled=0, warning=None
+) -> DetectionResult:
+    diag = {
+        "n_rescued": n_rescued,
+        "n_infilled": n_infilled,
+        "ransac_n_rejected": 1,
+        "edge_fraction": 0.05,
+    }
     if warning:
         diag["warning"] = warning
     n_synth = n_rescued + n_infilled
     mask = np.zeros(n, dtype=bool)
     mask[:n_synth] = True
     return DetectionResult(
-        success=success, board_type="dotboard",
+        success=success,
+        board_type="dotboard",
         image_points=np.random.default_rng(0).uniform(0, 100, (n, 2)),
         board_local_points=np.zeros((n, 3)),
         synthetic_mask=mask if success else None,
@@ -169,7 +187,10 @@ def _fake_detection(success=True, n=12, n_rescued=0, n_infilled=0,
 
 
 def test_view_diagnostics_summary_arrays():
-    dets = [_fake_detection(n_rescued=2), _fake_detection(n_infilled=3, warning="partial board")]
+    dets = [
+        _fake_detection(n_rescued=2),
+        _fake_detection(n_infilled=3, warning="partial board"),
+    ]
     s = view_diagnostics_summary(dets)
     np.testing.assert_array_equal(s["view_index"], [0, 1])
     np.testing.assert_array_equal(s["success"], [1, 1])
@@ -182,17 +203,28 @@ def test_view_diagnostics_summary_arrays():
 
 def _pinhole() -> CameraModel:
     K = np.array([[1000.0, 0, 512], [0, 1000.0, 512], [0, 0, 1]])
-    return CameraModel(K=K, dist=np.zeros(5), R=np.eye(3), t=np.zeros((3, 1)),
-                       image_size=(1024, 1024),
-                       distortion_model=DistortionModel.STANDARD, rms=0.1)
+    return CameraModel(
+        K=K,
+        dist=np.zeros(5),
+        R=np.eye(3),
+        t=np.zeros((3, 1)),
+        image_size=(1024, 1024),
+        distortion_model=DistortionModel.STANDARD,
+        rms=0.1,
+    )
 
 
 def test_mono_record_view_diagnostics_roundtrip(tmp_path):
     vd = view_diagnostics_summary(
-        [_fake_detection(n_rescued=1), _fake_detection(warning="partial board")])
-    record = rec.MonoRecord(camera=1, board_type="dotboard", camera_model=_pinhole(),
-                            per_view_rms=[0.1, 0.2],
-                            board_meta={"spacing_mm": 15.0, "view_diagnostics": vd})
+        [_fake_detection(n_rescued=1), _fake_detection(warning="partial board")]
+    )
+    record = rec.MonoRecord(
+        camera=1,
+        board_type="dotboard",
+        camera_model=_pinhole(),
+        per_view_rms=[0.1, 0.2],
+        board_meta={"spacing_mm": 15.0, "view_diagnostics": vd},
+    )
     rec.save_mono(record, tmp_path)
     loaded = rec.load_mono(tmp_path)
     got = loaded.board_meta["view_diagnostics"]
@@ -206,21 +238,28 @@ def test_stereo_record_nested_view_diagnostics_roundtrip(tmp_path):
     vd1 = view_diagnostics_summary([_fake_detection(n_rescued=1)])
     vd2 = view_diagnostics_summary([_fake_detection(n_infilled=2)])
     record = rec.StereoRecord(
-        cam1=1, cam2=2, board_type="dotboard",
-        model1=_pinhole(), model2=_pinhole(),
-        R_stereo=np.eye(3), T_stereo=np.array([[100.0], [0], [0]]),
-        per_view_rms1=[0.1], per_view_rms2=[0.2],
-        board_meta={"spacing_mm": 15.0,
-                    "view_diagnostics": {"cam1": vd1, "cam2": vd2}},
+        cam1=1,
+        cam2=2,
+        board_type="dotboard",
+        model1=_pinhole(),
+        model2=_pinhole(),
+        R_stereo=np.eye(3),
+        T_stereo=np.array([[100.0], [0], [0]]),
+        per_view_rms1=[0.1],
+        per_view_rms2=[0.2],
+        board_meta={"spacing_mm": 15.0, "view_diagnostics": {"cam1": vd1, "cam2": vd2}},
     )
     rec.save_stereo(record, tmp_path)
     loaded = rec.load_stereo(tmp_path)
     got = loaded.board_meta["view_diagnostics"]
     # single-view summaries: size-1 arrays come back as scalars (_scalar), so
     # compare via np.asarray on both sides
-    np.testing.assert_array_equal(np.asarray(got["cam1"]["n_rescued"]).reshape(-1),
-                                  vd1["n_rescued"])
-    np.testing.assert_array_equal(np.asarray(got["cam2"]["n_infilled"]).reshape(-1),
-                                  vd2["n_infilled"])
-    np.testing.assert_array_equal(np.asarray(got["cam2"]["n_synthetic"]).reshape(-1),
-                                  vd2["n_synthetic"])
+    np.testing.assert_array_equal(
+        np.asarray(got["cam1"]["n_rescued"]).reshape(-1), vd1["n_rescued"]
+    )
+    np.testing.assert_array_equal(
+        np.asarray(got["cam2"]["n_infilled"]).reshape(-1), vd2["n_infilled"]
+    )
+    np.testing.assert_array_equal(
+        np.asarray(got["cam2"]["n_synthetic"]).reshape(-1), vd2["n_synthetic"]
+    )

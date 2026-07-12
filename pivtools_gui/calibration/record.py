@@ -50,6 +50,7 @@ MonoModel = Union[CameraModel, PolynomialModel, Polynomial3DModel, ScaleFactorMo
 # Path resolution (into the calibration source folder)
 # ---------------------------------------------------------------------------
 
+
 def root_for_source(source: Path) -> Path:
     """Calibration-output root for an explicit source path.
 
@@ -75,7 +76,9 @@ def joint_model_dir_for_source(source: Path, board: str) -> Path:
 
 
 def joint_model_dir(config, source_path_idx: int, board: str) -> Path:
-    return joint_model_dir_for_source(config.get_calibration_source(source_path_idx), board)
+    return joint_model_dir_for_source(
+        config.get_calibration_source(source_path_idx), board
+    )
 
 
 def calibration_output_root(config, source_path_idx: int = 0) -> Path:
@@ -98,6 +101,7 @@ def stereo_model_dir(config, source_path_idx: int, cam1: int, cam2: int) -> Path
 # ---------------------------------------------------------------------------
 # World frame provenance
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class WorldFrame:
@@ -141,11 +145,12 @@ class WorldFrame:
 # Records
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MonoRecord:
     camera: int
-    board_type: str            # 'dotboard' | 'charuco'
-    camera_model: MonoModel    # CameraModel (pinhole) or PolynomialModel
+    board_type: str  # 'dotboard' | 'charuco'
+    camera_model: MonoModel  # CameraModel (pinhole) or PolynomialModel
     world_frame: WorldFrame = field(default_factory=WorldFrame)
     per_view_rms: List[float] = field(default_factory=list)
     board_meta: Dict[str, Any] = field(default_factory=dict)
@@ -163,9 +168,9 @@ class JointRecord:
     """
 
     cameras: List[int]
-    board_type: str                                  # 'dotboard' | 'charuco'
-    models: Dict[int, CameraModel]                   # per-camera pinhole (datum-view pose)
-    board: Dict[Tuple[int, int], np.ndarray]         # global index -> released (x,y,z) mm
+    board_type: str  # 'dotboard' | 'charuco'
+    models: Dict[int, CameraModel]  # per-camera pinhole (datum-view pose)
+    board: Dict[Tuple[int, int], np.ndarray]  # global index -> released (x,y,z) mm
     world_frame: WorldFrame = field(default_factory=WorldFrame)
     spacing_mm: float = 0.0
     board_release: str = "full3d"
@@ -185,8 +190,8 @@ class StereoRecord:
     # the shared world frame. A polynomial pair has no extrinsic pose, so R/T are None.
     model1: Union[CameraModel, Polynomial3DModel]
     model2: Union[CameraModel, Polynomial3DModel]
-    R_stereo: Optional[np.ndarray]   # cam1 -> cam2; None for a polynomial pair
-    T_stereo: Optional[np.ndarray]   # cam1 -> cam2 (3,1); None for a polynomial pair
+    R_stereo: Optional[np.ndarray]  # cam1 -> cam2; None for a polynomial pair
+    T_stereo: Optional[np.ndarray]  # cam1 -> cam2 (3,1); None for a polynomial pair
     world_frame: WorldFrame = field(default_factory=WorldFrame)
     per_view_rms1: List[float] = field(default_factory=list)
     per_view_rms2: List[float] = field(default_factory=list)
@@ -217,6 +222,7 @@ class StereoRecord:
 # Serialisation helpers
 # ---------------------------------------------------------------------------
 
+
 def _empty_if_none(arr: Optional[np.ndarray]) -> np.ndarray:
     return np.array([]) if arr is None else np.asarray(arr, dtype=np.float64)
 
@@ -240,6 +246,7 @@ def _world_frame_from(obj) -> WorldFrame:
     def arr_or_none(v):
         a = np.asarray(v, dtype=np.float64).reshape(-1)
         return None if a.size == 0 else a
+
     return WorldFrame(
         mode=str(_scalar(getattr(obj, "mode", "default"))),
         origin_px=arr_or_none(getattr(obj, "origin_px", [])),
@@ -452,6 +459,7 @@ def geometry_meta(
 # Save / load
 # ---------------------------------------------------------------------------
 
+
 def _model_type_of(cm: MonoModel) -> str:
     """The ``model_type`` tag a model serialises under (the load dispatch key)."""
     if isinstance(cm, ScaleFactorModel):
@@ -482,8 +490,13 @@ KNOWN_MODEL_TYPES = ("pinhole", "polynomial", "polynomial3d", "scale_factor")
 STEREO_MODEL_TYPES = ("pinhole", "polynomial3d")
 
 
-def _resolve_record_path(model_dir: Path, model_type: Optional[str],
-                         known: Tuple[str, ...], prefix: str, kind: str) -> Path:
+def _resolve_record_path(
+    model_dir: Path,
+    model_type: Optional[str],
+    known: Tuple[str, ...],
+    prefix: str,
+    kind: str,
+) -> Path:
     """Resolve the per-type record file in ``model_dir`` for an optional type.
 
     Files are named ``{prefix}_{type}.mat``. A requested type -> that file (or
@@ -493,12 +506,16 @@ def _resolve_record_path(model_dir: Path, model_type: Optional[str],
     ``FileNotFoundError``.
     """
     model_dir = Path(model_dir)
-    present = {t: model_dir / f"{prefix}_{t}.mat" for t in known
-               if (model_dir / f"{prefix}_{t}.mat").exists()}
+    present = {
+        t: model_dir / f"{prefix}_{t}.mat"
+        for t in known
+        if (model_dir / f"{prefix}_{t}.mat").exists()
+    }
     if model_type is not None:
         if model_type not in known:
             raise ValueError(
-                f"unknown {kind} model_type {model_type!r} (known: {', '.join(known)})")
+                f"unknown {kind} model_type {model_type!r} (known: {', '.join(known)})"
+            )
         if model_type in present:
             return present[model_type]
         found = f" (found: {', '.join(sorted(present))})" if present else ""
@@ -509,19 +526,22 @@ def _resolve_record_path(model_dir: Path, model_type: Optional[str],
         raise FileNotFoundError(f"{kind} calibration model not found in {model_dir}")
     raise ValueError(
         f"multiple {kind} models in {model_dir}: {', '.join(sorted(present))} — "
-        f"specify model_type to pick one")
+        f"specify model_type to pick one"
+    )
 
 
 def resolve_mono_path(model_dir: Path, model_type: Optional[str] = None) -> Path:
     """Path of the mono record in ``model_dir`` (see ``_resolve_record_path``)."""
-    return _resolve_record_path(model_dir, model_type, KNOWN_MODEL_TYPES,
-                                "model", "mono")
+    return _resolve_record_path(
+        model_dir, model_type, KNOWN_MODEL_TYPES, "model", "mono"
+    )
 
 
 def resolve_stereo_path(model_dir: Path, model_type: Optional[str] = None) -> Path:
     """Path of the stereo record in ``model_dir`` (see ``_resolve_record_path``)."""
-    return _resolve_record_path(model_dir, model_type, STEREO_MODEL_TYPES,
-                                "stereo_model", "stereo")
+    return _resolve_record_path(
+        model_dir, model_type, STEREO_MODEL_TYPES, "stereo_model", "stereo"
+    )
 
 
 # Joint records currently hold a pinhole rig (the DaVis-matching solve).
@@ -530,8 +550,9 @@ JOINT_MODEL_TYPES = ("pinhole",)
 
 def resolve_joint_path(model_dir: Path, model_type: Optional[str] = None) -> Path:
     """Path of the joint record in ``model_dir`` (see ``_resolve_record_path``)."""
-    return _resolve_record_path(model_dir, model_type, JOINT_MODEL_TYPES,
-                                "joint_model", "joint")
+    return _resolve_record_path(
+        model_dir, model_type, JOINT_MODEL_TYPES, "joint_model", "joint"
+    )
 
 
 def _model_from(mat, model_type: str) -> MonoModel:
@@ -567,7 +588,9 @@ def save_mono(record: MonoRecord, model_dir: Path) -> Path:
         "board_type": str(record.board_type),
         "camera": int(record.camera),
         "world_frame": _world_frame_to_dict(record.world_frame),
-        "per_view_rms": np.asarray(record.per_view_rms, dtype=np.float64).reshape(1, -1),
+        "per_view_rms": np.asarray(record.per_view_rms, dtype=np.float64).reshape(
+            1, -1
+        ),
         "board_meta": _meta_to_dict(record.board_meta),
     }
     _model_to_dict(cm, data)
@@ -586,7 +609,9 @@ def load_mono(path: Path, model_type: Optional[str] = None) -> MonoRecord:
         raise FileNotFoundError(f"calibration model not found: {path}")
     mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
     if "model_type" not in mat:
-        raise ValueError(f"{path} has no model_type tag — not a PIVTOOLs per-type record")
+        raise ValueError(
+            f"{path} has no model_type tag — not a PIVTOOLs per-type record"
+        )
     tag = str(_scalar(mat["model_type"]))
     if model_type is not None and tag != model_type:
         raise ValueError(f"requested {model_type!r} model but {path} stores {tag!r}")
@@ -596,7 +621,9 @@ def load_mono(path: Path, model_type: Optional[str] = None) -> MonoRecord:
         board_type=str(_scalar(mat["board_type"])),
         camera_model=model,
         world_frame=_world_frame_from(mat["world_frame"]),
-        per_view_rms=list(np.asarray(mat["per_view_rms"], dtype=np.float64).reshape(-1)),
+        per_view_rms=list(
+            np.asarray(mat["per_view_rms"], dtype=np.float64).reshape(-1)
+        ),
         board_meta=_meta_from(mat.get("board_meta")),
         contract_version=int(_scalar(mat["contract_version"])),
     )
@@ -609,7 +636,9 @@ def save_stereo(record: StereoRecord, model_dir: Path) -> Path:
     model_type = _model_type_of(record.model1)
     path = model_dir / f"stereo_model_{model_type}.mat"
     if model_type == "polynomial3d":
-        m1, m2 = _polynomial3d_to_dict(record.model1), _polynomial3d_to_dict(record.model2)
+        m1, m2 = _polynomial3d_to_dict(record.model1), _polynomial3d_to_dict(
+            record.model2
+        )
     else:
         m1, m2 = _camera_to_dict(record.model1), _camera_to_dict(record.model2)
     data = {
@@ -621,13 +650,23 @@ def save_stereo(record: StereoRecord, model_dir: Path) -> Path:
         "model1": m1,
         "model2": m2,
         # A polynomial pair has no extrinsic pose; store empty R/T (read back as None).
-        "R_stereo": _empty_if_none(record.R_stereo).reshape(3, 3)
-        if record.R_stereo is not None else np.array([]),
-        "T_stereo": _empty_if_none(record.T_stereo).reshape(3, 1)
-        if record.T_stereo is not None else np.array([]),
+        "R_stereo": (
+            _empty_if_none(record.R_stereo).reshape(3, 3)
+            if record.R_stereo is not None
+            else np.array([])
+        ),
+        "T_stereo": (
+            _empty_if_none(record.T_stereo).reshape(3, 1)
+            if record.T_stereo is not None
+            else np.array([])
+        ),
         "world_frame": _world_frame_to_dict(record.world_frame),
-        "per_view_rms1": np.asarray(record.per_view_rms1, dtype=np.float64).reshape(1, -1),
-        "per_view_rms2": np.asarray(record.per_view_rms2, dtype=np.float64).reshape(1, -1),
+        "per_view_rms1": np.asarray(record.per_view_rms1, dtype=np.float64).reshape(
+            1, -1
+        ),
+        "per_view_rms2": np.asarray(record.per_view_rms2, dtype=np.float64).reshape(
+            1, -1
+        ),
         "board_meta": _meta_to_dict(record.board_meta),
         "self_cal": _meta_to_dict(record.self_cal),
     }
@@ -646,10 +685,14 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
         raise FileNotFoundError(f"calibration stereo model not found: {path}")
     mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
     if "model_type" not in mat:
-        raise ValueError(f"{path} has no model_type tag — not a PIVTOOLs per-type stereo record")
+        raise ValueError(
+            f"{path} has no model_type tag — not a PIVTOOLs per-type stereo record"
+        )
     tag = str(_scalar(mat["model_type"]))
     if model_type is not None and tag != model_type:
-        raise ValueError(f"requested {model_type!r} stereo model but {path} stores {tag!r}")
+        raise ValueError(
+            f"requested {model_type!r} stereo model but {path} stores {tag!r}"
+        )
     model_type = tag
     if model_type == "polynomial3d":
         model1 = _polynomial3d_from(mat["model1"])
@@ -675,8 +718,12 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
         R_stereo=R_stereo,
         T_stereo=T_stereo,
         world_frame=_world_frame_from(mat["world_frame"]),
-        per_view_rms1=list(np.asarray(mat["per_view_rms1"], dtype=np.float64).reshape(-1)),
-        per_view_rms2=list(np.asarray(mat["per_view_rms2"], dtype=np.float64).reshape(-1)),
+        per_view_rms1=list(
+            np.asarray(mat["per_view_rms1"], dtype=np.float64).reshape(-1)
+        ),
+        per_view_rms2=list(
+            np.asarray(mat["per_view_rms2"], dtype=np.float64).reshape(-1)
+        ),
         board_meta=_meta_from(mat.get("board_meta")),
         self_cal=_meta_from(mat.get("self_cal")),
         contract_version=int(_scalar(mat["contract_version"])),
@@ -701,14 +748,17 @@ def save_joint(record: JointRecord, model_dir: Path) -> Path:
         "model_type": str(record.model_type),
         "board_type": str(record.board_type),
         "cameras": np.asarray(cams, dtype=np.int64).reshape(1, -1),
-        "camera_models": cam_models,                       # -> struct array (one per camera)
+        "camera_models": cam_models,  # -> struct array (one per camera)
         "board_index": np.asarray(keys, dtype=np.int64).reshape(-1, 2),
-        "board_xyz": np.asarray([record.board[k] for k in keys], dtype=np.float64).reshape(-1, 3),
+        "board_xyz": np.asarray(
+            [record.board[k] for k in keys], dtype=np.float64
+        ).reshape(-1, 3),
         "world_frame": _world_frame_to_dict(record.world_frame),
         "spacing_mm": float(record.spacing_mm),
         "board_release": str(record.board_release),
-        "per_camera_rms": np.asarray([record.per_camera_rms.get(c, np.nan) for c in cams],
-                                     dtype=np.float64).reshape(1, -1),
+        "per_camera_rms": np.asarray(
+            [record.per_camera_rms.get(c, np.nan) for c in cams], dtype=np.float64
+        ).reshape(1, -1),
         "rms_px": float(record.rms_px),
         "board_meta": _meta_to_dict(record.board_meta),
     }
@@ -728,10 +778,12 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
         raise ValueError(f"{path} has no model_type tag — not a PIVTOOLs joint record")
     tag = str(_scalar(mat["model_type"]))
     if model_type is not None and tag != model_type:
-        raise ValueError(f"requested {model_type!r} joint model but {path} stores {tag!r}")
+        raise ValueError(
+            f"requested {model_type!r} joint model but {path} stores {tag!r}"
+        )
     cams = [int(c) for c in np.asarray(mat["cameras"], dtype=np.int64).reshape(-1)]
     cm_raw = mat["camera_models"]
-    cm_list = list(np.atleast_1d(cm_raw))               # struct array -> list of mat_structs
+    cm_list = list(np.atleast_1d(cm_raw))  # struct array -> list of mat_structs
     models, per_cam_rms = {}, {}
     for obj in cm_list:
         c = int(_scalar(obj.camera))
@@ -756,8 +808,9 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
     )
 
 
-def _find_joint_record(model_dir: Path, camera: int,
-                       model_type: Optional[str]) -> Optional["JointRecord"]:
+def _find_joint_record(
+    model_dir: Path, camera: int, model_type: Optional[str]
+) -> Optional["JointRecord"]:
     """The joint record covering ``camera`` for a per-camera mono ``model_dir``, or None.
 
     The mono dir is ``<root>/Cam{N}/{board}_planar/model``; the joint record (if any) lives at
@@ -786,8 +839,9 @@ def _present_mono_types(model_dir: Path) -> set:
     return {t for t in KNOWN_MODEL_TYPES if (model_dir / f"model_{t}.mat").exists()}
 
 
-def mono_record_for_camera(model_dir: Path, camera: int,
-                           model_type: Optional[str] = None) -> MonoRecord:
+def mono_record_for_camera(
+    model_dir: Path, camera: int, model_type: Optional[str] = None
+) -> MonoRecord:
     """A per-camera ``MonoRecord``, preferring a joint record, else the legacy mono file.
 
     The apply path consumes a ``MonoRecord`` and handles every model type, so this returns one:
@@ -813,17 +867,22 @@ def mono_record_for_camera(model_dir: Path, camera: int,
                         f"{model_dir}: a pinhole joint record and per-camera "
                         f"{sorted(others)} record(s) both exist — pass model_type to choose "
                         f"(the joint solve is pinhole; a polynomial joint run writes per-camera "
-                        f"files)")
+                        f"files)"
+                    )
             return MonoRecord(
-                camera=int(camera), board_type=jr.board_type, camera_model=jr.models[camera],
+                camera=int(camera),
+                board_type=jr.board_type,
+                camera_model=jr.models[camera],
                 world_frame=jr.world_frame,
                 per_view_rms=[jr.per_camera_rms.get(camera, jr.models[camera].rms)],
-                board_meta={**jr.board_meta, "spacing_mm": jr.spacing_mm, "joint": 1})
+                board_meta={**jr.board_meta, "spacing_mm": jr.spacing_mm, "joint": 1},
+            )
     return load_mono(model_dir, model_type)
 
 
-def load_camera_model(model_dir: Path, camera: int,
-                      model_type: Optional[str] = None) -> Tuple[CameraModel, WorldFrame]:
+def load_camera_model(
+    model_dir: Path, camera: int, model_type: Optional[str] = None
+) -> Tuple[CameraModel, WorldFrame]:
     """Per-camera (CameraModel, WorldFrame), joint-preferred. Pinhole only (raises otherwise)."""
     rec = mono_record_for_camera(model_dir, camera, model_type)
     if not isinstance(rec.camera_model, CameraModel):

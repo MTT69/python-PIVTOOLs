@@ -13,25 +13,22 @@ Usage:
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, PropertyMock, patch
-
-import numpy as np
-import pytest
+from unittest.mock import MagicMock, PropertyMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pivtools_core.fft_sizes import BUILT_FFT_SIZES
 from pivtools_core.validation import (
+    _check_built_sizes,
     validate_batch_size_for_pod,
     validate_ensemble_config,
     validate_window_sizes,
-    _check_built_sizes,
 )
-from pivtools_core.fft_sizes import BUILT_FFT_SIZES
-
 
 # ---------------------------------------------------------------------------
 # Helper: build a mock Config with controllable properties
 # ---------------------------------------------------------------------------
+
 
 def _make_config(
     ensemble_type=None,
@@ -60,9 +57,7 @@ def _make_config(
     if type_raise:
         type(cfg).ensemble_type = PropertyMock(side_effect=type_raise)
     else:
-        type(cfg).ensemble_type = PropertyMock(
-            return_value=ensemble_type or ["std"]
-        )
+        type(cfg).ensemble_type = PropertyMock(return_value=ensemble_type or ["std"])
 
     # window_sizes
     if window_raise:
@@ -76,9 +71,7 @@ def _make_config(
     if overlap_raise:
         type(cfg).ensemble_overlaps = PropertyMock(side_effect=overlap_raise)
     else:
-        type(cfg).ensemble_overlaps = PropertyMock(
-            return_value=overlaps or [50]
-        )
+        type(cfg).ensemble_overlaps = PropertyMock(return_value=overlaps or [50])
 
     # sum_window
     if sum_window_raise:
@@ -116,9 +109,7 @@ def _make_config(
     )
 
     # resume / num_passes
-    type(cfg).ensemble_resume_from_pass = PropertyMock(
-        return_value=resume_from_pass
-    )
+    type(cfg).ensemble_resume_from_pass = PropertyMock(return_value=resume_from_pass)
     if num_passes is None:
         # Default: length of window_sizes or 1
         num_passes = len(window_sizes) if window_sizes else 1
@@ -312,6 +303,7 @@ class TestValidateBatchSizeForPod:
 # ---------------------------------------------------------------------------
 # Window-size restriction (codelet FFT engine supports a fixed set of sizes)
 # ---------------------------------------------------------------------------
+
 
 def _window_config(
     instantaneous,

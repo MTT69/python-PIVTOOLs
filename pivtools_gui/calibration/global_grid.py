@@ -365,10 +365,7 @@ def _pick_by_extend(
 
     # 2. Nearest footprint: the confirmed vector reproduces one candidate's centroid offset exactly.
     by_vec = sorted(
-        (
-            (float(np.linalg.norm(v - h)), rms, gidx, H)
-            for v, gidx, H, rms in cands
-        ),
+        ((float(np.linalg.norm(v - h)), rms, gidx, H) for v, gidx, H, rms in cands),
         key=lambda s: (s[0], s[1]),
     )
     nearest = by_vec[0][0]

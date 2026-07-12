@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -22,50 +23,78 @@ from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import find_non_empty_run
 
-from ..plot_maker import make_scalar_settings
 from ...utils import camera_number
-
+from ..plot_maker import make_scalar_settings
 
 # Unit mapping for different PIV variables
 # Used to automatically select correct units when plotting
 VARIABLE_UNITS = {
     # Velocities (m/s)
-    "ux": "m/s", "uy": "m/s", "uz": "m/s",
-    "mean_ux": "m/s", "mean_uy": "m/s", "mean_uz": "m/s",
+    "ux": "m/s",
+    "uy": "m/s",
+    "uz": "m/s",
+    "mean_ux": "m/s",
+    "mean_uy": "m/s",
+    "mean_uz": "m/s",
     # Fluctuations (m/s)
-    "u_prime": "m/s", "v_prime": "m/s", "w_prime": "m/s",
+    "u_prime": "m/s",
+    "v_prime": "m/s",
+    "w_prime": "m/s",
     # Mean stresses (m^2/s^2)
-    "uu": "m^2/s^2", "vv": "m^2/s^2", "ww": "m^2/s^2",
-    "uv": "m^2/s^2", "uw": "m^2/s^2", "vw": "m^2/s^2",
+    "uu": "m^2/s^2",
+    "vv": "m^2/s^2",
+    "ww": "m^2/s^2",
+    "uv": "m^2/s^2",
+    "uw": "m^2/s^2",
+    "vw": "m^2/s^2",
     # Instantaneous stresses (m^2/s^2)
-    "uu_inst": "m^2/s^2", "vv_inst": "m^2/s^2", "ww_inst": "m^2/s^2",
-    "uv_inst": "m^2/s^2", "uw_inst": "m^2/s^2", "vw_inst": "m^2/s^2",
+    "uu_inst": "m^2/s^2",
+    "vv_inst": "m^2/s^2",
+    "ww_inst": "m^2/s^2",
+    "uv_inst": "m^2/s^2",
+    "uw_inst": "m^2/s^2",
+    "vw_inst": "m^2/s^2",
     # Turbulent kinetic energy (m^2/s^2)
     "tke": "m^2/s^2",
     # Vorticity & Divergence (1/s)
-    "vorticity": "1/s", "divergence": "1/s",
+    "vorticity": "1/s",
+    "divergence": "1/s",
     # Gamma vortex criteria (dimensionless)
-    "gamma1": "-", "gamma2": "-",
+    "gamma1": "-",
+    "gamma2": "-",
     # Peak height (dimensionless)
     "peak_mag": "-",
     "peakheight": "-",
     "mean_peak_height": "-",
     # Ensemble diagnostics
-    "nan_reason": "-", "b_mask": "-",
-    "c_a": "-", "c_b": "-", "c_ab": "-",
+    "nan_reason": "-",
+    "b_mask": "-",
+    "c_a": "-",
+    "c_b": "-",
+    "c_ab": "-",
     "window_size": "px",
-    "sig_ab_x": "px", "sig_ab_y": "px", "sig_ab_xy": "px",
-    "sig_a_x": "px", "sig_a_y": "px", "sig_a_xy": "px",
-    "win_ctrs_x": "px", "win_ctrs_y": "px",
-    "pred_x": "px", "pred_y": "px",
+    "sig_ab_x": "px",
+    "sig_ab_y": "px",
+    "sig_ab_xy": "px",
+    "sig_a_x": "px",
+    "sig_a_y": "px",
+    "sig_a_xy": "px",
+    "win_ctrs_x": "px",
+    "win_ctrs_y": "px",
+    "pred_x": "px",
+    "pred_y": "px",
 }
 
 # Ensemble/statistics variable names carry these suffixes on top of the base
 # stress/velocity names (e.g. UU_stress_uncorrected -> uu). Stripped repeatedly
 # until the name is stable, so units are defined once per base variable.
 _VAR_SUFFIXES = (
-    "_uncorrected", "_window_correction", "_particle_correction",
-    "_correction", "_stress", "_inst",
+    "_uncorrected",
+    "_window_correction",
+    "_particle_correction",
+    "_correction",
+    "_stress",
+    "_inst",
 )
 
 
@@ -104,8 +133,17 @@ def length_units_for(uncalibrated: bool) -> str:
 # View-only normalisation by friction velocity: u+ = u/u_tau, stresses/u_tau^2,
 # y+ = (y_mm/1000)*u_tau/nu. Only velocity and stress variables scale; anything
 # else (vorticity, peak heights, diagnostics) is left untouched.
-_WALL_VELOCITY = {"ux", "uy", "uz", "mean_ux", "mean_uy", "mean_uz",
-                  "u_prime", "v_prime", "w_prime"}
+_WALL_VELOCITY = {
+    "ux",
+    "uy",
+    "uz",
+    "mean_ux",
+    "mean_uy",
+    "mean_uz",
+    "u_prime",
+    "v_prime",
+    "w_prime",
+}
 _WALL_STRESS = {"uu", "vv", "ww", "uv", "uw", "vw", "tke"}
 
 
@@ -116,7 +154,7 @@ def wall_scale_divisor(var: str, u_tau: float) -> Optional[float]:
     if base in _WALL_VELOCITY:
         return u_tau
     if base in _WALL_STRESS:
-        return u_tau ** 2
+        return u_tau**2
     return None
 
 
@@ -236,8 +274,16 @@ def create_and_return_plot(
         ax = fig.add_axes([0, 0, 1, 1])
         arr = np.asarray(var_arr).squeeze()
 
-        vmin = getattr(settings, "lower_limit", None) if hasattr(settings, "lower_limit") else None
-        vmax = getattr(settings, "upper_limit", None) if hasattr(settings, "upper_limit") else None
+        vmin = (
+            getattr(settings, "lower_limit", None)
+            if hasattr(settings, "lower_limit")
+            else None
+        )
+        vmax = (
+            getattr(settings, "upper_limit", None)
+            if hasattr(settings, "upper_limit")
+            else None
+        )
 
         # Handle NaN/Inf in automatic limit calculation
         if vmin is None or vmax is None:
@@ -257,7 +303,9 @@ def create_and_return_plot(
         cmap = plt.cm.get_cmap(cmap_name)
         cmap.set_bad(color="gray")
         masked = np.ma.masked_invalid(arr)
-        ax.imshow(masked, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto", origin="upper")
+        ax.imshow(
+            masked, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto", origin="upper"
+        )
         ax.set_xlim(0, W)
         ax.set_ylim(H, 0)
         ax.axis("off")
@@ -281,7 +329,12 @@ def create_and_return_plot(
             "xlim": [0, W],
             "ylim": [0, H],
         }
-        return b64_img, W, H, {"axes_bbox": axes_bbox, "raw": True, "grid_dims": {"nx": W, "ny": H}}
+        return (
+            b64_img,
+            W,
+            H,
+            {"axes_bbox": axes_bbox, "raw": True, "grid_dims": {"nx": W, "ny": H}},
+        )
 
     # Full plot with decorations
     fig, ax, cf = plot_scalar_field(var_arr, mask_arr, settings)
@@ -400,7 +453,12 @@ def parse_plot_params(req) -> Dict:
     if cmap and (cmap.strip() == "" or cmap.lower() == "default"):
         cmap = None
 
-    raw_mode = req.args.get("raw", default="0", type=str) in ("1", "true", "True", "TRUE")
+    raw_mode = req.args.get("raw", default="0", type=str) in (
+        "1",
+        "true",
+        "True",
+        "TRUE",
+    )
 
     # Parse axis limits (optional)
     xlim_min = req.args.get("xlim_min", type=float)
@@ -408,8 +466,12 @@ def parse_plot_params(req) -> Dict:
     ylim_min = req.args.get("ylim_min", type=float)
     ylim_max = req.args.get("ylim_max", type=float)
 
-    xlim = (xlim_min, xlim_max) if xlim_min is not None and xlim_max is not None else None
-    ylim = (ylim_min, ylim_max) if ylim_min is not None and ylim_max is not None else None
+    xlim = (
+        (xlim_min, xlim_max) if xlim_min is not None and xlim_max is not None else None
+    )
+    ylim = (
+        (ylim_min, ylim_max) if ylim_min is not None and ylim_max is not None else None
+    )
 
     # Parse custom title
     custom_title = req.args.get("title", default=None, type=str)
@@ -427,7 +489,9 @@ def parse_plot_params(req) -> Dict:
     # Validate frame number for calibrated data
     if not use_uncalibrated and not use_merged and not use_stereo:
         if frame < 1 or frame > cfg.num_frame_pairs:
-            raise ValueError(f"Frame {frame} out of range. Valid: 1-{cfg.num_frame_pairs}")
+            raise ValueError(
+                f"Frame {frame} out of range. Valid: 1-{cfg.num_frame_pairs}"
+            )
 
     return {
         "base_path": base_path,
@@ -575,11 +639,13 @@ def load_and_plot_data(
     )
     if plot_kwargs.get("wall_units"):
         extra = dict(extra or {})
-        extra.update({
-            "wall_units": True,
-            "u_tau": plot_kwargs["u_tau"],
-            "nu": plot_kwargs["nu"],
-        })
+        extra.update(
+            {
+                "wall_units": True,
+                "u_tau": plot_kwargs["u_tau"],
+                "nu": plot_kwargs["nu"],
+            }
+        )
     return b64_img, W, H, extra, effective_run
 
 

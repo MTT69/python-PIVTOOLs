@@ -282,7 +282,9 @@ def _board_params(
     """
     merged = dict(cfg.get(board, {}) or {})
     if sidecar:
-        merged.update({k: v for k, v in _geometry_to_config(sidecar).items() if v is not None})
+        merged.update(
+            {k: v for k, v in _geometry_to_config(sidecar).items() if v is not None}
+        )
     if overrides:
         merged.update({k: v for k, v in overrides.items() if v is not None})
     return _board_spec(board).params_from(merged)
@@ -683,7 +685,12 @@ def detect_stereo_command(args):
     # Detection sidecar (parity with the GUI): reuse stored detections when params match,
     # else detect fresh and persist.
     det_key = joint_det_key(
-        board, n_views, image_format, infer_image_type(image_format), [cam1, cam2], params
+        board,
+        n_views,
+        image_format,
+        infer_image_type(image_format),
+        [cam1, cam2],
+        params,
     )
     side = None if getattr(args, "force", False) else try_load_inputs(model_dir)
     cache_hit = (
@@ -973,7 +980,12 @@ def detect_joint_command(args) -> "Path | List[Path]":
             detections=detections,
             image_size_by_cam=image_size_by_cam,
             det_key=joint_det_key(
-                board, n_views, image_format, infer_image_type(image_format), cameras, params
+                board,
+                n_views,
+                image_format,
+                infer_image_type(image_format),
+                cameras,
+                params,
             ),
             board_params=rec.geometry_meta(board, params),
         )
@@ -1347,7 +1359,8 @@ def _add_geometry_args(p):
     """ChArUco geometry overrides (all default None -> only override when given). These let a
     headless-from-scratch ChArUco run supply geometry without a config block; the GUI passes the
     same values per-request. ``--square-size`` is in metres (ChArUco native unit), matching config.
-    (CLI detection is ChArUco-only; dotboard/stepped geometry args went with those paths.)"""
+    (CLI detection is ChArUco-only; dotboard/stepped geometry args went with those paths.)
+    """
     p.add_argument("--squares-h", type=int, default=None)
     p.add_argument("--squares-v", type=int, default=None)
     p.add_argument("--square-size", type=float, default=None, help="metres")
@@ -1411,7 +1424,9 @@ def register_calibration_subparsers(subparsers):
     p.add_argument("--camera", type=int, default=None)
     p.set_defaults(func=detect_mono_command, board="charuco")
 
-    p = subparsers.add_parser("detect-stereo", help="calibration: detect stereo charuco pair")
+    p = subparsers.add_parser(
+        "detect-stereo", help="calibration: detect stereo charuco pair"
+    )
     _add_common(p)
     p.add_argument("--camera-pair", default=None, help="'1,2'")
     p.set_defaults(func=detect_stereo_command, board="charuco")
@@ -1452,7 +1467,6 @@ def register_calibration_subparsers(subparsers):
     )
     _add_geometry_args(p)
     p.set_defaults(func=detect_joint_command)
-
 
     p = subparsers.add_parser(
         "apply-calibration", help="calibration: apply mono model to vectors"

@@ -6,8 +6,9 @@ PIV correlation results.
 """
 
 import logging
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 
 def plot_corr_planes(
@@ -18,7 +19,7 @@ def plot_corr_planes(
     win_w: int,
     pass_idx: int,
     output_path: str,
-    title: str = "Correlation Planes"
+    title: str = "Correlation Planes",
 ) -> None:
     """
     Visualize ensemble-averaged correlation planes for PIV in a spatial grid.
@@ -44,23 +45,24 @@ def plot_corr_planes(
     """
     try:
         import matplotlib
-        matplotlib.use('Agg')
+
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        logging.warning("Matplotlib not available, skipping correlation "
-                        "plane visualization")
+        logging.warning(
+            "Matplotlib not available, skipping correlation " "plane visualization"
+        )
         return
 
     # Verify shape
     if corr_planes.shape != (n_win_y, n_win_x, win_h, win_w):
-        logging.error("Shape mismatch: expected ({}, {}, {}, {}), "
-                      "got {}".format(n_win_y, n_win_x, win_h, win_w,
-                                      corr_planes.shape))
+        logging.error(
+            "Shape mismatch: expected ({}, {}, {}, {}), "
+            "got {}".format(n_win_y, n_win_x, win_h, win_w, corr_planes.shape)
+        )
         return
 
-    fig, axes = plt.subplots(
-        n_win_y, n_win_x, figsize=(3 * n_win_x, 3 * n_win_y)
-    )
+    fig, axes = plt.subplots(n_win_y, n_win_x, figsize=(3 * n_win_x, 3 * n_win_y))
 
     # Handle single window case
     if n_win_y == 1 and n_win_x == 1:
@@ -79,7 +81,7 @@ def plot_corr_planes(
             ax.axis("off")
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
-    fig.suptitle(f"{title} - Pass {pass_idx}", fontsize=14, fontweight='bold')
+    fig.suptitle(f"{title} - Pass {pass_idx}", fontsize=14, fontweight="bold")
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     logging.info(f"Saved: {output_path}")
@@ -146,8 +148,11 @@ def plot_correlation_debug_visualizations(
         (R_AB_bg_reshaped, "<A>⋆<B> Background", "corr_AB_bg"),
         (R_AA_reshaped, "R_AA Ensemble (Mean-Removed)", "corr_AA_ensemble"),
         (R_BB_reshaped, "R_BB Ensemble (Mean-Removed)", "corr_BB_ensemble"),
-        (R_AB_reshaped, "R_AB Ensemble (Mean-Removed) **USED FOR FITTING**",
-         "corr_AB_ensemble"),
+        (
+            R_AB_reshaped,
+            "R_AB Ensemble (Mean-Removed) **USED FOR FITTING**",
+            "corr_AB_ensemble",
+        ),
     ]
 
     # Plot each correlation plane
@@ -164,7 +169,7 @@ def plot_window_surface(
     win_h: int,
     win_w: int,
     output_path: str,
-    title: str = "Window Surface"
+    title: str = "Window Surface",
 ) -> None:
     """
     Plot a 3D surface of a correlation window.
@@ -184,29 +189,29 @@ def plot_window_surface(
     """
     try:
         import matplotlib
-        matplotlib.use('Agg')
+
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        logging.warning("Matplotlib not available, skipping window "
-                        "surface plot")
+        logging.warning("Matplotlib not available, skipping window " "surface plot")
         return
 
     # Reshape to 2D
     window_2d = window.reshape(win_h, win_w)
 
     fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    
+    ax = fig.add_subplot(111, projection="3d")
+
     x = np.arange(win_w)
     y = np.arange(win_h)
     X, Y = np.meshgrid(x, y)
-    
-    ax.plot_surface(X, Y, window_2d, cmap='viridis')
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Value')
+
+    ax.plot_surface(X, Y, window_2d, cmap="viridis")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Value")
     ax.set_title(title)
-    
+
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     logging.info(f"Saved surface plot: {output_path}")
     plt.close()

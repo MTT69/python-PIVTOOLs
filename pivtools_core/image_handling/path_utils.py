@@ -10,7 +10,7 @@ import io
 import logging
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -23,7 +23,7 @@ def format_to_glob(fmt: str) -> str:
 
     Replaces any %Nd format specifier (%d, %02d, %03d, %05d, etc.) with *.
     """
-    return re.sub(r'%\d*d', '*', fmt)
+    return re.sub(r"%\d*d", "*", fmt)
 
 
 def infer_image_type(image_format: str) -> str:
@@ -96,7 +96,10 @@ def build_calibration_camera_path(
         return cal_source
 
     # IM7 without camera subfolders: return source directly
-    if cal_image_type == "lavision_im7" and not config.calibration_use_camera_subfolders:
+    if (
+        cal_image_type == "lavision_im7"
+        and not config.calibration_use_camera_subfolders
+    ):
         return cal_source
 
     # Standard/IM7 with subfolders: apply camera folder
@@ -278,12 +281,12 @@ def _suggest_pattern(filename: str, forced_ext: Optional[str] = None) -> str:
     stem = path.stem
 
     # Try to find numeric portion
-    match = re.search(r'(\d+)', stem)
+    match = re.search(r"(\d+)", stem)
     if match:
         num_str = match.group(1)
         num_len = len(num_str)
-        prefix = stem[:match.start()]
-        suffix = stem[match.end():]
+        prefix = stem[: match.start()]
+        suffix = stem[match.end() :]
 
         # Create pattern with appropriate zero-padding
         # If the number has leading zeros, preserve that width
@@ -339,8 +342,8 @@ def _detect_ab_pair_pattern(
 
     # Look for A/B pattern in filenames
     # Common patterns: _A.tif/_B.tif, _a.png/_b.png, -A.jpg/-B.jpg
-    a_pattern = re.compile(r'[_-][Aa]\.[a-zA-Z]+$')
-    b_pattern = re.compile(r'[_-][Bb]\.[a-zA-Z]+$')
+    a_pattern = re.compile(r"[_-][Aa]\.[a-zA-Z]+$")
+    b_pattern = re.compile(r"[_-][Bb]\.[a-zA-Z]+$")
 
     a_files = [f for f in sample_files if a_pattern.search(f)]
     b_files = [f for f in sample_files if b_pattern.search(f)]
@@ -362,8 +365,8 @@ def _detect_ab_pair_pattern(
     pattern_b = _suggest_pattern(first_b, forced_ext)
 
     # Verify the patterns differ only in A/B
-    pattern_a_normalized = re.sub(r'[_-][Aa]\.', '_X.', pattern_a)
-    pattern_b_normalized = re.sub(r'[_-][Bb]\.', '_X.', pattern_b)
+    pattern_a_normalized = re.sub(r"[_-][Aa]\.", "_X.", pattern_a)
+    pattern_b_normalized = re.sub(r"[_-][Bb]\.", "_X.", pattern_b)
 
     if pattern_a_normalized != pattern_b_normalized:
         # Patterns don't match in structure - not a valid A/B pair
@@ -492,6 +495,7 @@ def validate_images_generic(
         # Get entry count from .set file (opens file briefly, no pixel decode)
         try:
             from .readers import get_set_entry_count
+
             result["found_count"] = get_set_entry_count(str(set_file))
         except Exception as e:
             logging.warning(f"Could not read .set entry count: {e}")
@@ -546,6 +550,7 @@ def validate_images_generic(
         # Frame count is best-effort (preview metadata); a failure here stays a warning.
         try:
             from .readers.cine_reader import get_cine_frame_count
+
             result["found_count"] = get_cine_frame_count(str(cine_file))
         except Exception as e:
             logging.warning(f"Could not read .cine frame count: {e}")
@@ -594,7 +599,9 @@ def validate_images_generic(
 
         # Validate count
         if len(matching_files) < expected_count:
-            result["error"] = f"Found {len(matching_files)} files, expected {expected_count}"
+            result["error"] = (
+                f"Found {len(matching_files)} files, expected {expected_count}"
+            )
             result["valid"] = False
         else:
             result["valid"] = True
@@ -659,7 +666,9 @@ def validate_images_generic(
 
         # Validate count
         if len(matching_files) < expected_count:
-            result["error"] = f"Found {len(matching_files)} files, expected {expected_count}"
+            result["error"] = (
+                f"Found {len(matching_files)} files, expected {expected_count}"
+            )
             result["valid"] = False
         else:
             result["valid"] = True
@@ -717,8 +726,8 @@ def _suggest_pattern_for_role(
     # Patterns to match A/B suffixes:
     # - [_-][Aa] matches _A, -A, _a, -a (with separator)
     # - \d[Aa] matches 1A, 2A, etc. (directly after digit, like IMG00001A.tif)
-    pattern_a = r'(?:[_-]|(?<=\d))[Aa]\.[a-zA-Z0-9]+$'
-    pattern_b = r'(?:[_-]|(?<=\d))[Bb]\.[a-zA-Z0-9]+$'
+    pattern_a = r"(?:[_-]|(?<=\d))[Aa]\.[a-zA-Z0-9]+$"
+    pattern_b = r"(?:[_-]|(?<=\d))[Bb]\.[a-zA-Z0-9]+$"
 
     # Filter by role if specified
     if role == "A":
@@ -733,21 +742,23 @@ def _suggest_pattern_for_role(
 
         if opposite_files:
             # Generate pattern from opposite role, then transform A<->B
-            opposite_suggestion = _suggest_pattern(sorted(opposite_files)[0], forced_ext)
+            opposite_suggestion = _suggest_pattern(
+                sorted(opposite_files)[0], forced_ext
+            )
             if opposite_suggestion:
                 if role == "A":
                     # Transform B to A (preserving case) - handles both _B and digit+B
                     return re.sub(
-                        r'([Bb])(\.[a-zA-Z0-9]+$)',
-                        lambda m: ('A' if m.group(1) == 'B' else 'a') + m.group(2),
-                        opposite_suggestion
+                        r"([Bb])(\.[a-zA-Z0-9]+$)",
+                        lambda m: ("A" if m.group(1) == "B" else "a") + m.group(2),
+                        opposite_suggestion,
                     )
                 else:
                     # Transform A to B (preserving case) - handles both _A and digit+A
                     return re.sub(
-                        r'([Aa])(\.[a-zA-Z0-9]+$)',
-                        lambda m: ('B' if m.group(1) == 'A' else 'b') + m.group(2),
-                        opposite_suggestion
+                        r"([Aa])(\.[a-zA-Z0-9]+$)",
+                        lambda m: ("B" if m.group(1) == "A" else "b") + m.group(2),
+                        opposite_suggestion,
                     )
 
         # No A/B files at all - fall back to first file (non-A/B naming)
@@ -792,8 +803,8 @@ def _suggest_camera_subfolder(camera_path: Path, camera_num: int) -> Optional[st
             score = 100
         else:
             # Extract numbers from both names
-            expected_nums = re.findall(r'\d+', expected_name)
-            candidate_nums = re.findall(r'\d+', candidate)
+            expected_nums = re.findall(r"\d+", expected_name)
+            candidate_nums = re.findall(r"\d+", candidate)
 
             if expected_nums and candidate_nums:
                 # Check if the camera number matches
@@ -803,7 +814,7 @@ def _suggest_camera_subfolder(camera_path: Path, camera_num: int) -> Optional[st
                 if has_matching_num:
                     # Camera-number match with camera-related prefix
                     camera_prefixes = re.compile(
-                        r'(?:cam|camera|view|c)\s*[_\-]?\s*\d',
+                        r"(?:cam|camera|view|c)\s*[_\-]?\s*\d",
                         re.IGNORECASE,
                     )
                     if camera_prefixes.search(candidate):
@@ -815,14 +826,19 @@ def _suggest_camera_subfolder(camera_path: Path, camera_num: int) -> Optional[st
                 # Fuzzy match: check if candidate contains the camera number
                 # and has a similar prefix (handles typos like "Camrr" → "Cam1")
                 expected_cam_num = str(camera_num)
-                if expected_cam_num in re.findall(r'\d+', candidate):
+                if expected_cam_num in re.findall(r"\d+", candidate):
                     # Candidate has the right camera number
                     # Check prefix similarity (strip trailing digits/typos)
-                    exp_prefix = re.sub(r'[\d]+.*$', '', expected_name).lower()
-                    cand_prefix = re.sub(r'[\d]+.*$', '', candidate).lower()
-                    if exp_prefix and cand_prefix and (
-                        exp_prefix.startswith(cand_prefix) or cand_prefix.startswith(exp_prefix)
-                        or exp_prefix[:2] == cand_prefix[:2]
+                    exp_prefix = re.sub(r"[\d]+.*$", "", expected_name).lower()
+                    cand_prefix = re.sub(r"[\d]+.*$", "", candidate).lower()
+                    if (
+                        exp_prefix
+                        and cand_prefix
+                        and (
+                            exp_prefix.startswith(cand_prefix)
+                            or cand_prefix.startswith(exp_prefix)
+                            or exp_prefix[:2] == cand_prefix[:2]
+                        )
                     ):
                         score = 60
 
@@ -910,7 +926,7 @@ def validate_single_pattern(
         result["error"] = f"Camera path does not exist: {camera_path}"
         cam = camera_num
         if cam is None:
-            m = re.search(r'(\d+)', camera_path.name)
+            m = re.search(r"(\d+)", camera_path.name)
             cam = int(m.group(1)) if m else 1
         suggestion = _suggest_camera_subfolder(camera_path, cam)
         if suggestion:
@@ -960,7 +976,11 @@ def validate_single_pattern(
     # but the actual file "B00001" doesn't exist
     if not first_file_exists:
         result["error"] = f"Pattern incomplete: '{first_expected}' not found"
-        result["sample_files"] = all_image_names[:5] if all_image_names else [f.name for f in matching_files[:5]]
+        result["sample_files"] = (
+            all_image_names[:5]
+            if all_image_names
+            else [f.name for f in matching_files[:5]]
+        )
         # Suggest a corrected pattern based on role
         suggested = _suggest_pattern_for_role(all_image_names, role)
         if suggested and suggested != pattern:
@@ -972,7 +992,9 @@ def validate_single_pattern(
 
     # Validate count
     if len(matching_files) < expected_count:
-        result["error"] = f"Found {len(matching_files)} files, expected {expected_count}"
+        result["error"] = (
+            f"Found {len(matching_files)} files, expected {expected_count}"
+        )
         result["valid"] = False
     else:
         result["valid"] = True

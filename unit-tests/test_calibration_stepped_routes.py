@@ -25,18 +25,14 @@ import numpy as np
 import pytest
 from flask import Flask
 
-import pivtools_gui.calibration.app.stepped_views as sv
-from pivtools_cli.synthetic_calibration_common import make_camera_matrix
-
 # Reuse the S3 synthetic stepped scene (identical geometry to the calibrator tests).
 from test_calibration_stepped_stereo import (  # noqa: E402
-    PEAK_COLS,
     POSE_RVECS,
     RVEC_EXTRA,
     SPACING_MM,
     STEP_MM,
-    W,
     H,
+    W,
     _cam1_pose,
     _cam2_pose,
     _fiducials,
@@ -44,12 +40,15 @@ from test_calibration_stepped_stereo import (  # noqa: E402
     _level_a_label,
     _render,
 )
-from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 
+import pivtools_gui.calibration.app.stepped_views as sv
+from pivtools_cli.synthetic_calibration_common import make_camera_matrix
+from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 
 # ---------------------------------------------------------------------------
 # Fake environment: in-memory image source + tmp model dir
 # ---------------------------------------------------------------------------
+
 
 class _FakeConfig:
     """Minimal stand-in for the app config touched by the stepped routes."""
@@ -59,8 +58,11 @@ class _FakeConfig:
             "camera": 1,
             "camera_pair": [1, 2],
             "source_idx": 0,
-            "stepped": {"dot_spacing_mm": SPACING_MM, "step_height_mm": STEP_MM,
-                        "board_thickness_mm": 14.8},
+            "stepped": {
+                "dot_spacing_mm": SPACING_MM,
+                "step_height_mm": STEP_MM,
+                "board_thickness_mm": 14.8,
+            },
         }
         self._source = source
 
@@ -78,10 +80,14 @@ def _build_scene():
         im1, pr1 = _render(R1, t1, K)
         R2, t2 = _cam2_pose(R1, t1, Z, R_extra)
         im2, pr2 = _render(R2, t2, K)
-        imgs1.append(im1); projs1.append(pr1)
-        imgs2.append(im2); projs2.append(pr2)
+        imgs1.append(im1)
+        projs1.append(pr1)
+        imgs2.append(im2)
+        projs2.append(pr2)
 
-    det = SteppedDetector(SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM))
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
     gt_z = _gt_z()
     pl1 = [_level_a_label(det.detect(im), p, gt_z) for im, p in zip(imgs1, projs1)]
     pl2 = [_level_a_label(det.detect(im), p, gt_z) for im, p in zip(imgs2, projs2)]
@@ -103,7 +109,9 @@ def client(scene, tmp_path, monkeypatch):
     cfg = _FakeConfig(tmp_path)
     monkeypatch.setattr(sv, "get_config", lambda: cfg)
 
-    def _fake_read(frame, camera, config, source_idx, image_format=None, image_type=None):
+    def _fake_read(
+        frame, camera, config, source_idx, image_format=None, image_type=None
+    ):
         return scene["images"][int(camera)][int(frame) - 1]
 
     monkeypatch.setattr(sv, "read_calibration_image", _fake_read)
@@ -117,6 +125,7 @@ def client(scene, tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _wait(client, url, timeout=60.0):
     """Poll a job-status URL until completed/failed (jobs run in daemon threads)."""
@@ -133,19 +142,29 @@ FRAMES = list(range(1, len(POSE_RVECS) + 1))
 
 
 def _detect(client, cameras):
-    r = client.post("/calibration/stepped/detect_sequence", json={
-        "source_path_idx": 0, "cameras": cameras,
-        "num_frames": len(FRAMES), "start_frame_idx": 1, "datum_frame_idx": 1,
-    })
+    r = client.post(
+        "/calibration/stepped/detect_sequence",
+        json={
+            "source_path_idx": 0,
+            "cameras": cameras,
+            "num_frames": len(FRAMES),
+            "start_frame_idx": 1,
+            "datum_frame_idx": 1,
+        },
+    )
     body = r.get_json()
     assert r.status_code == 200 and "sequence_id" in body, body
-    done = _wait(client, f"/calibration/stepped/detect_sequence/status/{body['job_id']}")
+    done = _wait(
+        client, f"/calibration/stepped/detect_sequence/status/{body['job_id']}"
+    )
     assert done["status"] == "completed", done
     return body["sequence_id"], done
 
 
 def _spec(scene, camera):
-    pose_levels = {str(fi): lbl for fi, lbl in zip(FRAMES, scene["pose_levels"][camera])}
+    pose_levels = {
+        str(fi): lbl for fi, lbl in zip(FRAMES, scene["pose_levels"][camera])
+    }
     return {
         "fiducials": scene["fiducials"][camera],
         "clicked_level": "peak",
@@ -157,14 +176,17 @@ def _spec(scene, camera):
 # 1. The serialiser contract: no _-prefixed diagnostics ever leak
 # ---------------------------------------------------------------------------
 
+
 def test_pose_detection_strips_internal_keys(client, scene):
     sid, done = _detect(client, [1])
     # Datum detection embedded in the completed job is JSON-safe.
     datum = done["datum_detection"]["1"]
     assert datum["ok"] and datum["level_a"] and datum["level_b"]
     # The per-pose endpoint payload carries the overlay data, not the heavy dicts.
-    r = client.get("/calibration/stepped/sequence_pose_detection",
-                   query_string={"sequence_id": sid, "camera": 1, "frame_idx": 1})
+    r = client.get(
+        "/calibration/stepped/sequence_pose_detection",
+        query_string={"sequence_id": sid, "camera": 1, "frame_idx": 1},
+    )
     payload = r.get_json()
     assert r.status_code == 200 and payload["ok"]
     assert "image_points" in payload and "level_labels" in payload
@@ -177,17 +199,32 @@ def test_identify_pose_level_and_snap(client, scene):
     sid, _ = _detect(client, [1])
     fid = scene["fiducials"][1]
     # identify_pose_level returns a level letter + the snapped dot.
-    r = client.post("/calibration/stepped/identify_pose_level", json={
-        "sequence_id": sid, "camera": 1, "frame_idx": 1,
-        "click_x": fid["origin"][0], "click_y": fid["origin"][1]})
+    r = client.post(
+        "/calibration/stepped/identify_pose_level",
+        json={
+            "sequence_id": sid,
+            "camera": 1,
+            "frame_idx": 1,
+            "click_x": fid["origin"][0],
+            "click_y": fid["origin"][1],
+        },
+    )
     j = r.get_json()
     assert r.status_code == 200 and j["level"] in ("A", "B")
-    assert np.hypot(j["snapped_x"] - fid["origin"][0],
-                    j["snapped_y"] - fid["origin"][1]) < SPACING_MM
+    assert (
+        np.hypot(j["snapped_x"] - fid["origin"][0], j["snapped_y"] - fid["origin"][1])
+        < SPACING_MM
+    )
     # snap_fiducial snaps onto the datum pose and returns its grid index.
-    r = client.post("/calibration/stepped/snap_fiducial", json={
-        "sequence_id": sid, "camera": 1,
-        "click_x": fid["origin"][0] + 3, "click_y": fid["origin"][1] - 3})
+    r = client.post(
+        "/calibration/stepped/snap_fiducial",
+        json={
+            "sequence_id": sid,
+            "camera": 1,
+            "click_x": fid["origin"][0] + 3,
+            "click_y": fid["origin"][1] - 3,
+        },
+    )
     s = r.get_json()
     assert r.status_code == 200 and "grid_col" in s and "grid_row" in s
 
@@ -196,11 +233,13 @@ def test_identify_pose_level_and_snap(client, scene):
 # 2. Mono end-to-end through HTTP
 # ---------------------------------------------------------------------------
 
+
 def test_mono_generate_end_to_end(client, scene, tmp_path):
     sid, _ = _detect(client, [1])
-    r = client.post("/calibration/stepped/generate_model", json={
-        "sequence_id": sid, "stereo": False,
-        "cameras": {"1": _spec(scene, 1)}})
+    r = client.post(
+        "/calibration/stepped/generate_model",
+        json={"sequence_id": sid, "stereo": False, "cameras": {"1": _spec(scene, 1)}},
+    )
     body = r.get_json()
     assert r.status_code == 200, body
     done = _wait(client, f"/calibration/stepped/generate_model/status/{body['job_id']}")
@@ -219,12 +258,19 @@ def test_mono_generate_end_to_end(client, scene, tmp_path):
 # 3. Stereo end-to-end through HTTP (auto same_side)
 # ---------------------------------------------------------------------------
 
+
 def test_stereo_generate_end_to_end(client, scene):
     sid, done_det = _detect(client, [1, 2])
     assert set(done_det["datum_detection"]) == {"1", "2"}
-    r = client.post("/calibration/stepped/generate_model", json={
-        "sequence_id": sid, "stereo": True, "stereo_config": "auto",
-        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
+    r = client.post(
+        "/calibration/stepped/generate_model",
+        json={
+            "sequence_id": sid,
+            "stereo": True,
+            "stereo_config": "auto",
+            "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
+        },
+    )
     body = r.get_json()
     assert r.status_code == 200, body
     done = _wait(client, f"/calibration/stepped/generate_model/status/{body['job_id']}")
@@ -241,18 +287,23 @@ def test_stereo_generate_end_to_end(client, scene):
 # 4. Loud failures
 # ---------------------------------------------------------------------------
 
+
 def test_generate_missing_fiducial_fails_loudly(client, scene):
     sid, _ = _detect(client, [1])
     spec = _spec(scene, 1)
     spec["fiducials"] = {"origin": scene["fiducials"][1]["origin"]}  # missing +X/+Y
-    r = client.post("/calibration/stepped/generate_model", json={
-        "sequence_id": sid, "stereo": False, "cameras": {"1": spec}})
+    r = client.post(
+        "/calibration/stepped/generate_model",
+        json={"sequence_id": sid, "stereo": False, "cameras": {"1": spec}},
+    )
     assert r.status_code == 400 and "fiducial" in r.get_json()["error"]
 
 
 def test_expired_sequence_returns_410(client):
-    r = client.get("/calibration/stepped/sequence_pose_detection",
-                   query_string={"sequence_id": "deadbeef", "camera": 1, "frame_idx": 1})
+    r = client.get(
+        "/calibration/stepped/sequence_pose_detection",
+        query_string={"sequence_id": "deadbeef", "camera": 1, "frame_idx": 1},
+    )
     assert r.status_code == 410 and "not found" in r.get_json()["error"]
 
 
@@ -260,22 +311,33 @@ def test_expired_sequence_returns_410(client):
 # 5. Restore the overlay from the sidecar after the in-memory cache is gone
 # ---------------------------------------------------------------------------
 
+
 def test_restore_sequence_rehydrates_from_sidecar(client, scene):
     """detect + generate persists detections + clicks to inputs.mat; after the in-memory
     cache is dropped (reload), restore_sequence rebuilds a live sequence from the sidecar so
     the GUI can re-show the overlay + fiducials + peak/trough without re-detecting."""
     sid, _ = _detect(client, [1, 2])
-    gen = client.post("/calibration/stepped/generate_model", json={
-        "sequence_id": sid, "stereo": True, "stereo_config": "auto",
-        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
-    done = _wait(client, f"/calibration/stepped/generate_model/status/{gen.get_json()['job_id']}")
+    gen = client.post(
+        "/calibration/stepped/generate_model",
+        json={
+            "sequence_id": sid,
+            "stereo": True,
+            "stereo_config": "auto",
+            "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
+        },
+    )
+    done = _wait(
+        client, f"/calibration/stepped/generate_model/status/{gen.get_json()['job_id']}"
+    )
     assert done["status"] == "completed", done
 
     # Simulate a reload / new session: the in-memory cache is gone, only the sidecar remains.
     sv._sequence_cache.clear()
 
-    r = client.get("/calibration/stepped/restore_sequence",
-                   query_string={"camera_pair": "1,2", "source_path_idx": 0})
+    r = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    )
     body = r.get_json()
     assert r.status_code == 200 and body["exists"], body
     assert body["sequence_id"] and body["sequence_id"] != sid  # fresh, live id
@@ -297,8 +359,10 @@ def test_restore_sequence_rehydrates_from_sidecar(client, scene):
     assert body["clicks"]["1"]["pose_levels"]
 
     # The restored sequence is live in the cache: per-pose detection works with the new id.
-    pd = client.get("/calibration/stepped/sequence_pose_detection",
-                    query_string={"sequence_id": body["sequence_id"], "camera": 1, "frame_idx": 1})
+    pd = client.get(
+        "/calibration/stepped/sequence_pose_detection",
+        query_string={"sequence_id": body["sequence_id"], "camera": 1, "frame_idx": 1},
+    )
     assert pd.status_code == 200 and pd.get_json()["ok"]
 
 
@@ -309,24 +373,44 @@ def test_generate_after_reload_from_sidecar(client, scene):
     sidecar round-trip — the "datum pose has no detected grid level" bug. The earlier restore
     test only checks the overlay; this one re-solves."""
     sid, _ = _detect(client, [1, 2])
-    first = client.post("/calibration/stepped/generate_model", json={
-        "sequence_id": sid, "stereo": True, "stereo_config": "auto",
-        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
-    done = _wait(client, f"/calibration/stepped/generate_model/status/{first.get_json()['job_id']}")
+    first = client.post(
+        "/calibration/stepped/generate_model",
+        json={
+            "sequence_id": sid,
+            "stereo": True,
+            "stereo_config": "auto",
+            "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
+        },
+    )
+    done = _wait(
+        client,
+        f"/calibration/stepped/generate_model/status/{first.get_json()['job_id']}",
+    )
     assert done["status"] == "completed", done
 
     sv._sequence_cache.clear()  # reopen: in-memory cache gone, only the sidecar remains
 
-    body = client.get("/calibration/stepped/restore_sequence",
-                      query_string={"camera_pair": "1,2", "source_path_idx": 0}).get_json()
+    body = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    ).get_json()
     assert body["exists"], body
     restored_sid = body["sequence_id"]
 
     # Re-solve from the sidecar-restored sequence — this is what was raising RuntimeError.
-    again = client.post("/calibration/stepped/generate_model", json={
-        "sequence_id": restored_sid, "stereo": True, "stereo_config": "auto",
-        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)}})
-    done2 = _wait(client, f"/calibration/stepped/generate_model/status/{again.get_json()['job_id']}")
+    again = client.post(
+        "/calibration/stepped/generate_model",
+        json={
+            "sequence_id": restored_sid,
+            "stereo": True,
+            "stereo_config": "auto",
+            "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
+        },
+    )
+    done2 = _wait(
+        client,
+        f"/calibration/stepped/generate_model/status/{again.get_json()['job_id']}",
+    )
     assert done2["status"] == "completed", done2
     assert done2["rms_cam1"] < 1.0 and done2["rms_cam2"] < 1.0
     assert done2["num_pairs_used"] == len(FRAMES)
@@ -334,8 +418,10 @@ def test_generate_after_reload_from_sidecar(client, scene):
 
 def test_restore_sequence_absent_returns_exists_false(client):
     """No sidecar for this source -> the normal first-use state, not an error."""
-    r = client.get("/calibration/stepped/restore_sequence",
-                   query_string={"camera_pair": "1,2", "source_path_idx": 0})
+    r = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    )
     assert r.status_code == 200 and r.get_json() == {"exists": False}
 
 
@@ -344,16 +430,23 @@ def test_inputs_save_persists_clicks_without_generate(client, scene):
     config) — restore then brings them back. This is the per-pick persistence that replaces
     the old config write."""
     _detect(client, [1, 2])
-    r = client.post("/calibration/stepped/inputs/save", json={
-        "camera_pair": "1,2", "source_path_idx": 0, "stereo_config": "auto",
-        "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
-    })
+    r = client.post(
+        "/calibration/stepped/inputs/save",
+        json={
+            "camera_pair": "1,2",
+            "source_path_idx": 0,
+            "stereo_config": "auto",
+            "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
+        },
+    )
     assert r.status_code == 200 and r.get_json()["saved"], r.get_json()
 
     sv._sequence_cache.clear()  # simulate reload (in-memory cache gone, sidecar remains)
 
-    body = client.get("/calibration/stepped/restore_sequence",
-                      query_string={"camera_pair": "1,2", "source_path_idx": 0}).get_json()
+    body = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    ).get_json()
     assert body["exists"] and set(body["clicks"]) == {"1", "2"}
     assert body["clicks"]["1"]["fiducials"]["origin"]
     assert body["clicks"]["1"]["clicked_level"] == "peak"
@@ -363,8 +456,12 @@ def test_inputs_save_persists_clicks_without_generate(client, scene):
 
 def test_inputs_save_noop_without_detection(client, scene):
     """No detected sequence -> nothing to attach clicks to -> saved:false (not an error)."""
-    r = client.post("/calibration/stepped/inputs/save", json={
-        "camera_pair": "1,2", "source_path_idx": 0,
-        "cameras": {"1": _spec(scene, 1)},
-    })
+    r = client.post(
+        "/calibration/stepped/inputs/save",
+        json={
+            "camera_pair": "1,2",
+            "source_path_idx": 0,
+            "cameras": {"1": _spec(scene, 1)},
+        },
+    )
     assert r.status_code == 200 and r.get_json() == {"saved": False}

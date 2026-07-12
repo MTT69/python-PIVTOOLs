@@ -8,15 +8,16 @@ Prerequisites:
     4. Then run: pytest test_filter_matlab_comparison.py -v
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import scipy.io as sio
-from pathlib import Path
 
 from pivtools_cli.preprocessing.pod_filter import (
     find_auto_mode,
-    pod_filter_single_channel,
     pod_filter_batch,
+    pod_filter_single_channel,
     time_filter_batch,
 )
 
@@ -28,6 +29,7 @@ TIME_REF = FIXTURE_DIR / "time_reference.mat"
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def pod_ref():
@@ -49,6 +51,7 @@ def time_ref():
 # POD filter tests
 # ---------------------------------------------------------------------------
 
+
 class TestFindAutoMode:
     """Test find_auto_mode matches MATLAB N_auto for both channels."""
 
@@ -60,9 +63,9 @@ class TestFindAutoMode:
         expected = int(pod_ref["N_auto1"])
 
         result = find_auto_mode(PSI1, eigVal1, n_images)
-        assert result == expected, (
-            f"Channel 1: Python find_auto_mode={result}, MATLAB N_auto1={expected}"
-        )
+        assert (
+            result == expected
+        ), f"Channel 1: Python find_auto_mode={result}, MATLAB N_auto1={expected}"
 
     def test_channel2_mode_count(self, pod_ref):
         """Python find_auto_mode on channel 2 matches MATLAB N_auto2."""
@@ -72,9 +75,9 @@ class TestFindAutoMode:
         expected = int(pod_ref["N_auto2"])
 
         result = find_auto_mode(PSI2, eigVal2, n_images)
-        assert result == expected, (
-            f"Channel 2: Python find_auto_mode={result}, MATLAB N_auto2={expected}"
-        )
+        assert (
+            result == expected
+        ), f"Channel 2: Python find_auto_mode={result}, MATLAB N_auto2={expected}"
 
 
 class TestPODEigenvalues:
@@ -91,8 +94,9 @@ class TestPODEigenvalues:
         C = M @ M.T
         _, S, _ = np.linalg.svd(C, full_matrices=False)
         matlab_eigvals = pod_ref["eigVal1"].astype(np.float64)
-        np.testing.assert_allclose(S, matlab_eigvals, rtol=0.03,
-                                   err_msg="Channel 1 eigenvalues differ")
+        np.testing.assert_allclose(
+            S, matlab_eigvals, rtol=0.03, err_msg="Channel 1 eigenvalues differ"
+        )
 
     def test_eigenvalues_channel2(self, pod_ref):
         """Eigenvalues from Python SVD match MATLAB.
@@ -103,8 +107,9 @@ class TestPODEigenvalues:
         C = M @ M.T
         _, S, _ = np.linalg.svd(C, full_matrices=False)
         matlab_eigvals = pod_ref["eigVal2"].astype(np.float64)
-        np.testing.assert_allclose(S, matlab_eigvals, rtol=0.03,
-                                   err_msg="Channel 2 eigenvalues differ")
+        np.testing.assert_allclose(
+            S, matlab_eigvals, rtol=0.03, err_msg="Channel 2 eigenvalues differ"
+        )
 
 
 class TestPODFilterOutput:
@@ -131,8 +136,9 @@ class TestPODFilterOutput:
         result = self._run_python_pod(M_bloc1, n_images, H, W)
 
         # Absolute tolerance: filter residual values are small, so use atol
-        np.testing.assert_allclose(result, expected, atol=0.5,
-                                   err_msg="Channel 1 filtered output differs")
+        np.testing.assert_allclose(
+            result, expected, atol=0.5, err_msg="Channel 1 filtered output differs"
+        )
 
     def test_filtered_output_channel2(self, pod_ref):
         """Filtered channel 2 matches MATLAB within atol=0.5."""
@@ -144,8 +150,9 @@ class TestPODFilterOutput:
 
         result = self._run_python_pod(M_bloc2, n_images, H, W)
 
-        np.testing.assert_allclose(result, expected, atol=0.5,
-                                   err_msg="Channel 2 filtered output differs")
+        np.testing.assert_allclose(
+            result, expected, atol=0.5, err_msg="Channel 2 filtered output differs"
+        )
 
     def test_filtered_correlation_channel1(self, pod_ref):
         """Correlation between Python and MATLAB filtered output > 0.9999."""
@@ -197,18 +204,21 @@ class TestPODFilterBatch:
         batch_filtered = pod_filter_batch(batch.copy(), verbose=False)
 
         np.testing.assert_array_equal(
-            batch_filtered[:, 0], filtered_ch0,
-            err_msg="Batch channel 0 differs from single-channel result"
+            batch_filtered[:, 0],
+            filtered_ch0,
+            err_msg="Batch channel 0 differs from single-channel result",
         )
         np.testing.assert_array_equal(
-            batch_filtered[:, 1], filtered_ch1,
-            err_msg="Batch channel 1 differs from single-channel result"
+            batch_filtered[:, 1],
+            filtered_ch1,
+            err_msg="Batch channel 1 differs from single-channel result",
         )
 
 
 # ---------------------------------------------------------------------------
 # Time filter tests
 # ---------------------------------------------------------------------------
+
 
 class TestTimeFilter:
     """Test time filter against MATLAB reference."""
@@ -219,8 +229,12 @@ class TestTimeFilter:
         expected_min = time_ref["time_min1"].astype(np.float32)
 
         computed_min = images.min(axis=0)
-        np.testing.assert_allclose(computed_min, expected_min, atol=1e-4,
-                                   err_msg="Channel 1 time minimum differs")
+        np.testing.assert_allclose(
+            computed_min,
+            expected_min,
+            atol=1e-4,
+            err_msg="Channel 1 time minimum differs",
+        )
 
     def test_time_minimum_channel2(self, time_ref):
         """Per-pixel temporal minimum matches MATLAB for channel 2."""
@@ -228,8 +242,12 @@ class TestTimeFilter:
         expected_min = time_ref["time_min2"].astype(np.float32)
 
         computed_min = images.min(axis=0)
-        np.testing.assert_allclose(computed_min, expected_min, atol=1e-4,
-                                   err_msg="Channel 2 time minimum differs")
+        np.testing.assert_allclose(
+            computed_min,
+            expected_min,
+            atol=1e-4,
+            err_msg="Channel 2 time minimum differs",
+        )
 
     def test_filtered_output_channel1(self, time_ref):
         """Time-filtered channel 1 matches MATLAB reference."""
@@ -248,8 +266,10 @@ class TestTimeFilter:
         filtered = time_filter_batch(batch, verbose=False)
 
         np.testing.assert_allclose(
-            filtered[:, 0], expected, atol=1e-4,
-            err_msg="Channel 1 time-filtered output differs"
+            filtered[:, 0],
+            expected,
+            atol=1e-4,
+            err_msg="Channel 1 time-filtered output differs",
         )
 
     def test_filtered_output_channel2(self, time_ref):
@@ -267,8 +287,10 @@ class TestTimeFilter:
         filtered = time_filter_batch(batch, verbose=False)
 
         np.testing.assert_allclose(
-            filtered[:, 1], expected, atol=1e-4,
-            err_msg="Channel 2 time-filtered output differs"
+            filtered[:, 1],
+            expected,
+            atol=1e-4,
+            err_msg="Channel 2 time-filtered output differs",
         )
 
     def test_non_negativity(self, time_ref):
@@ -283,9 +305,9 @@ class TestTimeFilter:
 
         filtered = time_filter_batch(batch, verbose=False)
 
-        assert filtered.min() >= -1e-6, (
-            f"Time-filtered output has negative values: min = {filtered.min()}"
-        )
+        assert (
+            filtered.min() >= -1e-6
+        ), f"Time-filtered output has negative values: min = {filtered.min()}"
 
     def test_minimum_frame_near_zero(self, time_ref):
         """After time filtering, the frame that was the per-pixel minimum
@@ -312,6 +334,7 @@ class TestTimeFilter:
 # ---------------------------------------------------------------------------
 # Standalone verification (no MATLAB reference needed)
 # ---------------------------------------------------------------------------
+
 
 class TestPODFilterStandalone:
     """Sanity checks that don't require MATLAB .mat files."""
@@ -365,9 +388,9 @@ class TestPODFilterStandalone:
         images = np.empty((n, h, w), dtype=np.float32)
         for i in range(n):
             # Constant background + small varying signal
-            images[i] = background + np.float32(2.0 * np.sin(
-                np.arange(h * w).reshape(h, w) * 0.1 * (i + 1)
-            ))
+            images[i] = background + np.float32(
+                2.0 * np.sin(np.arange(h * w).reshape(h, w) * 0.1 * (i + 1))
+            )
 
         filtered = pod_filter_single_channel(images.copy(), verbose=False)
 
@@ -389,12 +412,20 @@ class TestPODFilterStandalone:
 # Diagnostic figures (gated by --make-figures)
 # ---------------------------------------------------------------------------
 
+
 def _add_watermark(ax, label):
     """Add a large semi-transparent watermark letter to an axes."""
     ax.text(
-        0.5, 0.5, label,
-        transform=ax.transAxes, fontsize=48, fontweight="bold",
-        color="white", alpha=0.3, ha="center", va="center",
+        0.5,
+        0.5,
+        label,
+        transform=ax.transAxes,
+        fontsize=48,
+        fontweight="bold",
+        color="white",
+        alpha=0.3,
+        ha="center",
+        va="center",
     )
 
 
@@ -407,6 +438,7 @@ class TestDiagnosticFigures:
             pytest.skip("Pass --make-figures to generate diagnostic plots")
 
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -454,14 +486,17 @@ class TestDiagnosticFigures:
         fig, axes = plt.subplots(2, 3, figsize=(16, 9))
         fig.suptitle(
             f"POD Filter Verification — N_auto={N_auto1}/{N_auto2} modes removed",
-            fontweight="bold", fontsize=13,
+            fontweight="bold",
+            fontsize=13,
         )
 
         # Determine shared color scales per channel (raw vs filtered)
-        for row, (raw, filt, label) in enumerate([
-            (M1[0], filtered1[0], "A"),
-            (M2[0], filtered2[0], "B"),
-        ]):
+        for row, (raw, filt, label) in enumerate(
+            [
+                (M1[0], filtered1[0], "A"),
+                (M2[0], filtered2[0], "B"),
+            ]
+        ):
             # Col 0: Raw input frame 1
             ax = axes[row, 0]
             vmin, vmax = raw.min(), raw.max()
@@ -482,10 +517,12 @@ class TestDiagnosticFigures:
         mode_idx = np.arange(1, len(S1) + 1)
         ax.semilogy(mode_idx, S1, "b.-", label="Channel A", markersize=4)
         ax.semilogy(mode_idx, S2, "r.-", label="Channel B", markersize=4)
-        ax.axvline(N_auto1, color="b", linestyle="--", alpha=0.7,
-                   label=f"N_auto A={N_auto1}")
-        ax.axvline(N_auto2, color="r", linestyle="--", alpha=0.7,
-                   label=f"N_auto B={N_auto2}")
+        ax.axvline(
+            N_auto1, color="b", linestyle="--", alpha=0.7, label=f"N_auto A={N_auto1}"
+        )
+        ax.axvline(
+            N_auto2, color="r", linestyle="--", alpha=0.7, label=f"N_auto B={N_auto2}"
+        )
         ax.set_xlabel("Mode index")
         ax.set_ylabel("Eigenvalue (log)")
         ax.set_title("Eigenvalue Spectrum")
@@ -507,7 +544,11 @@ class TestDiagnosticFigures:
             f"Corr: A={corr1:.6f}, B={corr2:.6f}"
         )
         fig.text(
-            0.5, 0.01, stats_text, ha="center", fontsize=9,
+            0.5,
+            0.01,
+            stats_text,
+            ha="center",
+            fontsize=9,
             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8),
         )
 
@@ -523,6 +564,7 @@ class TestDiagnosticFigures:
             pytest.skip("Pass --make-figures to generate diagnostic plots")
 
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -557,13 +599,16 @@ class TestDiagnosticFigures:
         fig, axes = plt.subplots(2, 3, figsize=(16, 9))
         fig.suptitle(
             "Time Filter Verification — per-pixel minimum subtraction",
-            fontweight="bold", fontsize=13,
+            fontweight="bold",
+            fontsize=13,
         )
 
-        for row, (raw, tmin, filt, label) in enumerate([
-            (images_A[0], time_min_A, filtered[0, 0], "A"),
-            (images_B[0], time_min_B, filtered[0, 1], "B"),
-        ]):
+        for row, (raw, tmin, filt, label) in enumerate(
+            [
+                (images_A[0], time_min_A, filtered[0, 0], "A"),
+                (images_B[0], time_min_B, filtered[0, 1], "B"),
+            ]
+        ):
             # Col 0: Raw input frame 1
             ax = axes[row, 0]
             im = ax.imshow(raw, cmap="gray")
@@ -592,7 +637,11 @@ class TestDiagnosticFigures:
             f"Max |error| vs MATLAB: {max_abs_err:.6f}"
         )
         fig.text(
-            0.5, 0.01, stats_text, ha="center", fontsize=9,
+            0.5,
+            0.01,
+            stats_text,
+            ha="center",
+            fontsize=9,
             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.8),
         )
 

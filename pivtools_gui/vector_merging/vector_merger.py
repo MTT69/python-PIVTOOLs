@@ -11,7 +11,6 @@ calibration module.
 """
 
 import logging
-import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Optional
@@ -23,13 +22,13 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import distance_transform_edt
 
 from pivtools_core.config import get_config, reload_config
-from pivtools_gui.utils.worker_pool import worker_initializer, get_max_workers
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import (
     find_valid_piv_runs,
     load_coords_from_directory,
     read_mat_contents,
 )
+from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 # ===================== CONFIGURATION =====================
 # These settings are used when running standalone (USE_CONFIG_DIRECTLY=False)
@@ -48,7 +47,9 @@ TYPE_NAME = "instantaneous"
 USE_CONFIG_DIRECTLY = True
 
 # LOGGING SETUP
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def apply_cli_settings_to_config():
@@ -707,7 +708,10 @@ class VectorMerger:
                             "x": x_coords,
                             "y": y_coords,
                             "mask": b_mask,
-                            **{sf: np.where(b_mask, np.nan, v) for sf, v in stress_fields.items()},
+                            **{
+                                sf: np.where(b_mask, np.nan, v)
+                                for sf, v in stress_fields.items()
+                            },
                         }
 
                 if len(run_data) < 2:
@@ -760,10 +764,12 @@ class VectorMerger:
                                 }
 
                         if len(stress_camera_data) >= 2:
-                            _, _, stress_merged, _, _ = VectorMerger.merge_n_camera_fields(
-                                stress_camera_data
+                            _, _, stress_merged, _, _ = (
+                                VectorMerger.merge_n_camera_fields(stress_camera_data)
                             )
-                            stress_merged_save = np.nan_to_num(stress_merged, nan=0.0)[::-1, :]
+                            stress_merged_save = np.nan_to_num(stress_merged, nan=0.0)[
+                                ::-1, :
+                            ]
                             merged_runs[run_num][stress_name] = stress_merged_save
 
             if not merged_runs:
@@ -771,7 +777,12 @@ class VectorMerger:
 
             # Save the result
             VectorMerger.save_frame_result_static(
-                frame_idx, merged_runs, total_runs, output_dir, is_ensemble, vector_format
+                frame_idx,
+                merged_runs,
+                total_runs,
+                output_dir,
+                is_ensemble,
+                vector_format,
             )
 
             return frame_idx, True, merged_runs
@@ -813,12 +824,21 @@ class VectorMerger:
         has_stresses = any("UU_stress" in run_data for run_data in merged_runs.values())
 
         if has_stresses:
-            piv_dtype = np.dtype([
-                ("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O"),
-                ("UU_stress", "O"), ("VV_stress", "O"), ("UV_stress", "O"),
-            ])
+            piv_dtype = np.dtype(
+                [
+                    ("ux", "O"),
+                    ("uy", "O"),
+                    ("uz", "O"),
+                    ("b_mask", "O"),
+                    ("UU_stress", "O"),
+                    ("VV_stress", "O"),
+                    ("UV_stress", "O"),
+                ]
+            )
         else:
-            piv_dtype = np.dtype([("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O")])
+            piv_dtype = np.dtype(
+                [("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O")]
+            )
 
         piv_result = np.empty(total_runs, dtype=piv_dtype)
 
@@ -832,9 +852,15 @@ class VectorMerger:
                 piv_result[run_idx]["b_mask"] = run_data["b_mask"]
 
                 if has_stresses:
-                    piv_result[run_idx]["UU_stress"] = run_data.get("UU_stress", np.array([]))
-                    piv_result[run_idx]["VV_stress"] = run_data.get("VV_stress", np.array([]))
-                    piv_result[run_idx]["UV_stress"] = run_data.get("UV_stress", np.array([]))
+                    piv_result[run_idx]["UU_stress"] = run_data.get(
+                        "UU_stress", np.array([])
+                    )
+                    piv_result[run_idx]["VV_stress"] = run_data.get(
+                        "VV_stress", np.array([])
+                    )
+                    piv_result[run_idx]["UV_stress"] = run_data.get(
+                        "UV_stress", np.array([])
+                    )
             else:
                 piv_result[run_idx]["ux"] = np.array([])
                 piv_result[run_idx]["uy"] = np.array([])
@@ -846,7 +872,9 @@ class VectorMerger:
                     piv_result[run_idx]["VV_stress"] = np.array([])
                     piv_result[run_idx]["UV_stress"] = np.array([])
 
-        scipy.io.savemat(str(output_file), {result_key: piv_result}, do_compression=True)
+        scipy.io.savemat(
+            str(output_file), {result_key: piv_result}, do_compression=True
+        )
 
         return output_file
 
@@ -945,7 +973,9 @@ class VectorMerger:
 
                 if data.get("is_ensemble"):
                     # Ensemble mode: load with stress fields
-                    vec_data = self._load_ensemble_run_data(data["vector_file"], array_idx)
+                    vec_data = self._load_ensemble_run_data(
+                        data["vector_file"], array_idx
+                    )
                     if vec_data is None:
                         continue
 
@@ -958,7 +988,6 @@ class VectorMerger:
                     for sf in ["UU_stress", "VV_stress", "UV_stress"]:
                         if sf in vec_data:
                             stress_fields[sf] = vec_data[sf]
-                            has_stress_fields = True
 
                     logger.debug(
                         f"Camera {camera}: Loaded ensemble data, ux.shape={ux.shape}, "
@@ -1017,7 +1046,10 @@ class VectorMerger:
                         "x": x_coords,
                         "y": y_coords,
                         "mask": b_mask,
-                        **{sf: np.where(b_mask, np.nan, v) for sf, v in stress_fields.items()},
+                        **{
+                            sf: np.where(b_mask, np.nan, v)
+                            for sf, v in stress_fields.items()
+                        },
                     }
 
             # Merge the fields for this run - need at least 2 cameras
@@ -1093,7 +1125,9 @@ class VectorMerger:
                             }
 
                     if len(stress_camera_data) >= 2:
-                        _, _, stress_merged, _, _ = self.merge_n_camera_fields(stress_camera_data)
+                        _, _, stress_merged, _, _ = self.merge_n_camera_fields(
+                            stress_camera_data
+                        )
                         stress_merged_save = np.nan_to_num(stress_merged, nan=0.0)
                         stress_merged_save = stress_merged_save[::-1, :]  # Flip
                         merged_runs[run_num][stress_name] = stress_merged_save
@@ -1122,17 +1156,21 @@ class VectorMerger:
         result_key = self._get_result_key()
 
         # Check if stress fields are present (ensemble data)
-        has_stresses = any(
-            "UU_stress" in run_data
-            for run_data in merged_runs.values()
-        )
+        has_stresses = any("UU_stress" in run_data for run_data in merged_runs.values())
 
         # Create result structure with appropriate dtype
         if has_stresses:
-            piv_dtype = np.dtype([
-                ("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O"),
-                ("UU_stress", "O"), ("VV_stress", "O"), ("UV_stress", "O"),
-            ])
+            piv_dtype = np.dtype(
+                [
+                    ("ux", "O"),
+                    ("uy", "O"),
+                    ("uz", "O"),
+                    ("b_mask", "O"),
+                    ("UU_stress", "O"),
+                    ("VV_stress", "O"),
+                    ("UV_stress", "O"),
+                ]
+            )
         else:
             piv_dtype = np.dtype(
                 [("ux", "O"), ("uy", "O"), ("uz", "O"), ("b_mask", "O")]
@@ -1151,9 +1189,15 @@ class VectorMerger:
                 piv_result[run_idx]["b_mask"] = run_data["b_mask"]
 
                 if has_stresses:
-                    piv_result[run_idx]["UU_stress"] = run_data.get("UU_stress", np.array([]))
-                    piv_result[run_idx]["VV_stress"] = run_data.get("VV_stress", np.array([]))
-                    piv_result[run_idx]["UV_stress"] = run_data.get("UV_stress", np.array([]))
+                    piv_result[run_idx]["UU_stress"] = run_data.get(
+                        "UU_stress", np.array([])
+                    )
+                    piv_result[run_idx]["VV_stress"] = run_data.get(
+                        "VV_stress", np.array([])
+                    )
+                    piv_result[run_idx]["UV_stress"] = run_data.get(
+                        "UV_stress", np.array([])
+                    )
             else:
                 # Empty run - preserve structure
                 piv_result[run_idx]["ux"] = np.array([])
@@ -1263,12 +1307,14 @@ class VectorMerger:
 
         # Report initial progress
         if progress_callback:
-            progress_callback({
-                "progress": 2,
-                "processed_frames": 0,
-                "total_frames": num_files_to_process,
-                "message": "Initializing merge operation...",
-            })
+            progress_callback(
+                {
+                    "progress": 2,
+                    "processed_frames": 0,
+                    "total_frames": num_files_to_process,
+                    "message": "Initializing merge operation...",
+                }
+            )
 
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1304,7 +1350,9 @@ class VectorMerger:
                     "coords_x": coords_x_list,
                     "coords_y": coords_y_list,
                 }
-                logger.debug(f"Camera {camera}: loaded {len(coords_x_list)} coordinate sets")
+                logger.debug(
+                    f"Camera {camera}: loaded {len(coords_x_list)} coordinate sets"
+                )
             except Exception as e:
                 logger.error(f"Failed to load coordinates for camera {camera}: {e}")
                 continue
@@ -1316,7 +1364,9 @@ class VectorMerger:
             }
 
         # Prepare arguments for all frames (or single file for ensemble)
-        frame_indices = [1] if self.is_ensemble else list(range(1, self.num_frame_pairs + 1))
+        frame_indices = (
+            [1] if self.is_ensemble else list(range(1, self.num_frame_pairs + 1))
+        )
         frame_args = [
             (
                 frame_idx,
@@ -1339,18 +1389,21 @@ class VectorMerger:
         last_merged_runs = None
 
         if progress_callback:
-            progress_callback({
-                "progress": 5,
-                "processed_frames": 0,
-                "total_frames": num_files_to_process,
-                "message": f"Merging with {max_workers} workers...",
-            })
+            progress_callback(
+                {
+                    "progress": 5,
+                    "processed_frames": 0,
+                    "total_frames": num_files_to_process,
+                    "message": f"Merging with {max_workers} workers...",
+                }
+            )
 
         try:
-            with ProcessPoolExecutor(max_workers=max_workers, initializer=worker_initializer) as executor:
+            with ProcessPoolExecutor(
+                max_workers=max_workers, initializer=worker_initializer
+            ) as executor:
                 futures = [
-                    executor.submit(_process_frame_worker, args)
-                    for args in frame_args
+                    executor.submit(_process_frame_worker, args) for args in frame_args
                 ]
 
                 for future in as_completed(futures):
@@ -1366,15 +1419,17 @@ class VectorMerger:
                     # Update progress (driven by completed count so it still
                     # reaches 100% when some frames fail)
                     if progress_callback:
-                        progress = int(
-                            (completed_count / num_files_to_process) * 90
-                        ) + 5
-                        progress_callback({
-                            "progress": min(progress, 95),
-                            "processed_frames": completed_count,
-                            "total_frames": num_files_to_process,
-                            "message": f"Merged {processed_count}/{completed_count} files",
-                        })
+                        progress = (
+                            int((completed_count / num_files_to_process) * 90) + 5
+                        )
+                        progress_callback(
+                            {
+                                "progress": min(progress, 95),
+                                "processed_frames": completed_count,
+                                "total_frames": num_files_to_process,
+                                "message": f"Merged {processed_count}/{completed_count} files",
+                            }
+                        )
 
                     if completed_count % 10 == 0:
                         logger.info(
@@ -1410,15 +1465,19 @@ class VectorMerger:
                 }
 
             if progress_callback:
-                message = f"Complete: merged {processed_count}/{num_files_to_process} files"
+                message = (
+                    f"Complete: merged {processed_count}/{num_files_to_process} files"
+                )
                 if failed_frames:
                     message += f" ({len(failed_frames)} failed)"
-                progress_callback({
-                    "progress": 100,
-                    "processed_frames": completed_count,
-                    "total_frames": num_files_to_process,
-                    "message": message,
-                })
+                progress_callback(
+                    {
+                        "progress": 100,
+                        "processed_frames": completed_count,
+                        "total_frames": num_files_to_process,
+                        "message": message,
+                    }
+                )
 
             return {
                 "success": True,
@@ -1472,7 +1531,9 @@ if __name__ == "__main__":
 
     if USE_CONFIG_DIRECTLY:
         # Load settings directly from existing config.yaml
-        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        logger.info(
+            "Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)"
+        )
         config = get_config()
 
         # Extract settings from config (all from merging section)
@@ -1506,7 +1567,9 @@ if __name__ == "__main__":
             results.append(result)
 
             if result["success"]:
-                logger.info(f"Path {path_idx + 1}: Merged {result['processed_count']} frames")
+                logger.info(
+                    f"Path {path_idx + 1}: Merged {result['processed_count']} frames"
+                )
             else:
                 logger.error(f"Path {path_idx + 1}: FAILED - {result.get('error')}")
 

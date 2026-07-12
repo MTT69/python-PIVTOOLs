@@ -12,9 +12,10 @@ Supports:
 
 Reference: LaVision ReadIM7.h / ReadIM7.cpp (liorshig/readim on GitHub)
 """
+
 import struct
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
 
@@ -56,6 +57,7 @@ HEADER_FORMAT = "<hhhh iiii hhh"  # 30 bytes of fields + 226 reserved
 @dataclass
 class IM7Header:
     """Parsed Image_Header_7 from an .im7 file."""
+
     version: int
     pack_type: int
     buffer_format: int
@@ -75,6 +77,7 @@ class IM7Scales:
 
     The physical pixel value is: raw_pixel * slope + offset.
     """
+
     slope: float = 1.0
     offset: float = 0.0
     description: str = ""
@@ -137,7 +140,9 @@ def _frame_byte_size(header: IM7Header) -> int:
 
 
 def _read_pixels_uncompressed(
-    f, header: IM7Header, frame_range: tuple = None,
+    f,
+    header: IM7Header,
+    frame_range: tuple = None,
 ) -> np.ndarray:
     """Read uncompressed pixel data (pack_type=0).
 
@@ -217,7 +222,7 @@ def _lz4_block_decompress(src: bytes, expected_size: int) -> bytes:
                 lit += b
                 if b != 255:
                     break
-        out += src[i:i + lit]
+        out += src[i : i + lit]
         i += lit
         if i >= n:
             break  # final sequence carries literals only
@@ -235,7 +240,7 @@ def _lz4_block_decompress(src: bytes, expected_size: int) -> bytes:
         if off == 0 or start < 0:
             raise IOError(f"corrupt LZ4 stream: match offset {off} at {len(out)}")
         if off >= mlen:
-            out += out[start:start + mlen]
+            out += out[start : start + mlen]
         else:
             # Overlapping match: LZ4 semantics require byte-serial copy.
             for _ in range(mlen):
@@ -276,7 +281,8 @@ def _read_pixels_lz4(f, header: IM7Header, frame_range: tuple = None) -> np.ndar
         )
     out = _lz4_block_decompress(comp, total_bytes)
     pixels = np.frombuffer(out, dtype=dt).reshape(
-        header.size_f, header.size_z, header.size_y, header.size_x)
+        header.size_f, header.size_z, header.size_y, header.size_x
+    )
 
     if frame_range is None:
         return pixels
@@ -295,7 +301,9 @@ def _skip_zlib_rows(f, n_rows: int) -> None:
 
 
 def _read_pixels_zlib(
-    f, header: IM7Header, frame_range: tuple = None,
+    f,
+    header: IM7Header,
+    frame_range: tuple = None,
 ) -> np.ndarray:
     """Read zlib-compressed pixel data (pack_type=2).
 
@@ -352,7 +360,9 @@ def _read_pixels_zlib(
 
 
 def _read_pixels_fixed12(
-    f, header: IM7Header, frame_range: tuple = None,
+    f,
+    header: IM7Header,
+    frame_range: tuple = None,
 ) -> np.ndarray:
     """Read fixed 12-bit packed pixel data (pack_type=3).
 
@@ -433,30 +443,38 @@ def _decode_packtype1_frame(data: bytes, off: int, npix: int):
     prev = 0
     i = 0
     while i < npix:
-        b = data[off]; off += 1
-        if b == 0x81:                       # 4-bit packed-delta run
+        b = data[off]
+        off += 1
+        if b == 0x81:  # 4-bit packed-delta run
             done = False
             while not done:
-                byte = data[off]; off += 1
+                byte = data[off]
+                off += 1
                 for nib in ((byte >> 4) & 0xF, byte & 0xF):
-                    if nib == 0x8:          # run terminator
+                    if nib == 0x8:  # run terminator
                         done = True
                         break
                     prev += nib - 16 if nib >= 8 else nib  # signed nibble
-                    out[i] = prev; i += 1
+                    out[i] = prev
+                    i += 1
                     if i >= npix:
                         done = True
                         break
-        elif b == 0x80:                     # 16-bit little-endian absolute
-            prev = data[off] | (data[off + 1] << 8); off += 2
-            out[i] = prev; i += 1
-        else:                               # signed int8 delta
+        elif b == 0x80:  # 16-bit little-endian absolute
+            prev = data[off] | (data[off + 1] << 8)
+            off += 2
+            out[i] = prev
+            i += 1
+        else:  # signed int8 delta
             prev += b - 256 if b >= 128 else b
-            out[i] = prev; i += 1
+            out[i] = prev
+            i += 1
     return out, off
 
 
-def _read_pixels_packtype1(f, header: IM7Header, frame_range: tuple = None) -> np.ndarray:
+def _read_pixels_packtype1(
+    f, header: IM7Header, frame_range: tuple = None
+) -> np.ndarray:
     """Read pack_type=1 (delta+nibble RLE) pixel data.
 
     Frames are concatenated, self-delimited RLE streams that cannot be seeked into
@@ -571,7 +589,8 @@ def _parse_scale_record(data: bytes, scales: IM7Scales) -> None:
 
 
 def _read_im7_internal(
-    filepath: Path, frame_range: tuple = None,
+    filepath: Path,
+    frame_range: tuple = None,
 ) -> tuple:
     """Core reader. Optionally reads only frames [start:end).
 
@@ -589,7 +608,9 @@ def _read_im7_internal(
     with open(filepath, "rb") as f:
         raw_header = f.read(HEADER_SIZE)
         if len(raw_header) != HEADER_SIZE:
-            raise IOError(f"File too small for header ({len(raw_header)} < {HEADER_SIZE})")
+            raise IOError(
+                f"File too small for header ({len(raw_header)} < {HEADER_SIZE})"
+            )
         header = _parse_header(raw_header)
 
         if header.pack_type == PACK_UNCOMPRESSED:
@@ -721,8 +742,7 @@ def read_im7_camera(
 
     # Pre-allocate float32 output, read one frame at a time so only one
     # raw-dtype frame is in memory at any point (freed before the next).
-    result = np.empty((n_frames, header.size_y, header.size_x),
-                      dtype=np.float32)
+    result = np.empty((n_frames, header.size_y, header.size_x), dtype=np.float32)
 
     with open(filepath, "rb") as f:
         f.seek(HEADER_SIZE)  # skip header
@@ -738,14 +758,18 @@ def read_im7_camera(
                 if len(raw) != frame_bytes:
                     raise IOError("Unexpected EOF reading frame data")
                 frame = np.frombuffer(raw, dtype=dt).reshape(
-                    header.size_z, header.size_y, header.size_x)
-                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
-                    header.size_y, header.size_x)
+                    header.size_z, header.size_y, header.size_x
+                )
+                result[i] = (
+                    frame[0]
+                    if header.size_z == 1
+                    else frame.reshape(header.size_y, header.size_x)
+                )
                 del frame, raw  # free before next iteration's read
 
         elif header.pack_type == PACK_ZLIB:
             dt = _pixel_dtype(header)
-            row_bytes = header.size_x * dt.itemsize
+            header.size_x * dt.itemsize
             rows_per_frame = header.size_z * header.size_y
             if start > 0:
                 _skip_zlib_rows(f, start * rows_per_frame)
@@ -753,12 +777,15 @@ def read_im7_camera(
                 rows = []
                 for _ in range(rows_per_frame):
                     csz = struct.unpack("<i", f.read(4))[0]
-                    rows.append(np.frombuffer(
-                        zlib.decompress(f.read(csz)), dtype=dt))
+                    rows.append(np.frombuffer(zlib.decompress(f.read(csz)), dtype=dt))
                 frame = np.stack(rows).reshape(
-                    header.size_z, header.size_y, header.size_x)
-                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
-                    header.size_y, header.size_x)
+                    header.size_z, header.size_y, header.size_x
+                )
+                result[i] = (
+                    frame[0]
+                    if header.size_z == 1
+                    else frame.reshape(header.size_y, header.size_x)
+                )
                 del frame, rows
 
         elif header.pack_type == PACK_FIXED_12BIT:
@@ -781,8 +808,11 @@ def read_im7_camera(
                 p3 = ((w2 >> 4) & 0x0FFF).astype(np.uint16)
                 frame = np.column_stack([p0, p1, p2, p3]).ravel()[:frame_pixels]
                 frame = frame.reshape(header.size_z, header.size_y, header.size_x)
-                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
-                    header.size_y, header.size_x)
+                result[i] = (
+                    frame[0]
+                    if header.size_z == 1
+                    else frame.reshape(header.size_y, header.size_x)
+                )
                 del frame, raw, words, w0, w1, w2, p0, p1, p2, p3
 
         elif header.pack_type == PACK_LZ4:
@@ -790,8 +820,11 @@ def read_im7_camera(
             frames = _read_pixels_lz4(f, header, (start, end))
             for i in range(n_frames):
                 frame = frames[i]
-                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
-                    header.size_y, header.size_x)
+                result[i] = (
+                    frame[0]
+                    if header.size_z == 1
+                    else frame.reshape(header.size_y, header.size_x)
+                )
             del frames
 
         elif header.pack_type == PACK_RLE:
@@ -799,8 +832,11 @@ def read_im7_camera(
             frames = _read_pixels_packtype1(f, header, (start, end))
             for i in range(n_frames):
                 frame = frames[i]
-                result[i] = frame[0] if header.size_z == 1 else frame.reshape(
-                    header.size_y, header.size_x)
+                result[i] = (
+                    frame[0]
+                    if header.size_z == 1
+                    else frame.reshape(header.size_y, header.size_x)
+                )
             del frames
         else:
             raise ValueError(

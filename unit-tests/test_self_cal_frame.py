@@ -29,8 +29,8 @@ from pivtools_gui.calibration.stereo_model import compose_stereo
 # (z_offset mm, tilt_x rad, tilt_y rad) — zero, andre-scale, and an exaggerated case.
 SHEETS = [
     (0.0, 0.0, 0.0),
-    (0.104764, -0.00188162, -0.00036179),   # andre x25 implied OUR params
-    (-0.5, 0.012, -0.008),                   # exaggerated tilt
+    (0.104764, -0.00188162, -0.00036179),  # andre x25 implied OUR params
+    (-0.5, 0.012, -0.008),  # exaggerated tilt
 ]
 
 
@@ -86,13 +86,15 @@ def test_rebake_reconstruction_equivalence(z, tx, ty):
     model = _make_camera(rvec=(0.02, -0.015, 0.01), tvec=(5.0, -3.0, 300.0))
     R_corr, t_corr = plane_to_world_correction(z, tx, ty)
     R_new, t_new = rebake_pose(model.R, model.t, R_corr, t_corr)
-    rebaked = CameraModel(K=model.K, dist=model.dist, R=R_new, t=t_new,
-                          image_size=model.image_size)
+    rebaked = CameraModel(
+        K=model.K, dist=model.dist, R=R_new, t=t_new, image_size=model.image_size
+    )
 
-    px = np.array([[800, 700], [1700, 700], [1200, 1500], [600, 1400]],
-                  dtype=np.float64)
-    world_old = model.back_project_to_plane(px, z, tx, ty)         # on the sheet
-    world_new = rebaked.back_project_to_plane(px, 0.0, 0.0, 0.0)   # on new Z=0
+    px = np.array(
+        [[800, 700], [1700, 700], [1200, 1500], [600, 1400]], dtype=np.float64
+    )
+    world_old = model.back_project_to_plane(px, z, tx, ty)  # on the sheet
+    world_new = rebaked.back_project_to_plane(px, 0.0, 0.0, 0.0)  # on new Z=0
     world_new_in_old = (R_corr @ world_new.T).T + t_corr
     assert np.allclose(world_new_in_old, world_old, atol=1e-6)
 

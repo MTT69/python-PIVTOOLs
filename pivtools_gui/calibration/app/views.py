@@ -211,7 +211,10 @@ def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int
         return get_calibration_frame_count(int(camera), get_config(), int(source_idx))
     except Exception as exc:
         logger.warning(
-            "frame-count auto-detect failed for cam %s source %s: %s", camera, source_idx, exc
+            "frame-count auto-detect failed for cam %s source %s: %s",
+            camera,
+            source_idx,
+            exc,
         )
         return 0
 
@@ -274,9 +277,7 @@ def _list_figures(fig_dir) -> List[str]:
     if not fig_dir or not Path(fig_dir).is_dir():
         return []
     # Skip macOS AppleDouble companions (._*) that appear when writing to non-HFS drives.
-    names = [
-        p.name for p in Path(fig_dir).glob("*.png") if not p.name.startswith("._")
-    ]
+    names = [p.name for p in Path(fig_dir).glob("*.png") if not p.name.startswith("._")]
     # Rank by figure kind (dewarp first), alphabetical within a kind. Filenames are unchanged —
     # the /calibration/figure?name= serve endpoint still resolves each by basename.
     return sorted(names, key=lambda n: (_figure_rank(n), n))
@@ -308,7 +309,8 @@ def _world_frame_payload(wf) -> dict:
 def _geometry_payload(board_meta) -> Optional[dict]:
     """The stamped board geometry (``board_meta['geometry']``) coerced to JSON-native scalars —
     Flask jsonify rejects numpy types, and the .mat round-trip can return size-1 numpy scalars.
-    None for records saved before geometry stamping, so the GUI falls back to its panel defaults."""
+    None for records saved before geometry stamping, so the GUI falls back to its panel defaults.
+    """
     g = board_meta.get("geometry") if isinstance(board_meta, dict) else None
     if not isinstance(g, dict):
         return None
@@ -321,7 +323,8 @@ def _geometry_payload(board_meta) -> Optional[dict]:
 def _inputs_world_frame(model_dir) -> Optional[dict]:
     """World-frame picks recovered from the model dir's ``inputs.mat`` (the clicks survive a
     model delete), shaped like ``_world_frame_payload`` so the GUI restores origin/+X/+Y and a
-    deleted model can be re-solved without re-clicking. None when no usable clicks are stored."""
+    deleted model can be re-solved without re-clicking. None when no usable clicks are stored.
+    """
     try:
         side = try_load_inputs(model_dir)
     except Exception:
@@ -393,7 +396,9 @@ def _polynomial3d_summary(pm: Polynomial3DModel) -> dict:
     }
 
 
-def _scale_factor_summary(sf: ScaleFactorModel, dt: float, frame_idx=None, wf=None) -> dict:
+def _scale_factor_summary(
+    sf: ScaleFactorModel, dt: float, frame_idx=None, wf=None
+) -> dict:
     """Scale-factor params shaped for the GUI results card + restore-on-load.
 
     ``frame_idx`` (the 1-based frame the origin was picked on), when known, lets the GUI
@@ -405,7 +410,9 @@ def _scale_factor_summary(sf: ScaleFactorModel, dt: float, frame_idx=None, wf=No
     shifting it). The GUI restores what the user picked/typed, so prefer wf.
     """
     px_per_mm = (1.0 / sf.mm_per_pixel) if sf.mm_per_pixel else float("nan")
-    picked = wf.origin_px if (wf is not None and wf.origin_px is not None) else sf.origin_px
+    picked = (
+        wf.origin_px if (wf is not None and wf.origin_px is not None) else sf.origin_px
+    )
     origin_mm = (
         [float(wf.origin_mm[0]), float(wf.origin_mm[1])]
         if (wf is not None and wf.origin_mm is not None)
@@ -852,7 +859,9 @@ def generate_model():
             # (so a deleted-model re-solve rebuilds the shared frame without re-clicking).
             clicks_payload = data.get("clicks") or (side.coords if side else None)
             sc = StereoCalibrator(
-                detector=detector, board_type=board, distortion_model=_MODEL,
+                detector=detector,
+                board_type=board,
+                distortion_model=_MODEL,
                 fix_k2=bool(data.get("fix_k2", False)),
             )
             record = sc.run_stereo(
@@ -1112,8 +1121,11 @@ def scale_factor_generate():
             "model_path": str(path),
             "camera": camera,
         }
-        resp.update(_scale_factor_summary(
-            record.camera_model, dt, frame_idx=frame_idx, wf=record.world_frame))
+        resp.update(
+            _scale_factor_summary(
+                record.camera_model, dt, frame_idx=frame_idx, wf=record.world_frame
+            )
+        )
         resp["figures"] = _list_figures(fig_dir) if make_figs else []
         return jsonify(resp)
     except Exception as exc:
@@ -1141,9 +1153,7 @@ def load_model():
             r = rec.load_stereo(mpath)
         except FileNotFoundError:
             return (
-                jsonify(
-                    {"exists": False, "world_frame": _inputs_world_frame(mdir)}
-                ),
+                jsonify({"exists": False, "world_frame": _inputs_world_frame(mdir)}),
                 200,
             )
         except ValueError as exc:  # several types saved, none requested
@@ -1156,9 +1166,7 @@ def load_model():
             "model_path": str(mpath),
             "per_view_rms1": list(r.per_view_rms1),
             "per_view_rms2": list(r.per_view_rms2),
-            "num_pairs_used": r.board_meta.get(
-                "n_stereo_views", len(r.per_view_rms1)
-            ),
+            "num_pairs_used": r.board_meta.get("n_stereo_views", len(r.per_view_rms1)),
             "world_frame_mode": r.world_frame.mode,
             "world_frame": _world_frame_payload(r.world_frame),
             "image_width": int(r.model1.image_size[0]),
@@ -1200,14 +1208,14 @@ def load_model():
                         if r.board_meta.get("relative_angle_deg") is not None
                         else float(
                             np.degrees(
-                                np.arccos(np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1))
+                                np.arccos(
+                                    np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1)
+                                )
                             )
                         )
                     ),
                     "baseline_mm": float(np.linalg.norm(r.T_stereo)),
-                    "stereo_rms_px": _finite_or_none(
-                        r.board_meta.get("stereo_rms_px")
-                    ),
+                    "stereo_rms_px": _finite_or_none(r.board_meta.get("stereo_rms_px")),
                     "method": r.board_meta.get("stereo_method"),
                 }
             )
@@ -1572,7 +1580,9 @@ def calibration_set_datum():
                 404,
             )
 
-        mat = scipy.io.loadmat(str(coords_path), struct_as_record=False, squeeze_me=True)
+        mat = scipy.io.loadmat(
+            str(coords_path), struct_as_record=False, squeeze_me=True
+        )
         if "coordinates" not in mat:
             return (
                 jsonify(

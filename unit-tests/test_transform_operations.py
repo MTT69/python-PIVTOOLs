@@ -32,10 +32,10 @@ from pivtools_gui.transforms.transform_operations import (
     validate_transformations,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helper: create a mock piv_result with known velocity + stress fields
 # ---------------------------------------------------------------------------
+
 
 def _make_piv_result(shape=(4, 6), ux_val=1.0, uy_val=2.0, with_stresses=False):
     """Create a SimpleNamespace mimicking a piv_result struct."""
@@ -135,34 +135,26 @@ class TestSimplifyTransformations:
 
     def test_scale_velocity_accumulates(self):
         """scale_velocity:2 + scale_velocity:3 = scale_velocity:6."""
-        result = simplify_transformations(
-            ["scale_velocity:2", "scale_velocity:3"]
-        )
+        result = simplify_transformations(["scale_velocity:2", "scale_velocity:3"])
         assert len(result) == 1
         assert result[0].startswith("scale_velocity:")
         assert abs(float(result[0].split(":")[1]) - 6.0) < 1e-10
 
     def test_scale_velocity_inverse_cancels(self):
         """scale_velocity:2 + scale_velocity:0.5 = identity."""
-        result = simplify_transformations(
-            ["scale_velocity:2", "scale_velocity:0.5"]
-        )
+        result = simplify_transformations(["scale_velocity:2", "scale_velocity:0.5"])
         assert result == []
 
     def test_scale_coords_accumulates(self):
         """scale_coords:1000 + scale_coords:0.001 = identity."""
-        result = simplify_transformations(
-            ["scale_coords:1000", "scale_coords:0.001"]
-        )
+        result = simplify_transformations(["scale_coords:1000", "scale_coords:0.001"])
         assert result == []
 
     # --- Non-adjacent cancellation ---
 
     def test_non_adjacent_rotation_cancels(self):
         """rotate_90_cw, flip_ud, rotate_90_ccw → flip_ud only."""
-        result = simplify_transformations(
-            ["rotate_90_cw", "flip_ud", "rotate_90_ccw"]
-        )
+        result = simplify_transformations(["rotate_90_cw", "flip_ud", "rotate_90_ccw"])
         assert "flip_ud" in result
         assert not any("rotate" in r for r in result)
 

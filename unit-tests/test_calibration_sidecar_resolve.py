@@ -18,12 +18,12 @@ from __future__ import annotations
 import numpy as np
 
 from pivtools_core.image_handling.path_utils import infer_image_type
+from pivtools_gui.calibration import inputs_store as INP
+from pivtools_gui.calibration import record as REC
 from pivtools_gui.calibration.detection.base import DetectionResult
 from pivtools_gui.calibration.detection.charuco import CharucoParams
 from pivtools_gui.calibration.detection.dotboard import DotboardParams
 from pivtools_gui.calibration.pipeline import Calibrator
-from pivtools_gui.calibration import inputs_store as INP
-from pivtools_gui.calibration import record as REC
 
 DOT_COLS, DOT_ROWS, SPACING_MM = 15, 12, 14.0
 
@@ -77,6 +77,7 @@ def _clicks_from_detection(det):
 # det_key parity (Phase A)
 # ---------------------------------------------------------------------------
 
+
 def test_det_key_parity_infer_image_type():
     """CLI and GUI now both key on infer_image_type(format), so the same dataset -> same key
     regardless of a request/config image_type that disagrees with the file extension."""
@@ -93,6 +94,7 @@ def test_det_key_parity_infer_image_type():
 # ---------------------------------------------------------------------------
 # inputs.mat round-trip + image-free re-solve (Phases B/E)
 # ---------------------------------------------------------------------------
+
 
 def test_inputs_roundtrip_detections_coords_geometry(tmp_path):
     """Detections, clicked coords, and board geometry survive the inputs.mat round-trip."""
@@ -152,7 +154,9 @@ def _resolve_pair(model_type, n_views, clicks):
             detections={1: dets},
             image_size_by_cam={1: size},
             det_key="k",
-            board_params=REC.geometry_meta("dotboard", DotboardParams(dot_spacing_mm=SPACING_MM)),
+            board_params=REC.geometry_meta(
+                "dotboard", DotboardParams(dot_spacing_mm=SPACING_MM)
+            ),
             coords=clicks,
         )
         side = INP.load_inputs(Path(d))
@@ -193,6 +197,7 @@ def test_pinhole_resolve_from_sidecar_matches():
 # Geometry stamped into the model record (Phase 1 carry-over, re-checked here)
 # ---------------------------------------------------------------------------
 
+
 def test_run_mono_stamps_geometry_when_detector_has_params(tmp_path):
     """A detector carrying params stamps board geometry into the record's board_meta."""
 
@@ -214,4 +219,6 @@ def test_run_mono_stamps_geometry_when_detector_has_params(tmp_path):
         detections=[det],
     )
     geo = record.board_meta.get("geometry")
-    assert geo and geo["dot_spacing_mm"] == SPACING_MM and geo["board_type"] == "dotboard"
+    assert (
+        geo and geo["dot_spacing_mm"] == SPACING_MM and geo["board_type"] == "dotboard"
+    )

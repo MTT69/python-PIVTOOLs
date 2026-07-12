@@ -28,7 +28,12 @@ def _make_source(tmp_path, cams=(1, 2)):
     source = tmp_path / "calib"
     for cam in cams:
         recd = build_scale_factor_record(
-            camera=cam, origin_px=(0.0, 0.0), px_per_mm=10.0, image_size=(100, 100), dt=1.0)
+            camera=cam,
+            origin_px=(0.0, 0.0),
+            px_per_mm=10.0,
+            image_size=(100, 100),
+            dt=1.0,
+        )
         REC.save_mono(recd, REC.mono_model_dir_for_source(source, cam, "scale_factor"))
     return source
 
@@ -40,11 +45,17 @@ def test_mono_all_paths_two_by_two(tmp_path):
 
     assert len(units) == 4
     assert sorted(u["label"] for u in units) == [
-        "runA/Cam1", "runA/Cam2", "runB/Cam1", "runB/Cam2"]
+        "runA/Cam1",
+        "runA/Cam2",
+        "runB/Cam1",
+        "runB/Cam2",
+    ]
     for u in units:
         assert u["stereo"] is False
         assert "uncalibrated_piv" in str(u["uncal"])
-        assert "/calibrated_piv/" in str(u["out"]) and "uncalibrated" not in str(u["out"])
+        assert "/calibrated_piv/" in str(u["out"]) and "uncalibrated" not in str(
+            u["out"]
+        )
         assert u["record"].camera_model.model_type == "scale_factor"
 
 
@@ -52,7 +63,8 @@ def test_active_paths_subset(tmp_path):
     source = _make_source(tmp_path)
     cfg = _FakeCfg([tmp_path / "runA", tmp_path / "runB"], [1, 2], 10)
     units = runio.plan_apply_units(
-        cfg, source, "scale_factor", False, "instantaneous", active_paths=[1])
+        cfg, source, "scale_factor", False, "instantaneous", active_paths=[1]
+    )
     assert len(units) == 2
     assert all("runB" in u["label"] for u in units)
 
@@ -61,8 +73,14 @@ def test_explicit_single_unit_override(tmp_path):
     source = _make_source(tmp_path)
     cfg = _FakeCfg([tmp_path / "runA", tmp_path / "runB"], [1, 2], 10)
     units = runio.plan_apply_units(
-        cfg, source, "scale_factor", False, "instantaneous",
-        camera=1, explicit={"uncal": tmp_path / "u", "out": tmp_path / "o"})
+        cfg,
+        source,
+        "scale_factor",
+        False,
+        "instantaneous",
+        camera=1,
+        explicit={"uncal": tmp_path / "u", "out": tmp_path / "o"},
+    )
     assert len(units) == 1
     u = units[0]
     assert u["label"] == "manual"

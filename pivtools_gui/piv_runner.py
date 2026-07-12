@@ -5,15 +5,15 @@ This module allows Flask to spawn PIV computations as separate subprocesses,
 avoiding GIL limitations and keeping the server responsive while maintaining
 full access to computational resources.
 """
-import json
+
+import os
 import subprocess
 import sys
 import threading
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import os
+
 from loguru import logger
 
 
@@ -63,9 +63,7 @@ class PIVProcess:
     def get_status(self) -> dict:
         """Get current status information."""
         is_running = self.is_running()
-        elapsed = (
-            (self.end_time or datetime.now()) - self.start_time
-        ).total_seconds()
+        elapsed = ((self.end_time or datetime.now()) - self.start_time).total_seconds()
 
         # Try to read recent log lines
         log_tail = []
@@ -160,11 +158,11 @@ class PIVRunner:
 
         # Set up environment with PYTHONPATH to allow imports
         env = os.environ.copy()
-        env['PYTHONPATH'] = str(self.project_root)
+        env["PYTHONPATH"] = str(self.project_root)
 
         # Pass active paths via environment variable if specified
         if active_paths is not None:
-            env['PIV_ACTIVE_PATHS'] = ','.join(str(i) for i in active_paths)
+            env["PIV_ACTIVE_PATHS"] = ",".join(str(i) for i in active_paths)
             logger.info(f"Setting PIV_ACTIVE_PATHS={env['PIV_ACTIVE_PATHS']}")
 
         try:
@@ -233,9 +231,7 @@ class PIVRunner:
         """Remove finished jobs from tracking, keeping only recent ones."""
         with self._lock:
             finished = [
-                (jid, p)
-                for jid, p in self.active_jobs.items()
-                if not p.is_running()
+                (jid, p) for jid, p in self.active_jobs.items() if not p.is_running()
             ]
             # Sort by end time
             finished.sort(key=lambda x: x[1].end_time or datetime.min, reverse=True)
@@ -248,7 +244,9 @@ class PIVRunner:
 _runner: Optional[PIVRunner] = None
 
 
-def get_runner(project_root: Optional[Path] = None, config_dir: Optional[Path] = None) -> PIVRunner:
+def get_runner(
+    project_root: Optional[Path] = None, config_dir: Optional[Path] = None
+) -> PIVRunner:
     """Get or create the global PIV runner instance."""
     global _runner
     if _runner is None:

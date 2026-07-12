@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 from loguru import logger
 
-
 # Standard ArUco dictionaries mapping — used by both planar and stereo ChArUco
 ARUCO_DICT_MAP = {
     "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
@@ -51,7 +50,7 @@ def is_container_format(config, file_pattern: str) -> bool:
     pattern_lower = file_pattern.lower()
     if "%" in file_pattern:
         return False
-    return '.set' in pattern_lower or '.cine' in pattern_lower
+    return ".set" in pattern_lower or ".cine" in pattern_lower
 
 
 def read_calibration_image_with_fallback(
@@ -94,6 +93,7 @@ def read_calibration_image_with_fallback(
         from pivtools_core.image_handling.calibration_loader import (
             read_calibration_image as core_read_calibration_image,
         )
+
         try:
             img = core_read_calibration_image(
                 idx=img_index,
@@ -104,7 +104,9 @@ def read_calibration_image_with_fallback(
             )
             if img is not None and img.ndim == 3:
                 img = img[0]  # Extract single frame if needed
-            logger.info(f"Read image {img_index} shape: {img.shape}, dtype: {img.dtype}")
+            logger.info(
+                f"Read image {img_index} shape: {img.shape}, dtype: {img.dtype}"
+            )
             return img
         except (FileNotFoundError, ValueError) as e:
             logger.warning(f"Error reading image {img_index}: {e}")
@@ -114,7 +116,9 @@ def read_calibration_image_with_fallback(
             return None
 
     # Fallback: direct reading for CLI mode without config
-    return read_calibration_image_direct(img_path, camera, img_index, file_pattern, config)
+    return read_calibration_image_direct(
+        img_path, camera, img_index, file_pattern, config
+    )
 
 
 def read_calibration_image_direct(
@@ -136,15 +140,20 @@ def read_calibration_image_direct(
         container = is_container_format(config, file_pattern)
 
         if container:
-            if '.set' in img_path_lower:
+            if ".set" in img_path_lower:
                 img = read_image(str(img_path), camera_no=camera, im_no=img_index)
-            elif '.cine' in img_path_lower:
-                from pivtools_core.image_handling.readers.cine_reader import read_cine_single
+            elif ".cine" in img_path_lower:
+                from pivtools_core.image_handling.readers.cine_reader import (
+                    read_cine_single,
+                )
+
                 img = read_cine_single(str(img_path), idx=img_index)
             else:
                 img = read_image(str(img_path))
-        elif '.im7' in img_path_lower:
-            img = read_image(str(img_path), camera_no=camera, frames=1, frames_per_camera=1)
+        elif ".im7" in img_path_lower:
+            img = read_image(
+                str(img_path), camera_no=camera, frames=1, frames_per_camera=1
+            )
         else:
             img = read_image(str(img_path))
 
@@ -246,8 +255,13 @@ def get_camera_input_dir(
         return calibration_input_path
 
     if config is not None:
-        from pivtools_core.image_handling.path_utils import build_calibration_camera_path
-        return build_calibration_camera_path(config, source_path_idx=source_path_idx, camera=cam_num)
+        from pivtools_core.image_handling.path_utils import (
+            build_calibration_camera_path,
+        )
+
+        return build_calibration_camera_path(
+            config, source_path_idx=source_path_idx, camera=cam_num
+        )
 
     return source_dir
 

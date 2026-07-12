@@ -5,10 +5,10 @@ Provides consistent multi-path + multi-camera iteration patterns
 following the PIV processing convention: paths outer, cameras inner.
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Any, List, Optional
-import logging
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ class BatchTarget:
         camera: Camera number (1-based), or None for merged data
         is_merged: True if this target represents merged data
     """
+
     path_idx: int
     base_path: Path
     source_path: Optional[Path] = None
@@ -106,34 +107,42 @@ def iter_batch_targets(
 
         # For stereo calibration, process camera pair once per path
         if single_camera_pair:
-            targets.append(BatchTarget(
-                path_idx=path_idx,
-                base_path=base_path,
-                source_path=source_path,
-                camera=None,  # Pair processed together
-                is_merged=False
-            ))
+            targets.append(
+                BatchTarget(
+                    path_idx=path_idx,
+                    base_path=base_path,
+                    source_path=source_path,
+                    camera=None,  # Pair processed together
+                    is_merged=False,
+                )
+            )
             continue
 
         # Process individual cameras
         for camera in cameras:
-            targets.append(BatchTarget(
-                path_idx=path_idx,
-                base_path=base_path,
-                source_path=source_path,
-                camera=camera,
-                is_merged=False
-            ))
+            targets.append(
+                BatchTarget(
+                    path_idx=path_idx,
+                    base_path=base_path,
+                    source_path=source_path,
+                    camera=camera,
+                    is_merged=False,
+                )
+            )
 
         # Process merged data if requested
         if include_merged and len(cameras) > 1:
-            targets.append(BatchTarget(
-                path_idx=path_idx,
-                base_path=base_path,
-                source_path=source_path,
-                camera=cameras[0] if cameras else 1,  # Use first camera for path resolution
-                is_merged=True
-            ))
+            targets.append(
+                BatchTarget(
+                    path_idx=path_idx,
+                    base_path=base_path,
+                    source_path=source_path,
+                    camera=(
+                        cameras[0] if cameras else 1
+                    ),  # Use first camera for path resolution
+                    is_merged=True,
+                )
+            )
 
     return targets
 
@@ -141,7 +150,7 @@ def iter_batch_targets(
 def run_batch_with_progress(
     targets: List[BatchTarget],
     process_fn: Callable[[BatchTarget], Dict[str, Any]],
-    progress_callback: Optional[Callable[[int, int, str], None]] = None
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Execute batch processing with progress tracking.
@@ -170,11 +179,13 @@ def run_batch_with_progress(
             results.append(result)
         except Exception as e:
             logger.error(f"Failed to process {target.label}: {e}", exc_info=True)
-            results.append({
-                "target_label": target.label,
-                "success": False,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "target_label": target.label,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
 
     return results
 
