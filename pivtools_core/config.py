@@ -38,7 +38,7 @@ class Config:
     def __init__(self, path=None):
         if path is None:
             path = self._get_config_path()
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             self.data = yaml.safe_load(f)
         if self.data is None:
             self.data = {}
@@ -179,7 +179,7 @@ class Config:
         """
         self._normalize_calibration_block()
         tmp_path = str(self._config_path) + ".tmp"
-        with open(tmp_path, "w") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
         # Retry os.replace to handle transient locks from OneDrive/cloud sync
         for attempt in range(5):
@@ -223,7 +223,7 @@ class Config:
             shutil.copy2(self._config_path, dest_path)
         else:
             # Fallback: save current state if original file doesn't exist
-            with open(dest_path, "w") as f:
+            with open(dest_path, "w", encoding="utf-8") as f:
                 yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
 
         return dest_path
@@ -288,7 +288,7 @@ class Config:
             "calibration": self._paths_to_strings(filtered_cal),
         }
 
-        with open(snapshot_path, "w") as f:
+        with open(snapshot_path, "w", encoding="utf-8") as f:
             yaml.dump(snapshot, f, default_flow_style=False, sort_keys=False)
 
         return snapshot_path

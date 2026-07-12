@@ -824,7 +824,9 @@ transforms:
 
 """
 
-    with open(config_path, "w") as f:
+    # Explicit UTF-8: the template holds superscripts (e.g. r⁴) that Windows'
+    # default cp1252 codec cannot encode.
+    with open(config_path, "w", encoding="utf-8") as f:
         f.write(default_config.strip())
     print(f"Created default config.yaml at {config_path}")
 
