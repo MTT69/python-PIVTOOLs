@@ -52,7 +52,9 @@ for name in ("libbulkxcorr2d", "libfusedwarp"):
 from pivtools_core.config import Config  # noqa: E402
 
 orig_cwd = os.getcwd()
-with tempfile.TemporaryDirectory() as td:
+# ignore_cleanup_errors: Config() opens a pypiv.log handler inside the
+# tempdir, and Windows cannot delete a directory holding an open file.
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
     try:
         os.chdir(td)
         try:
