@@ -682,7 +682,7 @@ def run_ensemble_piv(
         if scattered_predictor is not None:
             del scattered_predictor
         gc.collect()
-        # NOTE: gc.collect on workers causes SIGSEGV with FFTW - removed
+        # NOTE: gc.collect on workers historically caused SIGSEGV (attributed to FFTW plan teardown; FFTW is gone and this is unverified against the codelet engine — guard retained)
 
         pass_elapsed = time.time() - pass_start
         logger.info(
@@ -872,7 +872,7 @@ def main():
                 logger.info(f"ENSEMBLE PIV COMPLETE: {result_path}")
                 logger.info("=" * 60)
 
-                # Clean up (local only - gc.collect on workers causes SIGSEGV with FFTW)
+                # Clean up (local only — gc.collect on workers historically caused SIGSEGV (attributed to FFTW plan teardown; FFTW is gone and this is unverified against the codelet engine — guard retained))
                 gc.collect()
 
     except Exception as e:

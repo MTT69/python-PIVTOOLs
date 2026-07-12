@@ -394,10 +394,11 @@ class BuildCLibraries(build):
 
         # --- Stage the OpenMP runtime for clang-cl ---
         # clang-cl's /openmp links libomp dynamically, so libomp.dll must sit
-        # beside the built DLLs (it ships via the *.dll package_data glob). The
-        # Python lib loaders call os.add_dll_directory(lib_dir) so the dependent
-        # DLL is found at load time. MSVC's /openmp:experimental needs no such
-        # redistributable.
+        # beside the built DLLs (it ships via the lib/*.dll package_data glob).
+        # The loaders CDLL the built DLLs by absolute path; Python >=3.8 default
+        # winmode searches the loaded DLL's own directory for dependents, so a
+        # libomp.dll beside them is found without os.add_dll_directory. MSVC's
+        # /openmp:experimental needs no such redistributable.
         if self.use_clang_cl:
             libomp = pathlib.Path(self.compiler).resolve().parent / "libomp.dll"
             if libomp.is_file():

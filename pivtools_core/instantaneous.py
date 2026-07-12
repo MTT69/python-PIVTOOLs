@@ -450,7 +450,7 @@ def main():
                 )
                 logger.info("=" * 60)
 
-                # Clean up (local only - gc.collect on workers causes SIGSEGV with FFTW)
+                # Clean up (local only — gc.collect on workers historically caused SIGSEGV (attributed to FFTW plan teardown; FFTW is gone and this is unverified against the codelet engine — guard retained))
                 gc.collect()
 
     except Exception as e:
