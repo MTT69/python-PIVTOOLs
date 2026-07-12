@@ -829,32 +829,52 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 
 /* CPU capability check for the wheel's ISA floor. The x86 wheels are built
  * with AVX2+FMA (Haswell 2013+ / Excavator+); arm64 NEON is architectural
- * baseline. clang/gcc: __builtin_cpu_supports (includes the OSXSAVE/XCR0
- * OS-support check). Plain MSVC cl builds still compile the FFT TUs and the
- * warp with /arch:AVX2, so cl gets an explicit CPUID+XGETBV check — it must
- * not just return 1. */
-#if defined(_M_X64) && defined(_MSC_VER) && !defined(__clang__)
-#include <intrin.h>
+ * baseline. Deliberately NOT __builtin_cpu_supports: that builtin drags in
+ * the libgcc/compiler-rt __cpu_model runtime (undefined symbol under
+ * clang-cl, and a shared-library init dependency on Linux). Explicit
+ * CPUID + XGETBV instructions have no runtime dependence at all. */
+#if defined(_M_X64)
+#include <intrin.h>              /* MSVC cl and clang-cl */
 #endif
 
 PEAK_EXPORT int pivtools_cpu_supported(void)
 {
-#if (defined(__x86_64__) || defined(_M_X64)) && (defined(__clang__) || defined(__GNUC__))
-	return __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
-#elif defined(_M_X64) && defined(_MSC_VER)
+#if defined(_M_X64) || defined(__x86_64__)
+	int eax1, ebx1, ecx1, edx1;      /* CPUID leaf 1 */
+	int ebx7;                        /* CPUID leaf 7.0 EBX */
+	unsigned int xlo, xhi;           /* XGETBV(0) = XCR0 */
+#if defined(_M_X64)
 	int info[4];
 	unsigned long long xcr0;
 	__cpuid(info, 1);
-	if (!(info[2] & (1 << 12)))          /* FMA */
+	ecx1 = info[2];
+	(void)eax1; (void)ebx1; (void)edx1;
+	if (!(ecx1 & (1 << 12)))         /* FMA */
 		return 0;
-	if (!(info[2] & (1 << 27)))          /* OSXSAVE: XGETBV usable */
+	if (!(ecx1 & (1 << 27)))         /* OSXSAVE: XGETBV usable */
 		return 0;
 	xcr0 = _xgetbv(0);
-	if ((xcr0 & 0x6) != 0x6)             /* OS saves XMM+YMM state */
+	if ((xcr0 & 0x6) != 0x6)         /* OS saves XMM+YMM state */
 		return 0;
 	__cpuidex(info, 7, 0);
-	return (info[1] & (1 << 5)) != 0;    /* AVX2 */
+	ebx7 = info[1];
 #else
-	return 1;                            /* arm64: NEON is baseline */
+	__asm__ volatile("cpuid"
+	                 : "=a"(eax1), "=b"(ebx1), "=c"(ecx1), "=d"(edx1)
+	                 : "a"(1), "c"(0));
+	if (!(ecx1 & (1 << 12)))         /* FMA */
+		return 0;
+	if (!(ecx1 & (1 << 27)))         /* OSXSAVE: XGETBV usable */
+		return 0;
+	__asm__ volatile("xgetbv" : "=a"(xlo), "=d"(xhi) : "c"(0));
+	if ((xlo & 0x6) != 0x6)          /* OS saves XMM+YMM state */
+		return 0;
+	__asm__ volatile("cpuid"
+	                 : "=a"(eax1), "=b"(ebx7), "=c"(ecx1), "=d"(edx1)
+	                 : "a"(7), "c"(0));
+#endif
+	return (ebx7 & (1 << 5)) != 0;   /* AVX2 */
+#else
+	return 1;                        /* arm64: NEON is baseline */
 #endif
 }

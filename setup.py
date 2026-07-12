@@ -127,6 +127,13 @@ class BuildCLibraries(build):
             self.extra_link = [
                 "-lm",
                 "-fopenmp",
+                # No crti/crtn startup stubs: pure-C libs with no constructors
+                # don't need .init/.fini, and patchelf (auditwheel wheel
+                # repair, 0.17.2 AND 0.18.0) corrupts this lib when they
+                # exist — it relocates the leading .init section to grow the
+                # headers but leaves DT_INIT pointing at the old address,
+                # so dlopen SIGSEGVs at "calling init". No DT_INIT, no bug.
+                "-nostartfiles",
             ]
 
             lib_ext = ".so"

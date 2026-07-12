@@ -57,7 +57,10 @@ jobs:
           # manylinux2014 has no usable clang and setup.py requires one.
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           # mesa-libGL/glib2/libxcb are cv2 runtime deps needed by the smoke
-          # test (opencv-python wheels don't bundle them).
+          # test (opencv-python wheels don't bundle them). Note: the libs are
+          # linked -nostartfiles on Linux (setup.py) because patchelf —
+          # which auditwheel repair runs — corrupts DT_INIT when a .init
+          # section exists (verified with 0.17.2 and 0.18.0).
           CIBW_BEFORE_ALL_LINUX: "dnf install -y clang libomp-devel mesa-libGL glib2 libxcb"
           # Portable arch flags — local dev builds stay `native`, wheels must
           # not bake the runner's CPU. x86 floor: AVX2+FMA (enforced at load
