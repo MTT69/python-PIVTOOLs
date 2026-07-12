@@ -2092,30 +2092,14 @@ def serve_react_app(path):
 
 def ensure_config_exists():
     """Ensure config.yaml exists in the current directory, create if not."""
-    import shutil
-
-    cwd = Path.cwd()
-    config_path = cwd / "config.yaml"
+    config_path = Path.cwd() / "config.yaml"
 
     if config_path.exists():
         return  # Config already exists
 
-    # Try to copy from pivtools_core package
-    try:
-        import pivtools_core
+    from pivtools_cli.cli import create_default_config
 
-        default_config = Path(pivtools_core.__file__).parent / "config.yaml"
-
-        if default_config.exists():
-            shutil.copy2(default_config, config_path)
-            print(f"Created config.yaml at {config_path}")
-        else:
-            print(f"Warning: Default config not found at {default_config}")
-            print("Run 'pivtools-cli init' to create a config file")
-    except ImportError:
-        print(
-            "Warning: pivtools_core not found. Run 'pivtools-cli init' to create a config file"
-        )
+    create_default_config(config_path)
 
 
 def main():

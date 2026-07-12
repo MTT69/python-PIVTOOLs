@@ -20,7 +20,6 @@ Commands:
 
 import argparse
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -556,22 +555,7 @@ def init_command(args):
         else:
             print("Overwriting existing config.yaml")
 
-    # Get the default config from package
-    try:
-        import pivtools_core
-
-        default_config = Path(pivtools_core.__file__).parent / "config.yaml"
-
-        if not default_config.exists():
-            # Fallback: create a basic config
-            create_default_config(config_path)
-        else:
-            shutil.copy2(default_config, config_path)
-            print(f"Created config.yaml at {config_path}")
-
-    except ImportError:
-        # Fallback if package not properly installed
-        create_default_config(config_path)
+    create_default_config(config_path)
 
     print("PIVTOOLs workspace initialized!")
     print(f"Edit {config_path} to configure your PIV analysis")
