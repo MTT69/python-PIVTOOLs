@@ -13,7 +13,10 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-          - os: macos-latest
+          # Pinned (not macos-latest): the wheel's macOS floor is set by the
+          # Homebrew libomp bottle that delocate bundles (minos == runner OS
+          # major), so a floating runner would silently move the floor.
+          - os: macos-15
           - os: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,40 +24,77 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: '3.12'
 
       - name: Install cibuildwheel
-        run: python -m pip install --upgrade cibuildwheel
+        run: python -m pip install --upgrade cibuildwheel wheel twine
 
-      - name: Set up MSVC
+      # Sets VSINSTALLDIR so setup.py resolves VS clang-cl (and stages the
+      # libomp.dll that sits beside it).
+      - name: Set up MSVC environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install GCC (macOS)
+      # setup.py hard-requires Homebrew LLVM clang on macOS (bundled OpenMP).
+      - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew update || brew update
-          brew install gcc@15
-          echo "GCC 15 version:"
-          gcc-15 --version
+          brew install llvm libomp
+          "$(brew --prefix llvm)/bin/clang" --version
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir dist
         env:
-          # Build for Python 3.12 and 3.13
-          CIBW_BUILD: "cp312-* cp313-* cp314-*"
-          # Skip 32-bit and musl builds
+          # The C libs are ctypes-loaded plain shared libraries (no Python.h),
+          # so wheels are ABI-independent: build cp312 once per platform and
+          # retag py3-none below.
+          CIBW_BUILD: "cp312-*"
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux*"
-          # Platform architectures (static FFTW/GSL bundled for each)
           CIBW_ARCHS_MACOS: "arm64"
           CIBW_ARCHS_LINUX: "x86_64"
           CIBW_ARCHS_WINDOWS: "AMD64"
-          # Use manylinux2014 for broader compatibility
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
-          # Minimum macOS version (Sequoia) - required for Homebrew GCC's libgomp
+          # manylinux_2_28 (AlmaLinux 8): clang + libomp-devel are in AppStream;
+          # manylinux2014 has no usable clang and setup.py requires one.
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          # mesa-libGL/glib2/libxcb are cv2 runtime deps needed by the smoke
+          # test (opencv-python wheels don't bundle them).
+          CIBW_BEFORE_ALL_LINUX: "dnf install -y clang libomp-devel mesa-libGL glib2 libxcb"
+          # Portable arch flags — local dev builds stay `native`, wheels must
+          # not bake the runner's CPU. x86 floor: AVX2+FMA (enforced at load
+          # time by pivtools_cpu_supported); mac floor: any Apple Silicon.
+          CIBW_ENVIRONMENT_LINUX: 'PIVTOOLS_WARP_MARCH="-mavx2 -mfma"'
+          CIBW_ENVIRONMENT_MACOS: 'PIVTOOLS_FFT_MARCH="-mcpu=apple-m1" PIVTOOLS_WARP_MARCH="-mcpu=apple-m1"'
+          CIBW_ENVIRONMENT_WINDOWS: 'PIVTOOLS_WARP_MARCH="/clang:-O3 /arch:AVX2"'
+          # Floor set by the Homebrew libomp bottle delocate bundles (its
+          # LC_BUILD_VERSION minos == 15.0), not by the toolchain.
           MACOSX_DEPLOYMENT_TARGET: "15.0"
+          # Real smoke: imports, ctypes loads of both shipped libs, ISA check,
+          # Config fail-loud + init round-trip. Runs outside the project dir.
+          CIBW_TEST_COMMAND: python "{project}/unit-tests/wheel_smoke.py"
           CIBW_BUILD_VERBOSITY: 1
+
+      # No wheel content is Python-ABI-specific — serve every Python >=3.12
+      # from one wheel per platform.
+      - name: Retag wheels py3-none
+        shell: bash
+        run: |
+          for whl in dist/*-cp312-cp312-*.whl; do
+            python -m wheel tags --python-tag py3 --abi-tag none --remove "$whl"
+          done
+          ls -l dist/
+
+      - name: Check metadata
+        shell: bash
+        run: python -m twine check dist/*.whl
+
+      - name: Verify no build-host rpaths (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p /tmp/wcheck && unzip -o dist/*.whl 'pivtools_cli/lib/*' -d /tmp/wcheck
+          otool -L /tmp/wcheck/pivtools_cli/lib/*.so
+          if otool -l /tmp/wcheck/pivtools_cli/lib/*.so | grep -q '/opt/homebrew'; then
+            echo "ERROR: repaired wheel still references /opt/homebrew" && exit 1
+          fi
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -72,9 +112,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - run: python -m pip install build
+      - run: python -m pip install build twine
 
       - run: python -m build --sdist --outdir dist
+
+      - run: python -m twine check dist/*
+
+      # Prove the sdist compiles from source in a clean env (this is what
+      # "clone from GitHub / pip install pivtools --no-binary" users get).
+      - name: Install sdist from source
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang libomp-dev libgl1 libglib2.0-0 libxcb1
+          python -m venv /tmp/sdist-venv
+          /tmp/sdist-venv/bin/pip install dist/*.tar.gz
+          cd "$RUNNER_TEMP"
+          /tmp/sdist-venv/bin/python "$GITHUB_WORKSPACE/unit-tests/wheel_smoke.py"
 
       - uses: actions/upload-artifact@v4
         with:
