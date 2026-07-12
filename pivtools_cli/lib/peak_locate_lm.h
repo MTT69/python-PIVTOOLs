@@ -33,4 +33,9 @@
  * converge (since 2026-07-06). A finite result is a trustworthy fit. */
 PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev);
 
+/* Returns 1 if this CPU can run the SIMD kernels this binary was built with.
+ * Lives in the scalar TU (compiled with no arch flags on every platform) so
+ * calling it is always safe, even on a CPU below the wheel's ISA floor. */
+PEAK_EXPORT int pivtools_cpu_supported(void);
+
 #endif

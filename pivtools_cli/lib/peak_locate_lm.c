@@ -826,3 +826,16 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 
 	if(xcorr_copy) free(xcorr_copy);
 }
+
+/* CPU capability check for the wheel's ISA floor. The x86 wheels are built
+ * with AVX2+FMA (Haswell 2013+ / Excavator+); arm64 NEON is architectural
+ * baseline. Plain MSVC cl lacks __builtin_cpu_supports, but under cl the
+ * SIMD batch fitter compiles as a stub anyway, so 1 is honest there. */
+PEAK_EXPORT int pivtools_cpu_supported(void)
+{
+#if (defined(__x86_64__) || defined(_M_X64)) && (defined(__clang__) || defined(__GNUC__))
+	return __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
+#else
+	return 1;
+#endif
+}

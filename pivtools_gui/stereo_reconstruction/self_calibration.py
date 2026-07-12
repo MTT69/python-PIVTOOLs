@@ -341,6 +341,13 @@ def _load_xcorr_library():
         raise FileNotFoundError(f"Cross-correlation library not found: {lib_path}")
 
     lib = ctypes.CDLL(lib_path)
+    # hasattr guard: locally built libs may predate the CPU-check symbol
+    if hasattr(lib, "pivtools_cpu_supported") and not lib.pivtools_cpu_supported():
+        raise RuntimeError(
+            "pivtools binary wheels require AVX2+FMA (Intel Haswell 2013+ / "
+            "AMD Excavator+) and this CPU lacks them. Install from source "
+            "instead: pip install --no-binary pivtools pivtools"
+        )
 
     lib.bulkxcorr2d_accumulate.restype = ctypes.c_ubyte
     lib.bulkxcorr2d_accumulate.argtypes = [

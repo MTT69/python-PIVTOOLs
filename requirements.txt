@@ -1,27 +1,4 @@
-dask[distributed]==2025.7.0
-dask-image==2024.5.3
-Flask==3.1.1
-flask-cors==6.0.1
-flask-compress>=1.15
-imagecodecs
-imageio-ffmpeg>=0.5.0
-loguru==0.7.3
-matplotlib==3.10.5
-numba==0.61.2
-numpy==2.2.6
-opencv-python==4.12.0.88
-pandas==2.3.1
-pillow==11.3.0
-psutil==6.1.1
-pytest==8.4.2
-PyYAML==6.0.2
-rawpy==0.25.1
-scikit-image==0.25.2
-scipy==1.16.1
-tifffile==2025.6.11
-tqdm==4.67.1
-bottleneck==1.6.0
-cinereader
-scikit-learn==1.7.2
-threadpoolctl==3.6.0
-bokeh==3.8.2
+# Development environment install. pyproject.toml is the authoritative
+# dependency specification — this file just installs the package editable
+# with the optional extras a dev machine needs.
+-e .[cine,dev]

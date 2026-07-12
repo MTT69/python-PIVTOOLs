@@ -73,3 +73,7 @@ paper_submission/
 
 # Claude worktrees
 .claude/worktrees/
+
+# Packaging artifacts
+dist/
+.ruff_cache/

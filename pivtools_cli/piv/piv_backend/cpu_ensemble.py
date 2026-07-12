@@ -311,6 +311,16 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             )
 
         cls._lib_corr = ctypes.CDLL(lib_path)
+        # hasattr guard: locally built libs may predate the CPU-check symbol
+        if (
+            hasattr(cls._lib_corr, "pivtools_cpu_supported")
+            and not cls._lib_corr.pivtools_cpu_supported()
+        ):
+            raise RuntimeError(
+                "pivtools binary wheels require AVX2+FMA (Intel Haswell 2013+ / "
+                "AMD Excavator+) and this CPU lacks them. Install from source "
+                "instead: pip install --no-binary pivtools pivtools"
+            )
 
         # Load fused warp library (required)
         fw_path = os.path.join(

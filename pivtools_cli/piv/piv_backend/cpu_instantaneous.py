@@ -53,6 +53,16 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         if not os.path.isfile(lib_path):
             raise FileNotFoundError(f"Required library file not found: {lib_path}")
         self.lib = ctypes.CDLL(lib_path)
+        # hasattr guard: locally built libs may predate the CPU-check symbol
+        if (
+            hasattr(self.lib, "pivtools_cpu_supported")
+            and not self.lib.pivtools_cpu_supported()
+        ):
+            raise RuntimeError(
+                "pivtools binary wheels require AVX2+FMA (Intel Haswell 2013+ / "
+                "AMD Excavator+) and this CPU lacks them. Install from source "
+                "instead: pip install --no-binary pivtools pivtools"
+            )
 
         # Load fused warp library (required)
         fw_path = os.path.join(
@@ -843,7 +853,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 if correl_plane_buf is not None:
                     del planes_view, dump_raw
                 del correl_plane_buf, correl_plane_out
-                # NOTE: gc.collect() was causing SIGSEGV during FFTW cleanup
+                # NOTE: gc.collect() here historically caused SIGSEGV (attributed to FFTW
+                # cleanup; FFTW is gone and this is unverified against the codelet
+                # engine — kept removed as a precaution)
                 # The explicit del statements above should be sufficient
 
         except Exception as exc:
