@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4\processed\time96_preproc
+  - E:\alk235\cam4_all_512_tiff\Cam4\processed\time96_peakheightedit
   source_paths:
   - E:\alk235\cam4_all_512_tiff\Cam4
   active_paths:
@@ -23,7 +23,7 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 2100
+  num_images: 20
   image_shape:
   - 3536
   - 512
@@ -37,16 +37,16 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 3
-  dask_workers_per_node: 5
+  omp_threads: 10
+  dask_workers_per_node: 1
   dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -85,7 +85,7 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: default
   lower: ''
   upper: ''
@@ -114,7 +114,7 @@ statistics:
     mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -280,12 +280,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

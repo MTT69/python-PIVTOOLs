@@ -20,6 +20,7 @@ DUMP_KEYS = (
     "pk_loc_x_raw",
     "pk_loc_y_raw",
     "pk_height_raw",
+    "pk_ratio_raw",
     "sx",
     "sy",
     "sxy",
@@ -73,6 +74,23 @@ class TestDumpPayload:
                     f"window ({j},{i}): plane argmax ({am_r},{am_c}) vs "
                     f"raw peak ({pk_r:.2f},{pk_c:.2f})"
                 )
+
+    def test_peak_ratio_channel(self, tmp_path, clean_pair):
+        """peak_ratio (PIVware peak1/peak2, 2026-07-13): per-window 2D, in
+        both PIVPassResult.peak_ratio and the dump; unmasked windows on a
+        clean displaced pair must have a dominant peak (ratio > 1) or 0 when
+        no second local max exists."""
+        pr = _run_with_dump(tmp_path, clean_pair).passes[0]
+        ny, nx = pr.ux_mat.shape
+        assert pr.peak_ratio is not None
+        assert pr.peak_ratio.shape == (ny, nx)
+        ratio = pr.debug_dump["pk_ratio_raw"]
+        assert ratio.shape == (ny, nx)
+        assert np.array_equal(ratio, pr.peak_ratio)
+        valid = ~pr.nan_mask
+        vals = ratio[valid]
+        assert np.all((vals == 0) | (vals >= 1.0)), "ratio must be 0 or >= 1"
+        assert (vals >= 1.0).any(), "expected at least one two-peak window"
 
     def test_masked_windows_dump_zero_planes(self, tmp_path, clean_pair):
         shape = _run_with_dump(tmp_path, clean_pair).passes[0].ux_mat.shape

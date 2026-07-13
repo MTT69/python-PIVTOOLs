@@ -149,6 +149,7 @@ def save_corr_plane_dump(
             "pk_loc_x_raw",
             "pk_loc_y_raw",
             "pk_height_raw",
+            "pk_ratio_raw",
             "sx",
             "sy",
             "sxy",
@@ -837,6 +838,7 @@ def _create_piv_struct_all_passes(
             ("win_ctrs_x", object),
             ("win_ctrs_y", object),
             ("peak_mag", object),
+            ("peak_ratio", object),
             ("peak_choice", object),
             ("n_windows", object),
             ("predictor_field", object),
@@ -909,6 +911,12 @@ def _create_piv_struct_all_passes(
         if pass_result.peak_mag is not None:
             piv_struct["peak_mag"][local_idx] = _convert_to_half_precision(
                 pass_result.peak_mag, "peak_mag"
+            )
+        # peak detectability (peak1/peak2, PIVware SNR type 2) — 2D per
+        # window, so readers auto-discover it as a plottable variable
+        if pass_result.peak_ratio is not None:
+            piv_struct["peak_ratio"][local_idx] = _convert_to_half_precision(
+                pass_result.peak_ratio, "peak_ratio"
             )
         if pass_result.peak_choice is not None:
             piv_struct["peak_choice"][local_idx] = (

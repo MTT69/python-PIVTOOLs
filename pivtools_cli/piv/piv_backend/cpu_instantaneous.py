@@ -146,6 +146,9 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(
                 dtype=np.float32, flags="C_CONTIGUOUS"
             ),  # fSxy (output)
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fPkRatio (output; per window, no n_peaks dim)
             ctypes.c_void_p,  # fCorrelPlane_Out (nullable - use c_void_p for instantaneous NULL)
         ]
         # Window weights should be C-contiguous with shape (win_height, win_width)
@@ -459,6 +462,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                         sx,
                         sy,
                         sxy,
+                        pk_ratio,
                         correl_plane_out,
                         correl_plane_buf,
                     ) = self._set_lib_arguments(
@@ -503,6 +507,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             sx,
                             sy,
                             sxy,
+                            pk_ratio,
                             correl_plane_out,
                         )
                     except Exception as e:
@@ -544,6 +549,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             "pk_loc_x_raw": pk_loc_x.copy(),
                             "pk_loc_y_raw": pk_loc_y.copy(),
                             "pk_height_raw": pk_height.copy(),
+                            "pk_ratio_raw": pk_ratio.copy(),
                             "sx": sx.copy(),
                             "sy": sy.copy(),
                             "sxy": sxy.copy(),
@@ -814,6 +820,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                             nan_mask=np.copy(nan_mask[im_idx]),
                             nan_reason=np.copy(nan_reason[im_idx]),
                             peak_mag=np.copy(pk_height[im_idx]),
+                            peak_ratio=np.copy(pk_ratio[im_idx]),
                             peak_choice=np.copy(peak_choice[im_idx]),
                             predictor_field=np.copy(self.delta_ab_pred[im_idx]),
                             b_mask=b_mask.reshape((n_win_y, n_win_x)).astype(bool),
@@ -1255,6 +1262,10 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
         sx = np.zeros(out_shape, dtype=np.float32)
         sy = np.zeros(out_shape, dtype=np.float32)
         sxy = np.zeros(out_shape, dtype=np.float32)
+        # Peak detectability (PIVware peak1/peak2, C peak_detectability):
+        # one value per window — no n_peaks dimension. Masked/skipped
+        # windows keep 0. Diagnostic channel only; never gated on.
+        pk_ratio = np.zeros((N, n_win_y, n_win_x), dtype=np.float32)
 
         # Correlation planes are only exported for the debug dump; the default
         # None maps to NULL via the c_void_p argtype and skips the memcpy in C.
@@ -1287,6 +1298,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
                 ("sx", sx),
                 ("sy", sy),
                 ("sxy", sxy),
+                ("pk_ratio", pk_ratio),
                 ("correl_plane_out", correl_plane_out),
             ]
             self._check_args(*args)
@@ -1304,6 +1316,7 @@ class InstantaneousCorrelatorCPU(CrossCorrelator):
             sx,
             sy,
             sxy,
+            pk_ratio,
             correl_plane_out,
             correl_plane_buf,
         )

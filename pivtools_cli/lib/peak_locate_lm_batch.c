@@ -30,8 +30,10 @@
  *   needed, and it holds ONLY while pred_cur feeds the Jacobian.
  *
  * NUMERICAL PARITY WITH THE SCALAR ORACLE:
- *   - JtJ/Jtr accumulate in double vectors; Cholesky solves in double;
- *     params/residual/pred/exp stay float (peak_locate_lm.c contract).
+ *   - JtJ/Jtr accumulate in double vectors; Cholesky solves in double; the
+ *     residual sum + improvement statistic are double too (2026-07-13, in
+ *     lockstep with the scalar file — see LM_STEP_MASKS); params/pred/exp
+ *     stay float (peak_locate_lm.c contract).
  *   - The trust rule, clamps, Marquardt schedule and tolerances are copied
  *     verbatim; the constants below MUST track peak_locate_lm.c.
  *   - exp is pk_vexpf (Cephes degree-5, max rel err 8.4e-8 measured); build
@@ -70,8 +72,8 @@ int peakfit_batch_lanes(void)     { return PK_LANES; }
 
 /* ── constants: MUST track peak_locate_lm.c ─────────────────────────────── */
 #define LM_ACCEPT_RESID_FRAC 1e-3f
-#define LM_MAX_ITER 20
-#define LM_TOL 1e-6f
+#define LM_MAX_ITER 50            /* was 20 — see 2026-07-13 note below */
+#define LM_TOL 1e-6               /* double, compared against a double improve */
 
 #define NSUB (PKSIZE_X * PKSIZE_Y)   /* 25 */
 
@@ -179,25 +181,27 @@ static inline float pix_j(int p) { return (float)(p % PKSIZE_Y - (PKSIZE_Y - 1) 
 
 /******************************************************************************
  * Residual / Jacobian passes per model. resid_* is the HOT path (every trial,
- * including rejects): float only, one pk_vexpf per pixel, writes pred_trial
- * unconditionally. jac_* is the COLD path (once per accepted step): reads the
- * pred cache (zero exp calls — Lever 2), accumulates double vectors.
- * Pixel order matches the scalar loops (row-major) so per-lane float
- * accumulation order is identical to the oracle's.
+ * including rejects): float model, one pk_vexpf per pixel, writes pred_trial
+ * unconditionally; the squared-residual sum accumulates in DOUBLE (widened
+ * per pixel, matching the scalar file's (double)r * (double)r). jac_* is the
+ * COLD path (once per accepted step): reads the pred cache (zero exp calls —
+ * Lever 2), accumulates double vectors. Pixel order matches the scalar loops
+ * (row-major) so per-lane accumulation order is identical to the oracle's.
  ******************************************************************************/
 
 /* -- 4-DOF circular: A * exp(-((i-i0)^2 + (j-j0)^2) / s^2) ----------------- */
-static pk_vf resid_pass_4(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0, pk_vf s,
+static pk_vd resid_pass_4(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0, pk_vf s,
                           pk_vf *pred_out)
 {
-	pk_vf rsum = pk_vf_zero();
+	pk_vd rsum = pk_vd_zero();
 	for (int p = 0; p < NSUB; ++p) {
 		pk_vf di = (pk_vf_set1(pix_i(p)) - i0) / s;
 		pk_vf dj = (pk_vf_set1(pix_j(p)) - j0) / s;
 		pk_vf pred = A * pk_vexpf(pk_vf_zero() - (di * di + dj * dj));
 		pred_out[p] = pred;
 		pk_vf r = pred - sub[p];
-		rsum = rsum + r * r;
+		pk_vd rd = pk_cvt_f2d(r);
+		rsum = rsum + rd * rd;
 	}
 	return rsum;
 }
@@ -234,17 +238,18 @@ static void jac_pass_4(const pk_vf *sub, const pk_vf *pred_cur,
 }
 
 /* -- 5-DOF elliptical: A * exp(-((i-i0)^2/sx^2 + (j-j0)^2/sy^2)) ----------- */
-static pk_vf resid_pass_5(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0,
+static pk_vd resid_pass_5(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0,
                           pk_vf sx, pk_vf sy, pk_vf *pred_out)
 {
-	pk_vf rsum = pk_vf_zero();
+	pk_vd rsum = pk_vd_zero();
 	for (int p = 0; p < NSUB; ++p) {
 		pk_vf di = (pk_vf_set1(pix_i(p)) - i0) / sx;
 		pk_vf dj = (pk_vf_set1(pix_j(p)) - j0) / sy;
 		pk_vf pred = A * pk_vexpf(pk_vf_zero() - (di * di + dj * dj));
 		pred_out[p] = pred;
 		pk_vf r = pred - sub[p];
-		rsum = rsum + r * r;
+		pk_vd rd = pk_cvt_f2d(r);
+		rsum = rsum + rd * rd;
 	}
 	return rsum;
 }
@@ -282,10 +287,10 @@ static void jac_pass_5(const pk_vf *sub, const pk_vf *pred_cur,
 
 /* -- 6-DOF rotated (inverse covariance; sx, sy behave like variances):
  *    A * exp(-0.5 * (di^2/sx + dj^2/sy + 2*di*dj*sxy)) --------------------- */
-static pk_vf resid_pass_6(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0,
+static pk_vd resid_pass_6(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0,
                           pk_vf sx, pk_vf sy, pk_vf sxy, pk_vf *pred_out)
 {
-	pk_vf rsum = pk_vf_zero();
+	pk_vd rsum = pk_vd_zero();
 	pk_vf half = pk_vf_set1(0.5f);
 	pk_vf two = pk_vf_set1(2.0f);
 	for (int p = 0; p < NSUB; ++p) {
@@ -295,7 +300,8 @@ static pk_vf resid_pass_6(const pk_vf *sub, pk_vf A, pk_vf i0, pk_vf j0,
 		pk_vf pred = A * pk_vexpf(pk_vf_zero() - half * q);
 		pred_out[p] = pred;
 		pk_vf r = pred - sub[p];
-		rsum = rsum + r * r;
+		pk_vd rd = pk_cvt_f2d(r);
+		rsum = rsum + rd * rd;
 	}
 	return rsum;
 }
@@ -340,11 +346,18 @@ static void jac_pass_6(const pk_vf *sub, const pk_vf *pred_cur,
  * — kept separate to mirror the scalar file 1:1 (same accepted duplication).
  ******************************************************************************/
 
-/* per-iteration mask bookkeeping shared by all three fitters */
+/* per-iteration mask bookkeeping shared by all three fitters.
+ * residual/new_resid/improve are DOUBLE vectors (2026-07-13): the improvement
+ * statistic is a difference of two nearly-equal sums, and tol=1e-6 sits below
+ * float32's resolution there — in float the convergence test was decided by
+ * last-ulp dust (batch lost the race ~3x more than scalar and NaN'd ~4% of
+ * good windows; wiki sessions/2026-07-13-code1-lm-convergence-race.md).
+ * Comparisons produce 64-bit lane masks; pk_mask_l2i narrows them to the
+ * 32-bit masks the float-lane bookkeeping uses. */
 #define LM_STEP_MASKS(new_resid_expr)                                          \
-	pk_vf new_resid = (new_resid_expr);                                        \
-	pk_vi accept = ~done & (new_resid < residual);                             \
-	pk_vf improve = (residual - new_resid) / (residual + pk_vf_set1(FLT_EPSILON));
+	pk_vd new_resid = (new_resid_expr);                                        \
+	pk_vi accept = ~done & pk_mask_l2i(new_resid < residual);                  \
+	pk_vd improve = (residual - new_resid) / (residual + pk_vd_set1((double)FLT_EPSILON));
 
 static pk_vi lm_gauss4_fit_batch(const pk_vf *sub, pk_vi active,
                                  pk_vf seedA, pk_vf seedi0, pk_vf seedj0, pk_vf seeds,
@@ -358,7 +371,7 @@ static pk_vi lm_gauss4_fit_batch(const pk_vf *sub, pk_vi active,
 	pk_vf lambda = pk_vf_set1(0.01f);
 	pk_vi done = ~active;
 	pk_vi fit_ok = pk_vi_zero();
-	pk_vf residual;
+	pk_vd residual;   /* double accumulation — see LM_STEP_MASKS note */
 	int iter;
 
 	residual = resid_pass_4(sub, A, i0, j0, s, pred_trial);
@@ -387,7 +400,7 @@ static pk_vi lm_gauss4_fit_batch(const pk_vf *sub, pk_vi active,
 		i0 = pk_self(accept, i0_new, i0);
 		j0 = pk_self(accept, j0_new, j0);
 		s  = pk_self(accept, s_new, s);
-		residual = pk_self(accept, new_resid, residual);
+		residual = pk_seld(pk_mask_i2l(accept), new_resid, residual);
 		lambda = pk_self(accept, lambda * pk_vf_set1(0.5f),
 		         pk_self(~done, lambda * pk_vf_set1(2.0f), lambda));
 
@@ -400,14 +413,18 @@ static pk_vi lm_gauss4_fit_batch(const pk_vf *sub, pk_vi active,
 		if (pk_any(accept))
 			jac_pass_4(sub, pred_cur, A, i0, j0, s, JtJ, Jtr);
 
-		pk_vi conv = accept & (improve < pk_vf_set1(LM_TOL));
+		pk_vi conv = accept & pk_mask_l2i(improve < pk_vd_set1(LM_TOL));
 		fit_ok = fit_ok | conv;
 		done = done | conv;
 	}
 
 	/* trust rule (verbatim scalar semantics): converged OR residual small.
-	 * NaN residuals fail the compare -> correctly rejected. */
-	fit_ok = fit_ok | (residual <= pk_vf_set1(LM_ACCEPT_RESID_FRAC * (float)NSUB) * A * A);
+	 * NaN residuals fail the compare -> correctly rejected. Then the
+	 * degenerate-solution guard (the ONLY post-exit guard): clamp-pinned
+	 * widths are not a peak — everything else that converges becomes a
+	 * vector; downstream validation owns rejection (Westerweel-style). */
+	fit_ok = fit_ok | pk_mask_l2i(residual <= pk_cvt_f2d(pk_vf_set1(LM_ACCEPT_RESID_FRAC * (float)NSUB) * A * A));
+	fit_ok = fit_ok & (s > pk_vf_set1(0.25f)) & (s < pk_vf_set1(4.0f));
 	fit_ok = fit_ok & active;
 
 	*out_i0 = i0; *out_j0 = j0;
@@ -428,7 +445,7 @@ static pk_vi lm_gauss5_fit_batch(const pk_vf *sub, pk_vi active,
 	pk_vf lambda = pk_vf_set1(0.01f);
 	pk_vi done = ~active;
 	pk_vi fit_ok = pk_vi_zero();
-	pk_vf residual;
+	pk_vd residual;   /* double accumulation — see LM_STEP_MASKS note */
 	int iter;
 
 	residual = resid_pass_5(sub, A, i0, j0, sx, sy, pred_trial);
@@ -460,7 +477,7 @@ static pk_vi lm_gauss5_fit_batch(const pk_vf *sub, pk_vi active,
 		j0 = pk_self(accept, j0_new, j0);
 		sx = pk_self(accept, sx_new, sx);
 		sy = pk_self(accept, sy_new, sy);
-		residual = pk_self(accept, new_resid, residual);
+		residual = pk_seld(pk_mask_i2l(accept), new_resid, residual);
 		lambda = pk_self(accept, lambda * pk_vf_set1(0.5f),
 		         pk_self(~done, lambda * pk_vf_set1(2.0f), lambda));
 
@@ -473,12 +490,15 @@ static pk_vi lm_gauss5_fit_batch(const pk_vf *sub, pk_vi active,
 		if (pk_any(accept))
 			jac_pass_5(sub, pred_cur, A, i0, j0, sx, sy, JtJ, Jtr);
 
-		pk_vi conv = accept & (improve < pk_vf_set1(LM_TOL));
+		pk_vi conv = accept & pk_mask_l2i(improve < pk_vd_set1(LM_TOL));
 		fit_ok = fit_ok | conv;
 		done = done | conv;
 	}
 
-	fit_ok = fit_ok | (residual <= pk_vf_set1(LM_ACCEPT_RESID_FRAC * (float)NSUB) * A * A);
+	/* trust rule + degenerate guard: see lm_gauss4_fit_batch. */
+	fit_ok = fit_ok | pk_mask_l2i(residual <= pk_cvt_f2d(pk_vf_set1(LM_ACCEPT_RESID_FRAC * (float)NSUB) * A * A));
+	fit_ok = fit_ok & (sx > pk_vf_set1(0.25f)) & (sx < pk_vf_set1(4.0f))
+	                & (sy > pk_vf_set1(0.25f)) & (sy < pk_vf_set1(4.0f));
 	fit_ok = fit_ok & active;
 
 	*out_i0 = i0; *out_j0 = j0;
@@ -500,7 +520,7 @@ static pk_vi lm_gauss6_fit_batch(const pk_vf *sub, pk_vi active,
 	pk_vf lambda = pk_vf_set1(0.01f);
 	pk_vi done = ~active;
 	pk_vi fit_ok = pk_vi_zero();
-	pk_vf residual;
+	pk_vd residual;   /* double accumulation — see LM_STEP_MASKS note */
 	int iter;
 
 	residual = resid_pass_6(sub, A, i0, j0, sx, sy, sxy, pred_trial);
@@ -536,7 +556,7 @@ static pk_vi lm_gauss6_fit_batch(const pk_vf *sub, pk_vi active,
 		sx  = pk_self(accept, sx_new, sx);
 		sy  = pk_self(accept, sy_new, sy);
 		sxy = pk_self(accept, sxy_new, sxy);
-		residual = pk_self(accept, new_resid, residual);
+		residual = pk_seld(pk_mask_i2l(accept), new_resid, residual);
 		lambda = pk_self(accept, lambda * pk_vf_set1(0.5f),
 		         pk_self(~done, lambda * pk_vf_set1(2.0f), lambda));
 
@@ -549,12 +569,16 @@ static pk_vi lm_gauss6_fit_batch(const pk_vf *sub, pk_vi active,
 		if (pk_any(accept))
 			jac_pass_6(sub, pred_cur, A, i0, j0, sx, sy, sxy, JtJ, Jtr);
 
-		pk_vi conv = accept & (improve < pk_vf_set1(LM_TOL));
+		pk_vi conv = accept & pk_mask_l2i(improve < pk_vd_set1(LM_TOL));
 		fit_ok = fit_ok | conv;
 		done = done | conv;
 	}
 
-	fit_ok = fit_ok | (residual <= pk_vf_set1(LM_ACCEPT_RESID_FRAC * (float)NSUB) * A * A);
+	/* trust rule + degenerate guard: see lm_gauss4_fit_batch. 6-DOF step
+	 * clamps are [0.1, 16] (inverse-covariance variances). */
+	fit_ok = fit_ok | pk_mask_l2i(residual <= pk_cvt_f2d(pk_vf_set1(LM_ACCEPT_RESID_FRAC * (float)NSUB) * A * A));
+	fit_ok = fit_ok & (sx > pk_vf_set1(0.1f)) & (sx < pk_vf_set1(16.0f))
+	                & (sy > pk_vf_set1(0.1f)) & (sy < pk_vf_set1(16.0f));
 	fit_ok = fit_ok & active;
 
 	*out_i0 = i0; *out_j0 = j0;

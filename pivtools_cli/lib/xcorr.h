@@ -15,8 +15,16 @@ typedef struct _sPlan
 } sPlan;
 
 /**** functions ****/
-unsigned convolve(const float *w1, const float *w2, float *conv, const int *N);
-unsigned xcorr(const float *w1, const float *w2, float *corr, const int *N);
+/* convolve/xcorr are exported so offline diagnostics can compute the
+ * correlation-plane weighting with the production code path
+ * (manual_tools/refit_failed_windows.py replays dumped planes bit-exactly). */
+#ifdef _WIN32
+#define XCORR_EXPORT __declspec(dllexport)
+#else
+#define XCORR_EXPORT
+#endif
+XCORR_EXPORT unsigned convolve(const float *w1, const float *w2, float *conv, const int *N);
+XCORR_EXPORT unsigned xcorr(const float *w1, const float *w2, float *corr, const int *N);
 
 unsigned xcorr_create_plan(const int *N, sPlan *pPlanStruct);
 unsigned xcorr_destroy_plan(sPlan *pPlanStruct);

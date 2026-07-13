@@ -71,6 +71,12 @@ def _load_bulkxcorr_lib():
     ]
     lib.lsqpeaklocate_lm.restype = None
 
+    lib.peak_detectability.argtypes = [
+        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),
+    ]
+    lib.peak_detectability.restype = ctypes.c_float
+
     _bulkxcorr_lib = lib
     return lib
 
@@ -424,16 +430,36 @@ class TestFitFailureSentinel:
         self._assert_nan_sentinel(peak_loc, std_dev, "NaN-poisoned window")
 
     @pytest.mark.parametrize("fit_type", [4, 5, 6])
-    def test_uniform_noise_spike_is_nan(self, fit_type):
-        """Uniform noise with a spiked maximum: passes the search gate but
-        carries no Gaussian structure — LM neither converges nor reaches a
-        small residual, and must report NaN, not the seed params."""
+    def test_uniform_noise_spike(self, fit_type):
+        """Uniform noise with a spiked maximum — CONTRACT CHANGED 2026-07-13.
+
+        With the double-precision improvement statistic + max_iter 50 the LM
+        genuinely converges on this patch: it stalls on a degenerate wide
+        blob and honestly measures a sub-tolerance step (the old float32
+        arithmetic rejected this case only by accident — its noise floor hid
+        the microscopic descent). Deliberate new contract (Westerweel-style,
+        wiki sessions/2026-07-13-code1-lm-convergence-race.md):
+
+        - gauss4/5: the converged blob has its width pinned exactly ON the
+          step clamp (sigma = 4.0) -> the degenerate-width guard rejects it
+          (NaN sentinel, as before).
+        - gauss6: the blob converges with interior (huge but unclamped)
+          widths -> the fitter EMITS a finite vector; rejecting dubious but
+          well-formed fits is owned by the downstream validation stack
+          (peak_mag threshold / normalized median), not the fitter.
+        """
         rng = np.random.RandomState(0)
         xcorr = rng.uniform(0.0, 1.0, self.SHAPE).astype(np.float32)
         c = (self.SHAPE[0] - 1) // 2
         xcorr[c, c] = 2.0
         peak_loc, std_dev = _run_single_fit(xcorr, fit_type)
-        self._assert_nan_sentinel(peak_loc, std_dev, "uniform noise + spike")
+        if fit_type in (4, 5):
+            self._assert_nan_sentinel(peak_loc, std_dev, "uniform noise + spike")
+        else:
+            assert np.all(np.isfinite(peak_loc[:2])), (
+                "gauss6 noise blob must be emitted for downstream validation, "
+                f"got {peak_loc[:2]}"
+            )
 
     # ── no-regression guards: good fits must stay finite ───────────────────
 
@@ -471,3 +497,64 @@ class TestFitFailureSentinel:
         ci, cj = (self.SHAPE[0] - 1) / 2, (self.SHAPE[1] - 1) / 2
         assert abs(peak_loc[0] - ci - 0.35) < 0.1
         assert abs(peak_loc[1] - cj - 0.27) < 0.1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# peak_detectability (PIVware peak1/peak2, 2026-07-13)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestPeakDetectability:
+    """Direct ctypes tests of the exported peak_detectability helper.
+
+    Semantics under test (PIVware pwInterrogateDisplacement SNR type 2, over
+    the same candidate set as the lsqpeaklocate_lm search): candidates are
+    positive non-strict 3x3 local maxima inside the quarter region
+    N/4..3N/4; ratio = tallest / second-tallest; 0 when there is no second
+    positive candidate. Single-pixel spikes on a zero background are valid
+    local maxima. Diagnostic only — stored per window, never gated on."""
+
+    SHAPE = (33, 33)  # quarter region rows/cols 8..24
+
+    def _ratio(self, plane):
+        lib = _load_bulkxcorr_lib()
+        plane = np.ascontiguousarray(plane, dtype=np.float32)
+        n = np.array(plane.shape, dtype=np.int32)
+        return float(lib.peak_detectability(plane, n))
+
+    def test_two_known_peaks(self):
+        plane = np.zeros(self.SHAPE, dtype=np.float32)
+        plane[16, 16] = 10.0
+        plane[16, 20] = 4.0
+        assert self._ratio(plane) == pytest.approx(2.5)
+
+    def test_single_peak_returns_zero(self):
+        plane = np.zeros(self.SHAPE, dtype=np.float32)
+        plane[16, 16] = 10.0
+        assert self._ratio(plane) == 0.0
+
+    def test_no_positive_candidate_returns_zero(self):
+        assert self._ratio(np.full(self.SHAPE, -1.0, dtype=np.float32)) == 0.0
+        assert self._ratio(np.zeros(self.SHAPE, dtype=np.float32)) == 0.0
+
+    def test_equal_peaks_ratio_one(self):
+        plane = np.zeros(self.SHAPE, dtype=np.float32)
+        plane[12, 12] = 7.0
+        plane[20, 20] = 7.0
+        assert self._ratio(plane) == pytest.approx(1.0)
+
+    def test_shoulder_is_not_second_peak(self):
+        """A pixel adjacent to peak 1 is not a 3x3 local max and must not be
+        counted as peak 2 (PIVware: the local-maxima map excludes shoulders
+        by construction)."""
+        plane = np.zeros(self.SHAPE, dtype=np.float32)
+        plane[16, 16] = 10.0
+        plane[16, 17] = 9.0  # shoulder of peak 1, NOT a local max
+        plane[16, 21] = 4.0  # the true second peak
+        assert self._ratio(plane) == pytest.approx(2.5)
+
+    def test_peak_outside_quarter_region_ignored(self):
+        plane = np.zeros(self.SHAPE, dtype=np.float32)
+        plane[16, 16] = 10.0
+        plane[2, 2] = 9.0  # outside rows/cols 8..24 — not a candidate
+        assert self._ratio(plane) == 0.0

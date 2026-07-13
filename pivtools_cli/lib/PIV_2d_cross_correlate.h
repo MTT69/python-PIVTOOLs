@@ -10,10 +10,15 @@
 
 /**** function declarations ****/
 
+/* fPkRatio (per window, no nPeaks dimension: [N_images * nWindowsTotal]):
+ * peak detectability = tallest / second-tallest 3x3 local max on the raw
+ * plane (PIVware SNR type 2; 0 when no second positive peak). Diagnostic
+ * output only — never gated on in C. Written on the instantaneous path
+ * (!bEnsemble); ensemble callers receive zeros. */
 EXPORT unsigned char bulkxcorr2d(const float *fImageA, const float *fImageB,const float *fMask, const int *nImageSize, int N_images,
                            const float *fWinCtrsX, const float *fWinCtrsY, const int *nWindows, float * fWindowWeightA, bool bEnsemble,
                            const float *fWindowWeightB, const int *nWindowSize, int nPeaks, int iPeakFinder,
-                           float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy, float *fCorrelPlane_Out);
+                           float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy, float *fPkRatio, float *fCorrelPlane_Out);
 
 /**
  * Ensemble-optimized cross-correlation with internal accumulation.

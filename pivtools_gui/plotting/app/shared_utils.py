@@ -64,6 +64,8 @@ VARIABLE_UNITS = {
     "gamma2": "-",
     # Peak height (dimensionless)
     "peak_mag": "-",
+    # Peak detectability peak1/peak2 (dimensionless, PIVware SNR type 2)
+    "peak_ratio": "-",
     "peakheight": "-",
     "mean_peak_height": "-",
     # Ensemble diagnostics

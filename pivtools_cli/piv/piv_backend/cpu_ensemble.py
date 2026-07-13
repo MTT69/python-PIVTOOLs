@@ -92,6 +92,10 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fPkRatio (2026-07-13; zeros on the ensemble path)
+            np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
         ]
 
         # New ensemble accumulation function (Option C: window-parallel)
@@ -363,6 +367,8 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),
+            ctypes.c_int,  # N_images (2026-07-13: was MISSING here — this
+            # binding was latent/dead but would have crashed if exercised)
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),
@@ -378,6 +384,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+            np.ctypeslib.ndpointer(
+                dtype=np.float32, flags="C_CONTIGUOUS"
+            ),  # fPkRatio (2026-07-13)
             np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
         ]
 
@@ -457,6 +466,12 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
         # Clear output plane before use
         out_plane.fill(0)
 
+        # Scratch for the fPkRatio output (2026-07-13): the ensemble path
+        # (bEnsemble=True) never writes it — discarded.
+        pk_ratio_scratch = np.zeros(
+            (int(N), int(n_win[0]), int(n_win[1])), dtype=np.float32
+        )
+
         err = self.lib.bulkxcorr2d(
             np.ascontiguousarray(img1),
             np.ascontiguousarray(img2),
@@ -478,6 +493,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             sx,
             sy,
             sxy,
+            pk_ratio_scratch,
             out_plane,
         )
         return err, out_plane

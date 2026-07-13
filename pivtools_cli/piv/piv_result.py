@@ -11,6 +11,9 @@ class PIVPassResult:
     uy_mat: Optional[np.ndarray] = None
     nan_mask: Optional[np.ndarray] = None
     peak_mag: Optional[np.ndarray] = None
+    # peak detectability (PIVware peak1/peak2), 2D (n_win_y, n_win_x);
+    # diagnostic only — not used by any validation stage
+    peak_ratio: Optional[np.ndarray] = None
     peak_choice: Optional[np.ndarray] = None
     predictor_field: Optional[np.ndarray] = None
     primary_peak_mag: Optional[np.ndarray] = None

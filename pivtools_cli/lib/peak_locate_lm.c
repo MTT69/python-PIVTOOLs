@@ -15,8 +15,10 @@
  * writes the same NaN sentinel as a failed peak search: peak_loc row/col =
  * NaN, height = 0, std_dev = 0. Previously all LM exits wrote finite
  * last-best params, indistinguishable from convergence. Normal-equation
- * accumulation and the Cholesky solve are double internally (params/data
- * stay float).
+ * accumulation, the Cholesky solve, AND the residual sum / improvement
+ * statistic (2026-07-13) are double internally (params/data stay float —
+ * the residual must be double because tol=1e-6 on a difference of two
+ * nearly-equal float sums is below float32's resolution).
  *
  * KNOWN TECHNICAL DEBT:
  * - Code duplication: LM iteration logic is repeated in lm_gauss4_fit,
@@ -103,13 +105,13 @@ static inline float eval_gauss6(float i, float j, float A, float i0, float j0, f
  * reschedules it): ~15-25% per fit on MSVC, clang, and ARM alike.
  * CONTRACT: pred_buf must be non-NULL on EVERY call — the residual pass writes it
  * unconditionally (the store is kept branch-free). */
-static float compute_residual_jacobian_4dof(
+static double compute_residual_jacobian_4dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float s,
 	double *JtJ, double *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
-	float residual_sum = 0.0f;
+	double residual_sum = 0.0;
 	const int n_params = 4;
 
 	/* Hot path (every LM trial, including rejects): residual only. The branch
@@ -128,7 +130,7 @@ static float compute_residual_jacobian_4dof(
 				float pred = eval_gauss4(i, j, A, i0, j0, s);
 				pred_buf[row + jj] = pred;
 				float r = pred - xcorr[row + jj];
-				residual_sum += r * r;
+				residual_sum += (double)r * (double)r;
 			}
 		}
 		return residual_sum;
@@ -148,7 +150,7 @@ static float compute_residual_jacobian_4dof(
 
 			float pred = pred_buf[idx];
 			float r = pred - xcorr[idx];
-			residual_sum += r * r;
+			residual_sum += (double)r * (double)r;
 
 			float di = (i - i0) / s;
 			float dj = (j - j0) / s;
@@ -183,13 +185,13 @@ static float compute_residual_jacobian_4dof(
 
 /* Compute residual and Jacobian for 5-DOF Gaussian fit.
  * pred_buf carries model values between passes (Lever 2; see the 4-DOF note). */
-static float compute_residual_jacobian_5dof(
+static double compute_residual_jacobian_5dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float sx, float sy,
 	double *JtJ, double *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
-	float residual_sum = 0.0f;
+	double residual_sum = 0.0;
 	const int n_params = 5;
 
 	/* Hot path: residual only, branch-free; fills the Lever 2 pred cache
@@ -203,7 +205,7 @@ static float compute_residual_jacobian_5dof(
 				float pred = eval_gauss5(i, j, A, i0, j0, sx, sy);
 				pred_buf[row + jj] = pred;
 				float r = pred - xcorr[row + jj];
-				residual_sum += r * r;
+				residual_sum += (double)r * (double)r;
 			}
 		}
 		return residual_sum;
@@ -222,7 +224,7 @@ static float compute_residual_jacobian_5dof(
 
 			float pred = pred_buf[idx];
 			float r = pred - xcorr[idx];
-			residual_sum += r * r;
+			residual_sum += (double)r * (double)r;
 
 			float di = (i - i0) / sx;
 			float dj = (j - j0) / sy;
@@ -257,13 +259,13 @@ static float compute_residual_jacobian_5dof(
 
 /* Compute residual and Jacobian for 6-DOF Gaussian fit.
  * pred_buf carries model values between passes (Lever 2; see the 4-DOF note). */
-static float compute_residual_jacobian_6dof(
+static double compute_residual_jacobian_6dof(
 	const float *xcorr, const int *N,
 	float A, float i0, float j0, float sx, float sy, float sxy,
 	double *JtJ, double *Jtr, int compute_jacobian, float *pred_buf)
 {
 	int ii, jj, idx;
-	float residual_sum = 0.0f;
+	double residual_sum = 0.0;
 	const int n_params = 6;
 
 	/* Hot path: residual only, branch-free; fills the Lever 2 pred cache
@@ -277,7 +279,7 @@ static float compute_residual_jacobian_6dof(
 				float pred = eval_gauss6(i, j, A, i0, j0, sx, sy, sxy);
 				pred_buf[row + jj] = pred;
 				float r = pred - xcorr[row + jj];
-				residual_sum += r * r;
+				residual_sum += (double)r * (double)r;
 			}
 		}
 		return residual_sum;
@@ -296,7 +298,7 @@ static float compute_residual_jacobian_6dof(
 
 			float pred = pred_buf[idx];
 			float r = pred - xcorr[idx];
-			residual_sum += r * r;
+			residual_sum += (double)r * (double)r;
 
 			float di = i - i0;
 			float dj = j - j0;
@@ -415,10 +417,16 @@ static int lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	int fit_ok = 0;   /* 1 = trustworthy; stays 0 on max_iter fall-through */
 	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
-	float residual, new_residual;
+	/* residual/improvement in DOUBLE (2026-07-13): summed float squares and
+	 * the difference of two nearly-equal sums cannot resolve tol=1e-6 in
+	 * float32 (~8x FLT_EPSILON) — convergence became a coin flip on last-ulp
+	 * dust and NaN'd ~4% of good windows (see wiki
+	 * sessions/2026-07-13-code1-lm-convergence-race.md). */
+	double residual, new_residual;
 	int iter, ii, jj, idx;
-	const int max_iter = 20;
-	const float tol = 1e-6f;
+	const int max_iter = 50;   /* was 20: converged fits exit early, only
+	                            * marginal windows use the headroom */
+	const double tol = 1e-6;
 
 	/* Get initial guess */
 	float sx, sy;
@@ -453,7 +461,7 @@ static int lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, floa
 
 		if(new_residual < residual) {
 			A = A_new; i0 = i0_new; j0 = j0_new; s = s_new;
-			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
+			double improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
 			compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1, pred_cache);
@@ -467,6 +475,14 @@ static int lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	   (see LM_ACCEPT_RESID_FRAC — exit path alone cannot classify failure). */
 	if(!fit_ok)
 		fit_ok = (residual <= LM_ACCEPT_RESID_FRAC * A * A * (float)(N[0] * N[1]));
+	/* Degenerate-solution guard (the ONLY post-exit guard, 2026-07-13): a
+	   width sitting ON a step-clamp bound means the optimizer converged into
+	   the constraint wall (delta spike / ever-widening blob), not onto a
+	   peak. Anything else that converges becomes a vector — rejection of
+	   dubious-but-well-formed fits is owned by the downstream validation
+	   stack (peak_mag threshold, normalized median), Westerweel-style. */
+	if(fit_ok)
+		fit_ok = (s > 0.25f && s < 4.0f);
 
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
@@ -498,10 +514,16 @@ static int lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	int fit_ok = 0;   /* 1 = trustworthy; stays 0 on max_iter fall-through */
 	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
-	float residual, new_residual;
+	/* residual/improvement in DOUBLE (2026-07-13): summed float squares and
+	 * the difference of two nearly-equal sums cannot resolve tol=1e-6 in
+	 * float32 (~8x FLT_EPSILON) — convergence became a coin flip on last-ulp
+	 * dust and NaN'd ~4% of good windows (see wiki
+	 * sessions/2026-07-13-code1-lm-convergence-race.md). */
+	double residual, new_residual;
 	int iter, ii, jj, idx;
-	const int max_iter = 20;
-	const float tol = 1e-6f;
+	const int max_iter = 50;   /* was 20: converged fits exit early, only
+	                            * marginal windows use the headroom */
+	const double tol = 1e-6;
 
 	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
 	i0 = peak_loc[0];
@@ -535,7 +557,7 @@ static int lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, floa
 
 		if(new_residual < residual) {
 			A = A_new; i0 = i0_new; j0 = j0_new; sx = sx_new; sy = sy_new;
-			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
+			double improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
 			compute_residual_jacobian_5dof(xcorr, N, A, i0, j0, sx, sy, JtJ, Jtr, 1, pred_cache);
@@ -548,6 +570,10 @@ static int lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	/* Trust the fit iff it converged by tolerance OR the residual is small. */
 	if(!fit_ok)
 		fit_ok = (residual <= LM_ACCEPT_RESID_FRAC * A * A * (float)(N[0] * N[1]));
+	/* Degenerate-solution guard: clamp-pinned widths are not a peak (see the
+	   gauss4 comment — the only post-exit guard). */
+	if(fit_ok)
+		fit_ok = (sx > 0.25f && sx < 4.0f && sy > 0.25f && sy < 4.0f);
 
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
@@ -593,10 +619,16 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	int fit_ok = 0;   /* 1 = trustworthy; stays 0 on max_iter fall-through */
 	float pred_cache[PKSIZE_X * PKSIZE_Y];  /* Lever 2: model values shared trial->Jacobian */
 	float lambda = 0.01f;
-	float residual, new_residual;
+	/* residual/improvement in DOUBLE (2026-07-13): summed float squares and
+	 * the difference of two nearly-equal sums cannot resolve tol=1e-6 in
+	 * float32 (~8x FLT_EPSILON) — convergence became a coin flip on last-ulp
+	 * dust and NaN'd ~4% of good windows (see wiki
+	 * sessions/2026-07-13-code1-lm-convergence-race.md). */
+	double residual, new_residual;
 	int iter, ii, jj, idx;
-	const int max_iter = 20;
-	const float tol = 1e-6f;
+	const int max_iter = 50;   /* was 20: converged fits exit early, only
+	                            * marginal windows use the headroom */
+	const double tol = 1e-6;
 
 	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
 	i0 = peak_loc[0];
@@ -635,7 +667,7 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 		if(new_residual < residual) {
 			A = A_new; i0 = i0_new; j0 = j0_new;
 			sx = sx_new; sy = sy_new; sxy = sxy_new;
-			float improvement = (residual - new_residual) / (residual + FLT_EPSILON);
+			double improvement = (residual - new_residual) / (residual + FLT_EPSILON);
 			residual = new_residual;
 			lambda *= 0.5f;
 			compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1, pred_cache);
@@ -648,6 +680,11 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	/* Trust the fit iff it converged by tolerance OR the residual is small. */
 	if(!fit_ok)
 		fit_ok = (residual <= LM_ACCEPT_RESID_FRAC * A * A * (float)(N[0] * N[1]));
+	/* Degenerate-solution guard: clamp-pinned (inverse-covariance) widths are
+	   not a peak (see the gauss4 comment — the only post-exit guard). Step
+	   clamps here are [0.1, 16] (variances). */
+	if(fit_ok)
+		fit_ok = (sx > 0.1f && sx < 16.0f && sy > 0.1f && sy < 16.0f);
 
 	peak_loc[0] = i0;
 	peak_loc[1] = j0;
@@ -672,6 +709,38 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	}
 
 	return fit_ok ? 0 : -1;
+}
+
+/******************************************************************************
+ * Peak detectability (PIVware pwInterrogateDisplacement.m SNR type 2):
+ * tallest / second-tallest 3x3 local maximum, over the SAME candidate set as
+ * the detection search below (quarter region N/4..3N/4, positive, non-strict
+ * local max). Peak 2 excludes only peak 1's own pixel — the local-maxima map
+ * cannot contain peak 1's shoulders by construction, exactly like PIVware's
+ * `Peaks(jpeak,ipeak) = 0; Pmax2 = max(Peaks)`. Conventions (PIVware-
+ * faithful): no candidate -> 0, no second positive candidate -> 0
+ * (pwInterrogateDisplacement.m:46). Two equal tallest peaks -> ratio 1.
+ * Diagnostic only: stored per window alongside pk_height, NEVER used as a
+ * gate in C — thresholding (if any) belongs to the downstream validation
+ * stack.
+ *****************************************************************************/
+PEAK_EXPORT float peak_detectability(const float *xcorr, const int *N)
+{
+	float p1 = 0.0f, p2 = 0.0f;
+	for(int i = N[0]/4; i < N[0]*3/4; ++i) {
+		for(int j = N[1]/4; j < N[1]*3/4; ++j) {
+			float v = xcorr[SUB2IND_2D(i, j, N[1])];
+			if(v <= p2 || v <= 0.0f) continue;   /* cannot enter the top two */
+			int is_max = 1;
+			for(int di = -1; di <= 1 && is_max; ++di)
+				for(int dj = -1; dj <= 1; ++dj)
+					if(xcorr[SUB2IND_2D(i + di, j + dj, N[1])] > v) { is_max = 0; break; }
+			if(!is_max) continue;
+			if(v > p1) { p2 = p1; p1 = v; }
+			else       { p2 = v; }               /* v > p2 guaranteed above */
+		}
+	}
+	return (p2 > 0.0f) ? p1 / p2 : 0.0f;
 }
 
 /******************************************************************************

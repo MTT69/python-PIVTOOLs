@@ -38,6 +38,13 @@
  * converge (since 2026-07-06). A finite result is a trustworthy fit. */
 PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev, const float *fPlaneWeight);
 
+/* Peak detectability (PIVware pwInterrogateDisplacement SNR type 2): ratio of
+ * the tallest to the second-tallest 3x3 local maximum, over the SAME candidate
+ * set as the lsqpeaklocate_lm search (quarter region, positive, non-strict
+ * local max). No candidate or no second positive candidate -> 0 (PIVware
+ * convention). Diagnostic only — never used as a gate in C. */
+PEAK_EXPORT float peak_detectability(const float *xcorr, const int *N);
+
 /* Returns 1 if this CPU can run the SIMD kernels this binary was built with.
  * Lives in the scalar TU (compiled with no arch flags on every platform) so
  * calling it is always safe, even on a CPU below the wheel's ISA floor. */

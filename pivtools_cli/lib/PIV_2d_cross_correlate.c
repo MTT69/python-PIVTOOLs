@@ -62,7 +62,7 @@ static void instant_postprocess_lane(
     int nPeaks, int iPeakFinder, int nWindowsTotal, int nPxPerWindow,
     float *fPeakLoc, float *fStd,
     float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
-    float *fCorrelPlane_Out, double *t_fit)
+    float *fPkRatio, float *fCorrelPlane_Out, double *t_fit)
 {
     /* Since 2026-07-13 the plane is NOT pre-multiplied by fCorrelWeight:
      * peak detection runs on the RAW plane (Westerweel/PIVware semantics) and
@@ -87,6 +87,11 @@ static void instant_postprocess_lane(
         } else {
             lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd, fCorrelWeight);
         }
+
+        /* Peak detectability (PIVware SNR type 2) on the raw plane — one
+         * value per window, independent of nPeaks and of fit success. */
+        fPkRatio[n * nWindowsTotal + iWindowIdx] = peak_detectability(plane, nWindowSize);
+
         for (int i = 0; i < nPeaks; ++i) {
             int out_idx = n * nPeaks * nWindowsTotal + i * nWindowsTotal + iWindowIdx;
             float peak_row = fPeakLoc[0*nPeaks + i];
@@ -119,7 +124,7 @@ static void instant_flush_batch(
     int nPeaks, int iPeakFinder, int nWindowsTotal, int nPxPerWindow,
     float *fPeakLoc, float *fStd,
     float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
-    float *fCorrelPlane_Out, int peakfit_impl, double *t_fft, double *t_fit)
+    float *fPkRatio, float *fCorrelPlane_Out, int peakfit_impl, double *t_fft, double *t_fit)
 {
     if (g_kernel_timing) {
         double t_mark = omp_get_wtime();
@@ -178,6 +183,10 @@ static void instant_flush_batch(
             /* peak_mag is the raw-plane argmax height — no un-weighting
              * needed (PIVware raw-detectability convention). */
             fPkHeight[out_idx] = peak_mag * lane_enorm[l];
+
+            /* Peak detectability (PIVware SNR type 2) on the raw plane —
+             * mirrors instant_postprocess_lane. */
+            fPkRatio[out_idx] = peak_detectability(&packC[(size_t)l * numel], nWindowSize);
         }
         return;
     }
@@ -187,7 +196,7 @@ static void instant_flush_batch(
             &packC[(size_t)l * numel], lane_idx[l], lane_n[l], lane_win[l], lane_enorm[l],
             bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
             nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
-            fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, t_fit);
+            fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fPkRatio, fCorrelPlane_Out, t_fit);
     }
 }
 
@@ -198,7 +207,7 @@ const float *fWinCtrsX, const float *fWinCtrsY, const int *nWindows,
 float *fWindowWeightA, bool bEnsemble,
 const float *fWindowWeightB, const int *nWindowSize, int nPeaks, int iPeakFinder,
 float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
-float *fCorrelPlane_Out)
+float *fPkRatio, float *fCorrelPlane_Out)
 {
     int nWindowsTotal = nWindows[0] * nWindows[1];
     int nPxPerWindow = nWindowSize[0] * nWindowSize[1];
@@ -248,7 +257,7 @@ float *fCorrelPlane_Out)
         default(none) \
         shared(fImageA_stack, fImageB_stack, fMask, nImageSize, N_images, \
                fWinCtrsX, fWinCtrsY, nWindows, bEnsemble, fCorrelWeight, fWindowWeightA, fWindowWeightB, nWindowSize, \
-               nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal, total_windows, peakfit_impl) \
+               nPeaks, iPeakFinder, fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fPkRatio, fCorrelPlane_Out, nPxPerWindow, nWindowsTotal, total_windows, peakfit_impl) \
         reduction(|:uError) reduction(+:t_fft_red,t_fit_red)
     {
         const int LANES = codelet_lanes();
@@ -349,7 +358,7 @@ float *fCorrelPlane_Out)
                     lane_idx, lane_n, lane_win, lane_enorm,
                     bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
                     nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
-                    fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out,
+                    fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fPkRatio, fCorrelPlane_Out,
                     peakfit_impl, &t_fft_red, &t_fit_red);
                 batch = 0;
             }
@@ -363,7 +372,7 @@ float *fCorrelPlane_Out)
                 lane_idx, lane_n, lane_win, lane_enorm,
                 bEnsemble, fCorrelWeight, nWindowSize, nPeaks, iPeakFinder,
                 nWindowsTotal, nPxPerWindow, fPeakLoc, fStd,
-                fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fCorrelPlane_Out,
+                fPkLocX, fPkLocY, fPkHeight, fSx, fSy, fSxy, fPkRatio, fCorrelPlane_Out,
                 peakfit_impl, &t_fft_red, &t_fit_red);
         }
 
