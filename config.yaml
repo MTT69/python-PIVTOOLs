@@ -53,9 +53,8 @@ outlier_detection:
   - threshold: 0.25
     type: peak_mag
   - type: median_2d
-    epsilon: 0.2
-    threshold: 2
-    size: 5
+    epsilon: 0.1
+    threshold: 3
 infilling:
   mid_pass:
     method: nearest
