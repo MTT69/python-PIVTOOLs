@@ -87,8 +87,12 @@ def joint_det_key(board, n_views, image_format, image_type, cameras, params) -> 
     changed n_views / format / board param yields a new key and forces a re-detect.
     """
     sig = (
-        str(board), int(n_views), str(image_format), str(image_type),
-        tuple(sorted(int(c) for c in cameras)), repr(params),
+        str(board),
+        int(n_views),
+        str(image_format),
+        str(image_type),
+        tuple(sorted(int(c) for c in cameras)),
+        repr(params),
     )
     return hashlib.md5(repr(sig).encode()).hexdigest()[:16]
 
@@ -96,6 +100,7 @@ def joint_det_key(board, n_views, image_format, image_type, cameras, params) -> 
 # ---------------------------------------------------------------------------
 # JSON helpers (coords block + free-form detector diagnostics)
 # ---------------------------------------------------------------------------
+
 
 def _json_default(o: Any) -> Any:
     if isinstance(o, np.ndarray):
@@ -136,8 +141,10 @@ def _diagnostics_for_storage(diag: Dict[str, Any]) -> Dict[str, Any]:
             out[k] = v
         elif isinstance(v, (np.integer, np.floating, np.bool_)):
             out[k] = v.item()
-        elif isinstance(v, (list, tuple)) and len(v) <= _MAX_DIAG_LIST and all(
-            isinstance(x, (bool, int, float, str)) for x in v
+        elif (
+            isinstance(v, (list, tuple))
+            and len(v) <= _MAX_DIAG_LIST
+            and all(isinstance(x, (bool, int, float, str)) for x in v)
         ):
             out[k] = list(v)
         # else (ndarray, long list, nested dict, image): dropped — not needed to re-solve
@@ -152,7 +159,9 @@ def _rehydrate_level(lv: Any) -> Optional[Dict[str, Any]]:
     if "centers" in out:
         out["centers"] = np.asarray(out["centers"], dtype=np.float64).reshape(-1, 2)
     if "grid_indices" in out:
-        out["grid_indices"] = np.asarray(out["grid_indices"], dtype=np.int64).reshape(-1, 2)
+        out["grid_indices"] = np.asarray(out["grid_indices"], dtype=np.int64).reshape(
+            -1, 2
+        )
     if out.get("H") is not None:
         out["H"] = np.asarray(out["H"], dtype=np.float64).reshape(3, 3)
     for k in ("vec1", "vec2"):
@@ -181,7 +190,9 @@ def _str_field(v: Any) -> str:
         return ""
     if isinstance(s, np.ndarray):  # squeeze left an empty/odd array — no usable string
         return ""
-    if isinstance(s, (bytes, np.bytes_)):  # some scipy versions load char arrays as bytes
+    if isinstance(
+        s, (bytes, np.bytes_)
+    ):  # some scipy versions load char arrays as bytes
         return s.decode("utf-8", errors="replace")
     return str(s)
 
@@ -190,16 +201,20 @@ def _str_field(v: Any) -> str:
 # DetectionResult <-> mat struct
 # ---------------------------------------------------------------------------
 
+
 def _detection_to_dict(camera: int, view: int, d: DetectionResult) -> Dict[str, Any]:
     """One DetectionResult -> a flat dict (one struct-array element). None arrays become
-    empty arrays; ``spacing_mm`` None becomes NaN; ``diagnostics`` becomes a JSON string."""
+    empty arrays; ``spacing_mm`` None becomes NaN; ``diagnostics`` becomes a JSON string.
+    """
     return {
         "camera": int(camera),
         "view": int(view),
         "success": int(bool(d.success)),
         "board_type": str(d.board_type),
         "image_points": np.asarray(d.image_points, dtype=np.float64).reshape(-1, 2),
-        "board_local_points": np.asarray(d.board_local_points, dtype=np.float64).reshape(-1, 3),
+        "board_local_points": np.asarray(
+            d.board_local_points, dtype=np.float64
+        ).reshape(-1, 3),
         "grid_indices": _empty_if_none(d.grid_indices),
         "point_ids": _empty_if_none(d.point_ids),
         "board_to_pixel": _empty_if_none(d.board_to_pixel),
@@ -258,6 +273,7 @@ def _detection_from(obj) -> Tuple[int, int, DetectionResult]:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def load_inputs(model_dir) -> InputsRecord:
     """Load the sidecar for a model dir. Raises ``FileNotFoundError`` if absent."""
@@ -368,14 +384,18 @@ def _save_inputs_locked(
     prev = try_load_inputs(model_dir)
 
     fin_coords = coords if coords is not _UNSET else (prev.coords if prev else None)
-    fin_dets = detections if detections is not _UNSET else (prev.detections if prev else None)
+    fin_dets = (
+        detections if detections is not _UNSET else (prev.detections if prev else None)
+    )
     if image_size_by_cam is not _UNSET:
         fin_sizes = image_size_by_cam
     else:
         fin_sizes = prev.image_size_by_cam if prev else {}
     fin_key = det_key if det_key is not _UNSET else (prev.det_key if prev else "")
     fin_params = (
-        board_params if board_params is not _UNSET else (prev.board_params if prev else None)
+        board_params
+        if board_params is not _UNSET
+        else (prev.board_params if prev else None)
     )
 
     data: Dict[str, Any] = {
@@ -396,7 +416,9 @@ def _save_inputs_locked(
     if items:
         data["detections"] = items
 
-    rows = [[int(c), int(wh[0]), int(wh[1])] for c, wh in sorted((fin_sizes or {}).items())]
+    rows = [
+        [int(c), int(wh[0]), int(wh[1])] for c, wh in sorted((fin_sizes or {}).items())
+    ]
     if rows:
         data["image_size_by_cam"] = np.asarray(rows, dtype=np.int64).reshape(-1, 3)
     else:

@@ -13,8 +13,8 @@ Key design choices:
 
 import gc
 import logging
+
 import numpy as np
-from typing import Tuple, Optional
 
 logger = logging.getLogger(__name__)
 

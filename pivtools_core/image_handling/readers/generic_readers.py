@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 from pathlib import Path
 
 import cv2
@@ -16,7 +16,9 @@ def read_tiff(file_path: str) -> np.ndarray:
 
     img = tifffile.imread(file_path)
     if img.ndim > 2 and img.shape[-1] > 1:
-        logging.debug(f"Converting color TIFF image to grayscale: {Path(file_path).name}")
+        logging.debug(
+            f"Converting color TIFF image to grayscale: {Path(file_path).name}"
+        )
         if img.shape[-1] == 3:
             img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         elif img.shape[-1] == 4:
@@ -43,7 +45,9 @@ def read_png_jpeg(file_path: str) -> np.ndarray:
 
         img = Image.open(file_path)
         if img.mode in ("RGB", "RGBA", "P", "L") and img.mode != "L":
-            logging.debug(f"Converting color PNG/JPEG image to grayscale: {Path(file_path).name}")
+            logging.debug(
+                f"Converting color PNG/JPEG image to grayscale: {Path(file_path).name}"
+            )
             img = img.convert("L")
         img_array = np.array(img)
         return img_array.astype(np.float32)
@@ -52,7 +56,9 @@ def read_png_jpeg(file_path: str) -> np.ndarray:
         if img is None:
             raise FileNotFoundError(f"Image file could not be read: {file_path}")
         if img.ndim > 2 and img.shape[-1] > 1:
-            logging.debug(f"Converting color PNG/JPEG image to grayscale: {Path(file_path).name}")
+            logging.debug(
+                f"Converting color PNG/JPEG image to grayscale: {Path(file_path).name}"
+            )
             if img.shape[-1] == 3:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             elif img.shape[-1] == 4:
@@ -80,7 +86,9 @@ def read_raw(file_path: str) -> np.ndarray:
         with rawpy.imread(file_path) as raw:
             img = raw.postprocess()
             if img.ndim > 2 and img.shape[-1] > 1:
-                logging.debug(f"Converting color RAW image to grayscale: {Path(file_path).name}")
+                logging.debug(
+                    f"Converting color RAW image to grayscale: {Path(file_path).name}"
+                )
                 if img.shape[-1] == 3:
                     img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                 elif img.shape[-1] == 4:

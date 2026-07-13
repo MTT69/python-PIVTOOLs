@@ -17,17 +17,20 @@ float32.
 
 import numpy as np
 from scipy import ndimage as ndi
-from scipy.interpolate import griddata, RBFInterpolator
+from scipy.interpolate import RBFInterpolator, griddata
 from skimage.restoration import inpaint_biharmonic
 
 try:
     from sklearn.neighbors import KNeighborsRegressor
+
     SKLEARN_AVAILABLE = True
 except ImportError:
     SKLEARN_AVAILABLE = False
 
 
-def _degenerate_msg(method: str, n_valid: int, n_required: int, mask: np.ndarray, shape) -> str:
+def _degenerate_msg(
+    method: str, n_valid: int, n_required: int, mask: np.ndarray, shape
+) -> str:
     return (
         f"Infilling method '{method}' cannot run: {n_valid} valid donor point(s) "
         f"available (requires >= {n_required}) for field of shape {tuple(shape)} "
@@ -83,7 +86,9 @@ def infill_nearest(
 
     # EDT on the invalid mask returns, for every cell, the index of the nearest
     # valid (background) cell; gather donor values before assigning.
-    idx = ndi.distance_transform_edt(invalid, return_distances=False, return_indices=True)
+    idx = ndi.distance_transform_edt(
+        invalid, return_distances=False, return_indices=True
+    )
     fill_x = ux_out[tuple(idx)][mask]
     fill_y = uy_out[tuple(idx)][mask]
     ux_out[mask] = fill_x
@@ -276,18 +281,20 @@ def infill_rbf_local(
 
     # Build local RBF models (KD-tree inside; memory ~ O(N))
     rbf_u = RBFInterpolator(
-        X_train, u_train,
+        X_train,
+        u_train,
         kernel=kernel,
         epsilon=epsilon,
         neighbors=neighbors,
-        smoothing=smoothing
+        smoothing=smoothing,
     )
     rbf_v = RBFInterpolator(
-        X_train, v_train,
+        X_train,
+        v_train,
         kernel=kernel,
         epsilon=epsilon,
         neighbors=neighbors,
-        smoothing=smoothing
+        smoothing=smoothing,
     )
 
     u_pred = rbf_u(X_query)
@@ -379,7 +386,7 @@ def infill_knn(
         n_neighbors=n_neighbors,
         weights=weights,
         algorithm=algorithm,
-        n_jobs=1  # Always 1: runs inside Dask daemon workers which can't fork
+        n_jobs=1,  # Always 1: runs inside Dask daemon workers which can't fork
     )
 
     # Stack u and v as multi-output targets
@@ -435,35 +442,42 @@ def apply_infilling(
         If an unknown infilling method is specified, or the input field is
         degenerate (insufficient valid donor points).
     """
-    method = method_cfg.get('method', 'nearest').lower()
-    params = method_cfg.get('parameters', {})
+    method = method_cfg.get("method", "nearest").lower()
+    params = method_cfg.get("parameters", {})
     mask = np.asarray(mask, dtype=bool)
 
-    if method == 'nearest':
+    if method == "nearest":
         ux_out, uy_out = infill_nearest(ux, uy, mask)
 
-    elif method == 'knn':
-        n_neighbors = params.get('n_neighbors', 32)
-        weights = params.get('weights', 'distance')
-        algorithm = params.get('algorithm', 'kd_tree')
-        ux_out, uy_out = infill_knn(ux, uy, mask, n_neighbors=n_neighbors,
-                                    weights=weights, algorithm=algorithm)
+    elif method == "knn":
+        n_neighbors = params.get("n_neighbors", 32)
+        weights = params.get("weights", "distance")
+        algorithm = params.get("algorithm", "kd_tree")
+        ux_out, uy_out = infill_knn(
+            ux, uy, mask, n_neighbors=n_neighbors, weights=weights, algorithm=algorithm
+        )
 
-    elif method == 'biharmonic':
+    elif method == "biharmonic":
         ux_out, uy_out = infill_biharmonic(ux, uy, mask)
 
-    elif method == 'griddata_linear':
-        interp_method = params.get('method', 'linear')
+    elif method == "griddata_linear":
+        interp_method = params.get("method", "linear")
         ux_out, uy_out = infill_griddata_linear(ux, uy, mask, method=interp_method)
 
-    elif method == 'rbf_local':
-        neighbors = params.get('neighbors', 64)
-        kernel = params.get('kernel', 'thin_plate_spline')
-        epsilon = params.get('epsilon', None)
-        smoothing = params.get('smoothing', 0.0)
-        ux_out, uy_out = infill_rbf_local(ux, uy, mask, neighbors=neighbors,
-                                          kernel=kernel, epsilon=epsilon,
-                                          smoothing=smoothing)
+    elif method == "rbf_local":
+        neighbors = params.get("neighbors", 64)
+        kernel = params.get("kernel", "thin_plate_spline")
+        epsilon = params.get("epsilon", None)
+        smoothing = params.get("smoothing", 0.0)
+        ux_out, uy_out = infill_rbf_local(
+            ux,
+            uy,
+            mask,
+            neighbors=neighbors,
+            kernel=kernel,
+            epsilon=epsilon,
+            smoothing=smoothing,
+        )
 
     else:
         raise ValueError(

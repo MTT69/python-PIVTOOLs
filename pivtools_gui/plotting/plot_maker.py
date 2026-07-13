@@ -118,8 +118,9 @@ def make_scalar_settings(
         aspect=aspect,
     )
 
+
 # Function to plot a scalar field with masking and customizable settings
-def plot_scalar_field(variable, mask, settings): # efe
+def plot_scalar_field(variable, mask, settings):  # efe
     # Extract plot settings
     plt.rcParams.update({"font.size": settings._fontsize})
     plt.rcParams["axes.titlesize"] = settings._title_fontsize
@@ -159,7 +160,7 @@ def plot_scalar_field(variable, mask, settings): # efe
         else:
             ny, nx = variable.shape
             x = np.arange(nx)
-            y = np.arange(ny-1, -1, -1)
+            y = np.arange(ny - 1, -1, -1)
         X, Y = np.meshgrid(x, y)
 
     # Create the plot (object-oriented API)

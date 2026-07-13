@@ -21,9 +21,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from .grid_detection import detect_grid_automatic
-
 from .base import DetectionResult
+from .grid_detection import detect_grid_automatic
 
 
 @dataclass
@@ -40,16 +39,21 @@ class DotboardDetector:
     def __init__(self, params: DotboardParams):
         self.params = params
 
-    def detect(self, image: np.ndarray, mask: Optional[np.ndarray] = None) -> DetectionResult:
+    def detect(
+        self, image: np.ndarray, mask: Optional[np.ndarray] = None
+    ) -> DetectionResult:
         ok, grid, info = detect_grid_automatic(
-            image, mask=mask,
+            image,
+            mask=mask,
             grid_spacing_mm=self.params.dot_spacing_mm,
             k_neighbors=self.params.k_neighbors,
         )
         if not ok or grid is None:
             return DetectionResult(
-                success=False, board_type=self.board_type,
-                image_points=np.empty((0, 2)), board_local_points=np.empty((0, 3)),
+                success=False,
+                board_type=self.board_type,
+                image_points=np.empty((0, 2)),
+                board_local_points=np.empty((0, 3)),
                 diagnostics=info,
             )
 

@@ -20,7 +20,6 @@ from pivtools_gui.calibration.stereo_model import (
     regular_world_grid,
 )
 
-
 # ---------------------------------------------------------------------------
 # Synthetic stereo pair (no rendering, no C extension)
 # ---------------------------------------------------------------------------
@@ -46,6 +45,7 @@ def _stereo_pair(angle_deg: float = 15.0):
 # ---------------------------------------------------------------------------
 # Bridge + world bounds
 # ---------------------------------------------------------------------------
+
 
 def test_pinhole_from_model_bridges_fields():
     """pinhole_from_model copies K, dist, R, t, image_size verbatim."""
@@ -85,14 +85,20 @@ def test_stereo_world_bounds_no_overlap_raises():
 # Record self_cal block round-trip
 # ---------------------------------------------------------------------------
 
+
 def _stereo_record(self_cal=None) -> REC.StereoRecord:
     m1, m2 = _stereo_pair()
     return REC.StereoRecord(
-        cam1=1, cam2=2, board_type="dotboard",
-        model1=m1, model2=m2,
-        R_stereo=m2.R @ m1.R.T, T_stereo=m2.t - (m2.R @ m1.R.T) @ m1.t,
+        cam1=1,
+        cam2=2,
+        board_type="dotboard",
+        model1=m1,
+        model2=m2,
+        R_stereo=m2.R @ m1.R.T,
+        T_stereo=m2.t - (m2.R @ m1.R.T) @ m1.t,
         world_frame=REC.WorldFrame(),
-        per_view_rms1=[0.1], per_view_rms2=[0.12],
+        per_view_rms1=[0.1],
+        per_view_rms2=[0.12],
         board_meta={"spacing_mm": 14.0},
         self_cal=self_cal or {},
     )
@@ -106,7 +112,9 @@ def test_baked_block_roundtrips(tmp_path):
     """
     block = SC.baked_block(
         _FakeResult(z=3.5, tx=0.012, ty=-0.008, conv=True, rms=0.07, n=4),
-        n_images=20, window_size=64, overlap=50.0,
+        n_images=20,
+        window_size=64,
+        overlap=50.0,
     )
     rec = _stereo_record(self_cal=block)
     path = REC.save_stereo(rec, tmp_path)
@@ -134,6 +142,7 @@ def test_absent_self_cal_defaults_to_zero(tmp_path):
 # Rebake: world-frame redefinition baked into the extrinsics (plan item 17)
 # ---------------------------------------------------------------------------
 
+
 def test_rebake_record_invariant_and_updates_stereo():
     """rebake_record changes both poses but keeps (R_stereo, T_stereo) invariant.
 
@@ -148,11 +157,11 @@ def test_rebake_record_invariant_and_updates_stereo():
 
     SC.rebake_record(rec, 3.0, 0.011, -0.006)
 
-    assert not np.allclose(rec.model1.R, R1_before)        # poses moved
+    assert not np.allclose(rec.model1.R, R1_before)  # poses moved
     Rs1, Ts1 = compose_stereo(rec.model1, rec.model2)
-    assert np.allclose(Rs0, Rs1, atol=1e-12)               # cross-camera pose invariant
+    assert np.allclose(Rs0, Rs1, atol=1e-12)  # cross-camera pose invariant
     assert np.allclose(Ts0, Ts1, atol=1e-9)
-    assert np.allclose(rec.R_stereo, Rs1, atol=1e-12)      # stored values updated
+    assert np.allclose(rec.R_stereo, Rs1, atol=1e-12)  # stored values updated
     assert np.allclose(rec.T_stereo, Ts1, atol=1e-9)
 
 
@@ -185,12 +194,14 @@ def test_baked_record_reconstruction_equivalence():
 
     old = _stereo_record()
     gX_o, gY_o, gZ_o, sp_o = regular_world_grid(
-        old.model1, old.model2, coords1, coords2, z, tx, ty)
+        old.model1, old.model2, coords1, coords2, z, tx, ty
+    )
 
     new = _stereo_record()
     SC.rebake_record(new, z, tx, ty)
     gX_n, gY_n, gZ_n, sp_n = regular_world_grid(
-        new.model1, new.model2, coords1, coords2)
+        new.model1, new.model2, coords1, coords2
+    )
 
     R_corr, t_corr = plane_to_world_correction(z, tx, ty)
     world_new = np.stack([gX_n.ravel(), gY_n.ravel(), gZ_n.ravel()], axis=1)
@@ -210,6 +221,7 @@ def test_baked_record_reconstruction_equivalence():
 # ---------------------------------------------------------------------------
 # The consumer honours a stored sheet (apply contract)
 # ---------------------------------------------------------------------------
+
 
 def test_reconstruct_honours_stored_sheet():
     """regular_world_grid places the output grid on the (z_offset, tilt) plane.
@@ -238,7 +250,16 @@ def test_reconstruct_honours_stored_sheet():
 
     # Zero displacements reconstruct to zero velocity on the unmasked points.
     U, V, W3, mask = reconstruct_3c_field(
-        m1, m2, (gX, gY, gZ), coords1, zero, zero, coords2, zero, zero, dt=1.0,
+        m1,
+        m2,
+        (gX, gY, gZ),
+        coords1,
+        zero,
+        zero,
+        coords2,
+        zero,
+        zero,
+        dt=1.0,
     )
     assert not mask.all()
     assert np.allclose(U[~mask], 0.0, atol=1e-9)
@@ -254,6 +275,7 @@ def test_reconstruct_honours_stored_sheet():
 # ---------------------------------------------------------------------------
 # Minimal SelfCalibrationResult stand-in for baked_block
 # ---------------------------------------------------------------------------
+
 
 class _FakeResult:
     def __init__(self, *, z, tx, ty, conv, rms, n):

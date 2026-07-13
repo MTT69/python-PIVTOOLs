@@ -11,21 +11,21 @@ signature of interpolation-induced noise coloring. Key invariants:
 
 import numpy as np
 import pytest
-from numpy.fft import fftshift, fftfreq
+from numpy.fft import fftfreq, fftshift
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
-    frac_distance,
-    bicubic_weights,
-    lanczos3_weights,
     bicubic_dtft,
-    lanczos3_dtft,
+    bicubic_weights,
     compute_noise_psd_2d,
+    frac_distance,
+    lanczos3_dtft,
+    lanczos3_weights,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # frac_distance
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestFracDistance:
     """Tests for frac_distance()."""
@@ -58,6 +58,7 @@ class TestFracDistance:
 # Bicubic weights
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestBicubicWeights:
     """Tests for bicubic_weights()."""
 
@@ -79,6 +80,7 @@ class TestBicubicWeights:
 # ─────────────────────────────────────────────────────────────────────────────
 # Lanczos-3 weights
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestLanczos3Weights:
     """Tests for lanczos3_weights()."""
@@ -105,6 +107,7 @@ class TestLanczos3Weights:
 # ─────────────────────────────────────────────────────────────────────────────
 # Bicubic DTFT
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestBicubicDTFT:
     """Tests for bicubic_dtft()."""
@@ -135,6 +138,7 @@ class TestBicubicDTFT:
 # Lanczos-3 DTFT
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestLanczos3DTFT:
     """Tests for lanczos3_dtft()."""
 
@@ -162,7 +166,7 @@ class TestLanczos3DTFT:
         H_bic = np.abs(bicubic_dtft(k, f))
         H_lan = np.abs(lanczos3_dtft(k, f))
         # Near Nyquist (|k| > 0.4), Lanczos should have equal or lower gain
-        high_k = np.abs(k) > 0.4
+        np.abs(k) > 0.4
         # Lanczos passband is flatter (closer to 1 at mid-k)
         mid_k = (np.abs(k) > 0.1) & (np.abs(k) < 0.3)
         assert np.mean(H_lan[mid_k]) >= np.mean(H_bic[mid_k]) - 0.05
@@ -172,6 +176,7 @@ class TestLanczos3DTFT:
 # 2D Noise PSD
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestNoisePSD2D:
     """Tests for compute_noise_psd_2d()."""
 
@@ -179,13 +184,13 @@ class TestNoisePSD2D:
     def grids_32(self):
         k_x = fftshift(fftfreq(32))
         k_y = fftshift(fftfreq(32))
-        return np.meshgrid(k_x, k_y, indexing='xy')
+        return np.meshgrid(k_x, k_y, indexing="xy")
 
     @pytest.fixture
     def grids_64(self):
         k_x = fftshift(fftfreq(64))
         k_y = fftshift(fftfreq(64))
-        return np.meshgrid(k_x, k_y, indexing='xy')
+        return np.meshgrid(k_x, k_y, indexing="xy")
 
     @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
     def test_f_zero_gives_flat_one(self, grids_64, kernel):
@@ -233,12 +238,13 @@ class TestNoisePSD2D:
         # Use an ODD number of points for a truly symmetric k grid
         n = window + 1
         k = np.linspace(-0.45, 0.45, n)
-        K_X, K_Y = np.meshgrid(k, k, indexing='xy')
+        K_X, K_Y = np.meshgrid(k, k, indexing="xy")
         P_pos = compute_noise_psd_2d(K_X, K_Y, f, f, kernel=kernel)
         P_neg = compute_noise_psd_2d(-K_X, -K_Y, f, f, kernel=kernel)
 
-        np.testing.assert_allclose(P_pos, P_neg, atol=1e-12,
-                                   err_msg="P_noise not symmetric: P(k) != P(-k)")
+        np.testing.assert_allclose(
+            P_pos, P_neg, atol=1e-12, err_msg="P_noise not symmetric: P(k) != P(-k)"
+        )
 
     @pytest.mark.parametrize("kernel", ["bicubic", "lanczos3"])
     def test_values_bounded(self, grids_64, kernel):

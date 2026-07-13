@@ -14,6 +14,7 @@ from loguru import logger
 
 from pivtools_core.config import get_config, reload_config
 from pivtools_core.paths import get_data_paths
+
 from ...services.job_manager import job_manager
 from ..instantaneous_statistics import VectorStatisticsProcessor
 
@@ -43,7 +44,9 @@ def get_statistics_constraints():
     has_stereo_data = False
     if cfg.base_paths:
         base_path = Path(cfg.base_paths[0])
-        stereo_calibrated_dir = base_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
+        stereo_calibrated_dir = (
+            base_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
+        )
         if stereo_calibrated_dir.exists():
             has_stereo_data = any(stereo_calibrated_dir.iterdir())
 
@@ -65,14 +68,16 @@ def get_statistics_constraints():
     else:
         workflow_options = ["per_camera", "after_merge", "both"]
 
-    return jsonify({
-        "allowed_source_endpoints": cfg.get_allowed_endpoints("statistics"),
-        "workflow_options": workflow_options,
-        "current_workflow": cfg.statistics_workflow,
-        "current_source_endpoint": cfg.statistics_source_endpoint,
-        "is_stereo": is_stereo,
-        "has_stereo_data": has_stereo_data,  # File-based detection result
-    })
+    return jsonify(
+        {
+            "allowed_source_endpoints": cfg.get_allowed_endpoints("statistics"),
+            "workflow_options": workflow_options,
+            "current_workflow": cfg.statistics_workflow,
+            "current_source_endpoint": cfg.statistics_source_endpoint,
+            "is_stereo": is_stereo,
+            "has_stereo_data": has_stereo_data,  # File-based detection result
+        }
+    )
 
 
 @statistics_bp.route("/statistics/calculate", methods=["POST"])
@@ -113,7 +118,9 @@ def calculate_statistics():
             cfg.save()
             reload_config()
             cfg = get_config()
-            logger.info(f"Updated config with requested statistics: {requested_statistics}")
+            logger.info(
+                f"Updated config with requested statistics: {requested_statistics}"
+            )
 
         # Validate path index first (needed for stereo detection)
         if base_path_idx < 0 or base_path_idx >= len(base_paths):
@@ -133,11 +140,17 @@ def calculate_statistics():
 
         # File-based detection for stereo data
         base_dir_path = Path(base_dir)
-        stereo_calibrated_dir = base_dir_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
-        has_stereo_data = stereo_calibrated_dir.exists() and any(stereo_calibrated_dir.iterdir()) if stereo_calibrated_dir.exists() else False
+        stereo_calibrated_dir = (
+            base_dir_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
+        )
+        has_stereo_data = (
+            stereo_calibrated_dir.exists() and any(stereo_calibrated_dir.iterdir())
+            if stereo_calibrated_dir.exists()
+            else False
+        )
 
         # Stereo available if EITHER config says stereo OR stereo data exists
-        is_stereo = is_stereo_config or has_stereo_data
+        is_stereo_config or has_stereo_data
 
         # Auto-select stereo workflow if source_endpoint is stereo
         if source_endpoint == "stereo" and has_stereo_data:
@@ -155,9 +168,14 @@ def calculate_statistics():
             valid_workflows = ("per_camera", "after_merge", "both")
 
         if workflow not in valid_workflows:
-            return jsonify({
-                "error": f"Invalid workflow '{workflow}'. Must be one of: {valid_workflows}"
-            }), 400
+            return (
+                jsonify(
+                    {
+                        "error": f"Invalid workflow '{workflow}'. Must be one of: {valid_workflows}"
+                    }
+                ),
+                400,
+            )
         vector_format = cfg.vector_format
         num_frame_pairs = cfg.num_frame_pairs
 
@@ -168,55 +186,69 @@ def calculate_statistics():
             stereo_pairs = cfg.stereo_pairs
             if stereo_pairs:
                 cam_pair = stereo_pairs[0]
-                targets.append({
-                    "camera": cam_pair[0],  # Reference camera
-                    "camera_pair": cam_pair,
-                    "is_merged": False,
-                    "is_stereo": True,
-                    "label": f"Stereo Cam{cam_pair[0]}_Cam{cam_pair[1]}",
-                })
+                targets.append(
+                    {
+                        "camera": cam_pair[0],  # Reference camera
+                        "camera_pair": cam_pair,
+                        "is_merged": False,
+                        "is_stereo": True,
+                        "label": f"Stereo Cam{cam_pair[0]}_Cam{cam_pair[1]}",
+                    }
+                )
             else:
                 # Fallback if no stereo pairs configured
-                targets.append({
-                    "camera": 1,
-                    "camera_pair": (1, 2),
-                    "is_merged": False,
-                    "is_stereo": True,
-                    "label": "Stereo Cam1_Cam2",
-                })
+                targets.append(
+                    {
+                        "camera": 1,
+                        "camera_pair": (1, 2),
+                        "is_merged": False,
+                        "is_stereo": True,
+                        "label": "Stereo Cam1_Cam2",
+                    }
+                )
         elif workflow == "after_merge":
             # Process merged data only
-            targets.append({
-                "camera": None,
-                "is_merged": True,
-                "label": "Merged",
-            })
+            targets.append(
+                {
+                    "camera": None,
+                    "is_merged": True,
+                    "label": "Merged",
+                }
+            )
         elif workflow == "both":
             # Process all cameras first, then merged
             for cam in cfg.camera_numbers:
-                targets.append({
-                    "camera": cam,
-                    "is_merged": False,
-                    "label": f"Cam{cam}",
-                })
-            targets.append({
-                "camera": None,
-                "is_merged": True,
-                "label": "Merged",
-            })
+                targets.append(
+                    {
+                        "camera": cam,
+                        "is_merged": False,
+                        "label": f"Cam{cam}",
+                    }
+                )
+            targets.append(
+                {
+                    "camera": None,
+                    "is_merged": True,
+                    "label": "Merged",
+                }
+            )
         else:  # per_camera (default)
             # Process all cameras from config.camera_numbers
             for cam in cfg.camera_numbers:
-                targets.append({
-                    "camera": cam,
-                    "is_merged": False,
-                    "label": f"Cam{cam}",
-                })
+                targets.append(
+                    {
+                        "camera": cam,
+                        "is_merged": False,
+                        "label": f"Cam{cam}",
+                    }
+                )
 
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
 
-        logger.info(f"[Statistics] Created {len(targets)} targets: {[t['label'] for t in targets]}")
+        logger.info(
+            f"[Statistics] Created {len(targets)} targets: {[t['label'] for t in targets]}"
+        )
 
         # Create parent job to track all sub-jobs
         parent_job_id = job_manager.create_job(
@@ -256,12 +288,14 @@ def calculate_statistics():
                 path_idx=base_path_idx,
                 parent_job_id=parent_job_id,
             )
-            sub_jobs.append({
-                "job_id": job_id,
-                "type": "merged" if use_merged else f"camera_{cam_num}",
-                "path_idx": base_path_idx,
-                "label": target["label"],
-            })
+            sub_jobs.append(
+                {
+                    "job_id": job_id,
+                    "type": "merged" if use_merged else f"camera_{cam_num}",
+                    "path_idx": base_path_idx,
+                    "label": target["label"],
+                }
+            )
 
             # Launch thread
             thread = threading.Thread(
@@ -285,14 +319,16 @@ def calculate_statistics():
         # Update parent job with sub_jobs list
         job_manager.update_job(parent_job_id, sub_jobs=sub_jobs, status="running")
 
-        return jsonify({
-            "parent_job_id": parent_job_id,
-            "sub_jobs": sub_jobs,
-            "total_targets": len(targets),
-            "processed_targets": len(sub_jobs),
-            "status": "starting",
-            "message": f"Statistics calculation started for {len(sub_jobs)} target(s)",
-        })
+        return jsonify(
+            {
+                "parent_job_id": parent_job_id,
+                "sub_jobs": sub_jobs,
+                "total_targets": len(targets),
+                "processed_targets": len(sub_jobs),
+                "status": "starting",
+                "message": f"Statistics calculation started for {len(sub_jobs)} target(s)",
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error starting statistics calculation: {e}", exc_info=True)

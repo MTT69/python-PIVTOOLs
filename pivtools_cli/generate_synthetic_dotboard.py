@@ -23,18 +23,24 @@ from pivtools_cli.synthetic_calibration_common import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "unit-tests" / "synthetic_calibration" / "dotboard"
+OUTPUT_DIR = (
+    Path(__file__).resolve().parent.parent
+    / "unit-tests"
+    / "synthetic_calibration"
+    / "dotboard"
+)
 N_VIEWS = 10
 MEGAPIXELS = 1.0
 DOT_COLS = 15
 DOT_ROWS = 12
 DOT_SPACING_MM = 15.0
-DOT_RADIUS_RATIO = 0.22      # radius / spacing
+DOT_RADIUS_RATIO = 0.22  # radius / spacing
 
 
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
+
 
 def generate_dotboard_images(
     out_dir: Path,
@@ -93,7 +99,7 @@ def generate_dotboard_dataset(
 ):
     """Orchestrator: create camera + poses, generate images, save ground truth."""
     total_px = int(megapixels * 1e6)
-    W = H = int(total_px ** 0.5)
+    W = H = int(total_px**0.5)
     print(f"Dotboard target image: {W}x{H}  ({W * H / 1e6:.2f} MP)")
 
     cam_mtx = make_camera_matrix(W, H)
@@ -104,24 +110,40 @@ def generate_dotboard_dataset(
     board_centre = np.array([board_w / 2, board_h / 2, 0])
 
     poses = make_poses(
-        n_views, board_centre, fx, W, board_w,
+        n_views,
+        board_centre,
+        fx,
+        W,
+        board_w,
         fill_fraction_range=(0.80, 0.55),
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     generate_dotboard_images(
-        output_dir, cam_mtx, poses, W, H,
-        cols=cols, rows=rows, spacing_mm=spacing_mm, radius_ratio=radius_ratio,
+        output_dir,
+        cam_mtx,
+        poses,
+        W,
+        H,
+        cols=cols,
+        rows=rows,
+        spacing_mm=spacing_mm,
+        radius_ratio=radius_ratio,
     )
 
     gt_path = output_dir.parent / "ground_truth.npz"
     save_ground_truth(
-        gt_path, cam_mtx, poses,
-        image_width=W, image_height=H,
+        gt_path,
+        cam_mtx,
+        poses,
+        image_width=W,
+        image_height=H,
     )
     print(f"Dotboard ground truth saved to {gt_path}")
-    print(f"  fx={cam_mtx[0,0]:.1f}  fy={cam_mtx[1,1]:.1f}  "
-          f"cx={cam_mtx[0,2]:.1f}  cy={cam_mtx[1,2]:.1f}")
+    print(
+        f"  fx={cam_mtx[0,0]:.1f}  fy={cam_mtx[1,1]:.1f}  "
+        f"cx={cam_mtx[0,2]:.1f}  cy={cam_mtx[1,2]:.1f}"
+    )
 
 
 if __name__ == "__main__":

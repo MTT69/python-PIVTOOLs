@@ -25,8 +25,14 @@ _SYN = Path(__file__).parent / "synthetic_calibration"
 _STEREO_CHARUCO = _SYN / "stereo_charuco"
 _N_VIEWS = 10
 
-_CHARUCO = {"squares_h": 10, "squares_v": 7, "square_size": 0.030, "marker_ratio": 0.5,
-            "aruco_dict": "DICT_4X4_1000", "min_corners": 6}
+_CHARUCO = {
+    "squares_h": 10,
+    "squares_v": 7,
+    "square_size": 0.030,
+    "marker_ratio": 0.5,
+    "aruco_dict": "DICT_4X4_1000",
+    "min_corners": 6,
+}
 
 
 class _FakeConfig:
@@ -67,12 +73,19 @@ def client(tmp_path, monkeypatch):
     """A Flask test client with the calibration blueprint and the two env seams mocked."""
     if not _STEREO_CHARUCO.is_dir():
         pytest.skip("synthetic stereo_charuco set absent")
-    gg = {"enabled": True, "datum_camera": 1, "datum_view": 0, "cameras": [1, 2],
-          "board_release": "full3d"}
+    gg = {
+        "enabled": True,
+        "datum_camera": 1,
+        "datum_view": 0,
+        "cameras": [1, 2],
+        "board_release": "full3d",
+    }
     cfg = _FakeConfig(tmp_path, gg)
     fixture = _load_fixture()
 
-    def fake_read(frame, camera, config, source_idx, image_format=None, image_type=None):
+    def fake_read(
+        frame, camera, config, source_idx, image_format=None, image_type=None
+    ):
         return fixture[(int(camera), int(frame))]
 
     monkeypatch.setattr(V, "get_config", lambda: cfg)
@@ -148,7 +161,9 @@ def test_generate_charuco_pinhole_then_model(client, tmp_path):
     assert job["paths"] and Path(job["paths"][0]).exists()
 
     # the model route now reports the saved record
-    m = client.get("/calibration/joint/model", query_string={"board": "charuco"}).get_json()
+    m = client.get(
+        "/calibration/joint/model", query_string={"board": "charuco"}
+    ).get_json()
     assert m["exists"] is True
     assert m["model_type"] == "pinhole"
     assert sorted(m["cameras"]) == [1, 2]
@@ -158,20 +173,26 @@ def test_generate_charuco_pinhole_then_model(client, tmp_path):
 
 
 def test_model_absent_when_nothing_saved(client):
-    m = client.get("/calibration/joint/model", query_string={"board": "charuco"}).get_json()
+    m = client.get(
+        "/calibration/joint/model", query_string={"board": "charuco"}
+    ).get_json()
     assert m["exists"] is False
 
 
 def test_generate_charuco_polynomial_writes_per_camera(client):
-    r = client.post("/calibration/joint/generate",
-                    json={"board": "charuco", "model_type": "polynomial"})
+    r = client.post(
+        "/calibration/joint/generate",
+        json={"board": "charuco", "model_type": "polynomial"},
+    )
     job = _wait_job(client, r.get_json()["job_id"])
     assert job["status"] == "completed", job.get("error")
     assert job["model_type"] == "polynomial"
     assert job["rms_units"] == "mm"
     assert len(job["paths"]) == 2  # one per camera
-    m = client.get("/calibration/joint/model",
-                   query_string={"board": "charuco", "model_type": "polynomial"}).get_json()
+    m = client.get(
+        "/calibration/joint/model",
+        query_string={"board": "charuco", "model_type": "polynomial"},
+    ).get_json()
     assert m["exists"] is True and m["model_type"] == "polynomial"
     assert sorted(m["cameras"]) == [1, 2]
     for cam in ("1", "2"):
@@ -188,8 +209,12 @@ def test_generate_status_unknown_job_404(client):
 def test_generate_job_failure_surfaces(client):
     """A camera with no frames fails INSIDE the job thread -> status 'failed' with an error,
     never a hung 'running' or a swallowed exception."""
-    r = client.post("/calibration/joint/generate", json={"board": "charuco", "cameras": [1, 2, 3]})
-    assert r.get_json()["success"] is True  # the job starts; the failure is reported via status
+    r = client.post(
+        "/calibration/joint/generate", json={"board": "charuco", "cameras": [1, 2, 3]}
+    )
+    assert (
+        r.get_json()["success"] is True
+    )  # the job starts; the failure is reported via status
     job = _wait_job(client, r.get_json()["job_id"])
     assert job["status"] == "failed"
     assert job.get("error")
@@ -197,11 +222,15 @@ def test_generate_job_failure_surfaces(client):
 
 def test_resolve_then_generate_different_camera_sets(client):
     """Regression: the detection cache key includes the camera set, so resolving cam1 alone does
-    NOT stale-serve a cam1-only detection to a cam1+2 generate (which would fail confusingly)."""
-    r1 = client.post("/calibration/joint/resolve_grid",
-                     json={"board": "charuco", "cameras": [1]})
+    NOT stale-serve a cam1-only detection to a cam1+2 generate (which would fail confusingly).
+    """
+    r1 = client.post(
+        "/calibration/joint/resolve_grid", json={"board": "charuco", "cameras": [1]}
+    )
     assert r1.get_json()["cameras"] == [1]
-    r2 = client.post("/calibration/joint/generate", json={"board": "charuco", "cameras": [1, 2]})
+    r2 = client.post(
+        "/calibration/joint/generate", json={"board": "charuco", "cameras": [1, 2]}
+    )
     job = _wait_job(client, r2.get_json()["job_id"])
     assert job["status"] == "completed", job.get("error")
     assert sorted(int(c) for c in job["cameras"]) == [1, 2]

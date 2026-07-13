@@ -3,9 +3,9 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 from flask import Blueprint, jsonify, request, send_file
 from loguru import logger
-import numpy as np
 from scipy.io import loadmat
 
 from pivtools_core.config import get_config
@@ -26,12 +26,16 @@ MAX_DEPTH = 5  # For deep search
 EXCLUDED_VARS = {"x", "y"}
 
 
-def _count_vector_files(data_dir: Path, vector_format: str, num_frame_pairs: int) -> int:
+def _count_vector_files(
+    data_dir: Path, vector_format: str, num_frame_pairs: int
+) -> int:
     """Count existing vector files using the configured vector_format pattern."""
     return sum(
-        1 for i in range(1, num_frame_pairs + 1)
+        1
+        for i in range(1, num_frame_pairs + 1)
         if (data_dir / (vector_format % i)).exists()
     )
+
 
 # Label formatting for special variables (matching VectorViewer)
 VARIABLE_LABELS = {
@@ -115,7 +119,8 @@ def _extract_plottable_vars(mat_path: Path) -> list:
             if not all_vars:
                 try:
                     attrs = [
-                        n for n in dir(pr)
+                        n
+                        for n in dir(pr)
                         if not n.startswith("_") and not callable(getattr(pr, n, None))
                     ]
                     all_vars = attrs
@@ -161,14 +166,16 @@ def get_video_constraints():
     """
     cfg = get_config()
 
-    return jsonify({
-        "allowed_source_endpoints": cfg.get_allowed_endpoints("video"),
-        "ensemble_blocked": True,
-        "ensemble_reason": (
-            "Ensemble data has no temporal sequence. Videos can only be "
-            "created from instantaneous or merged data."
-        ),
-    })
+    return jsonify(
+        {
+            "allowed_source_endpoints": cfg.get_allowed_endpoints("video"),
+            "ensemble_blocked": True,
+            "ensemble_reason": (
+                "Ensemble data has no temporal sequence. Videos can only be "
+                "created from instantaneous or merged data."
+            ),
+        }
+    )
 
 
 def check_video_data_availability(
@@ -187,7 +194,12 @@ def check_video_data_availability(
         "calibrated": {"exists": False, "frame_count": 0, "path": None},
         "uncalibrated": {"exists": False, "frame_count": 0, "path": None},
         "merged": {"exists": False, "frame_count": 0, "path": None},
-        "stereo": {"exists": False, "frame_count": 0, "path": None, "camera_pair": None},
+        "stereo": {
+            "exists": False,
+            "frame_count": 0,
+            "path": None,
+            "camera_pair": None,
+        },
         "inst_stats": {"exists": False, "frame_count": 0, "path": None},
     }
 
@@ -203,7 +215,9 @@ def check_video_data_availability(
         )
         cal_data_dir = Path(cal_paths["data_dir"])
         if cal_data_dir.exists():
-            frame_count = _count_vector_files(cal_data_dir, vector_format, num_frame_pairs)
+            frame_count = _count_vector_files(
+                cal_data_dir, vector_format, num_frame_pairs
+            )
             if frame_count > 0:
                 available["calibrated"]["exists"] = True
                 available["calibrated"]["frame_count"] = frame_count
@@ -223,7 +237,9 @@ def check_video_data_availability(
         )
         uncal_data_dir = Path(uncal_paths["data_dir"])
         if uncal_data_dir.exists():
-            frame_count = _count_vector_files(uncal_data_dir, vector_format, num_frame_pairs)
+            frame_count = _count_vector_files(
+                uncal_data_dir, vector_format, num_frame_pairs
+            )
             if frame_count > 0:
                 available["uncalibrated"]["exists"] = True
                 available["uncalibrated"]["frame_count"] = frame_count
@@ -244,7 +260,9 @@ def check_video_data_availability(
             )
             merged_data_dir = Path(merged_paths["data_dir"])
             if merged_data_dir.exists():
-                frame_count = _count_vector_files(merged_data_dir, vector_format, num_frame_pairs)
+                frame_count = _count_vector_files(
+                    merged_data_dir, vector_format, num_frame_pairs
+                )
                 if frame_count > 0:
                     available["merged"]["exists"] = True
                     available["merged"]["frame_count"] = frame_count
@@ -258,7 +276,11 @@ def check_video_data_availability(
         stereo_base_dir = base_path / "stereo_calibrated" / str(num_frame_pairs)
         if stereo_base_dir.exists():
             # Find Cam{n}_Cam{m} folders
-            cam_folders = [d for d in stereo_base_dir.iterdir() if d.is_dir() and d.name.startswith("Cam")]
+            cam_folders = [
+                d
+                for d in stereo_base_dir.iterdir()
+                if d.is_dir() and d.name.startswith("Cam")
+            ]
             for cam_folder in cam_folders:
                 # Parse camera pair from folder name (e.g., "Cam1_Cam2")
                 parts = cam_folder.name.replace("Cam", "").split("_")
@@ -268,13 +290,17 @@ def check_video_data_availability(
                         # Check for instantaneous data in this folder
                         inst_dir = cam_folder / "instantaneous"
                         if inst_dir.exists():
-                            frame_count = _count_vector_files(inst_dir, vector_format, num_frame_pairs)
+                            frame_count = _count_vector_files(
+                                inst_dir, vector_format, num_frame_pairs
+                            )
                             if frame_count > 0:
                                 available["stereo"]["exists"] = True
                                 available["stereo"]["frame_count"] = frame_count
                                 available["stereo"]["path"] = str(inst_dir)
                                 available["stereo"]["camera_pair"] = list(detected_pair)
-                                logger.debug(f"Found stereo data: {inst_dir} with {frame_count} frames")
+                                logger.debug(
+                                    f"Found stereo data: {inst_dir} with {frame_count} frames"
+                                )
                                 break  # Use first valid stereo folder found
                     except ValueError:
                         continue
@@ -283,7 +309,14 @@ def check_video_data_availability(
 
     # Check instantaneous statistics (camera-specific)
     try:
-        stats_dir = base_path / "statistics" / str(num_frame_pairs) / f"Cam{camera}" / "instantaneous" / "instantaneous_stats"
+        stats_dir = (
+            base_path
+            / "statistics"
+            / str(num_frame_pairs)
+            / f"Cam{camera}"
+            / "instantaneous"
+            / "instantaneous_stats"
+        )
         if stats_dir.exists():
             frame_count = _count_vector_files(stats_dir, vector_format, num_frame_pairs)
             if frame_count > 0:
@@ -297,9 +330,18 @@ def check_video_data_availability(
     if available["stereo"]["exists"] and available["stereo"]["camera_pair"]:
         try:
             cam_pair = available["stereo"]["camera_pair"]
-            stereo_stats_dir = base_path / "statistics" / str(num_frame_pairs) / f"Cam{cam_pair[0]}_Cam{cam_pair[1]}" / "instantaneous" / "instantaneous_stats"
+            stereo_stats_dir = (
+                base_path
+                / "statistics"
+                / str(num_frame_pairs)
+                / f"Cam{cam_pair[0]}_Cam{cam_pair[1]}"
+                / "instantaneous"
+                / "instantaneous_stats"
+            )
             if stereo_stats_dir.exists():
-                frame_count = _count_vector_files(stereo_stats_dir, vector_format, num_frame_pairs)
+                frame_count = _count_vector_files(
+                    stereo_stats_dir, vector_format, num_frame_pairs
+                )
                 if frame_count > 0:
                     # Override inst_stats with stereo stats if stereo data is primary
                     available["inst_stats"]["exists"] = True
@@ -394,22 +436,26 @@ def list_videos():
         for p in unique_paths:
             try:
                 stat = p.stat()
-                videos_meta.append({
-                    "path": str(p),
-                    "filename": p.name,
-                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                    "modified": stat.st_mtime,
-                    "data_source": _infer_data_source(p),
-                })
+                videos_meta.append(
+                    {
+                        "path": str(p),
+                        "filename": p.name,
+                        "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                        "modified": stat.st_mtime,
+                        "data_source": _infer_data_source(p),
+                    }
+                )
             except OSError:
                 continue
 
         logger.info(f"[VIDEO] Found {len(videos_meta)} videos")
         # Return both formats for backward compat
-        return jsonify({
-            "videos": [v["path"] for v in videos_meta],
-            "videos_meta": videos_meta,
-        })
+        return jsonify(
+            {
+                "videos": [v["path"] for v in videos_meta],
+                "videos_meta": videos_meta,
+            }
+        )
     except Exception as e:
         logger.exception(f"[VIDEO] Failed to list videos: {e}")
         return jsonify({"error": str(e), "videos": []}), 500
@@ -437,10 +483,15 @@ def check_data_sources():
             if cfg.base_paths:
                 base_path_str = cfg.base_paths[0]
             else:
-                return jsonify({
-                    "success": False,
-                    "error": "No base_path provided and no default configured"
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "No base_path provided and no default configured",
+                        }
+                    ),
+                    400,
+                )
 
         try:
             camera = int(camera_raw)
@@ -451,10 +502,15 @@ def check_data_sources():
 
         base_path = Path(base_path_str).expanduser()
         if not base_path.exists():
-            return jsonify({
-                "success": False,
-                "error": f"Base path does not exist: {base_path}"
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Base path does not exist: {base_path}",
+                    }
+                ),
+                404,
+            )
 
         # Note: check_video_data_availability now uses FILE-BASED stereo detection
         # (no longer relies on cfg.is_stereo_setup for stereo data availability)
@@ -483,16 +539,18 @@ def check_data_sources():
 
         has_any_data = any(v["exists"] for v in available.values())
 
-        return jsonify({
-            "success": True,
-            "available": available,
-            "default_source": default_source,
-            "has_any_data": has_any_data,
-            "base_path": str(base_path),
-            "camera": camera,
-            "is_stereo": has_stereo_data,  # File-based detection
-            "has_stereo_data": has_stereo_data,  # Explicit flag
-        })
+        return jsonify(
+            {
+                "success": True,
+                "available": available,
+                "default_source": default_source,
+                "has_any_data": has_any_data,
+                "base_path": str(base_path),
+                "camera": camera,
+                "is_stereo": has_stereo_data,  # File-based detection
+                "has_stereo_data": has_stereo_data,  # Explicit flag
+            }
+        )
 
     except Exception as e:
         logger.exception(f"[VIDEO] Failed to check data sources: {e}")
@@ -527,7 +585,10 @@ def available_variables():
             if cfg.base_paths:
                 base_path_str = cfg.base_paths[0]
             else:
-                return jsonify({"success": False, "error": "No base_path provided"}), 400
+                return (
+                    jsonify({"success": False, "error": "No base_path provided"}),
+                    400,
+                )
 
         try:
             camera = int(camera_raw)
@@ -600,9 +661,21 @@ def available_variables():
             cam_folder = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
         else:
             cam_folder = f"Cam{camera}"
-        stats_base = base_path / "statistics" / str(cfg.num_frame_pairs) / cam_folder / "instantaneous"
+        stats_base = (
+            base_path
+            / "statistics"
+            / str(cfg.num_frame_pairs)
+            / cam_folder
+            / "instantaneous"
+        )
         inst_stats_dir = stats_base / "instantaneous_stats"
-        has_inst_stats = inst_stats_dir.exists() and _count_vector_files(inst_stats_dir, cfg.vector_format, cfg.num_frame_pairs) > 0
+        has_inst_stats = (
+            inst_stats_dir.exists()
+            and _count_vector_files(
+                inst_stats_dir, cfg.vector_format, cfg.num_frame_pairs
+            )
+            > 0
+        )
 
         if has_inst_stats:
             fmt = cfg.vector_format
@@ -617,13 +690,22 @@ def available_variables():
                 base_vars = set(grouped_variables["instantaneous"])
                 # Keep stats-specific vars or known computed stats
                 known_stats = {
-                    "u_prime", "v_prime", "w_prime",
-                    "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",
-                    "gamma1", "gamma2", "vorticity", "divergence",
+                    "u_prime",
+                    "v_prime",
+                    "w_prime",
+                    "uu_inst",
+                    "vv_inst",
+                    "ww_inst",
+                    "uv_inst",
+                    "uw_inst",
+                    "vw_inst",
+                    "gamma1",
+                    "gamma2",
+                    "vorticity",
+                    "divergence",
                 }
                 grouped_variables["instantaneous_stats"] = [
-                    v for v in stats_vars
-                    if v not in base_vars or v in known_stats
+                    v for v in stats_vars if v not in base_vars or v in known_stats
                 ]
 
         # Build flat variables list for backward compatibility
@@ -631,35 +713,43 @@ def available_variables():
 
         # Add instantaneous variables
         for var_name in grouped_variables["instantaneous"]:
-            variables.append({
-                "name": var_name,
-                "label": _get_variable_label(var_name),
-                "group": "piv",
-            })
+            variables.append(
+                {
+                    "name": var_name,
+                    "label": _get_variable_label(var_name),
+                    "group": "piv",
+                }
+            )
 
         # Always include mag (velocity magnitude) even if not in file
         if "mag" not in grouped_variables["instantaneous"]:
-            variables.append({
-                "name": "mag",
-                "label": _get_variable_label("mag"),
-                "group": "piv",
-            })
+            variables.append(
+                {
+                    "name": "mag",
+                    "label": _get_variable_label("mag"),
+                    "group": "piv",
+                }
+            )
 
         # Add instantaneous stats variables
         for var_name in grouped_variables["instantaneous_stats"]:
-            variables.append({
-                "name": var_name,
-                "label": _get_variable_label(var_name),
-                "group": "stats",
-            })
+            variables.append(
+                {
+                    "name": var_name,
+                    "label": _get_variable_label(var_name),
+                    "group": "stats",
+                }
+            )
 
-        return jsonify({
-            "success": True,
-            "variables": variables,
-            "grouped_variables": grouped_variables,
-            "has_stereo": has_stereo,
-            "has_inst_stats": has_inst_stats,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "variables": variables,
+                "grouped_variables": grouped_variables,
+                "has_stereo": has_stereo,
+                "has_inst_stats": has_inst_stats,
+            }
+        )
 
     except Exception as e:
         logger.exception(f"[VIDEO] Failed to get available variables: {e}")
@@ -720,10 +810,14 @@ def video_config():
             val = data[json_key]
             # Handle special cases for lower/upper (keep as string for auto detection)
             if json_key in ("lower", "upper"):
-                cfg.data["video"][config_key] = str(val) if val not in (None, "") else ""
+                cfg.data["video"][config_key] = (
+                    str(val) if val not in (None, "") else ""
+                )
             else:
                 try:
-                    cfg.data["video"][config_key] = type_fn(val) if val is not None else None
+                    cfg.data["video"][config_key] = (
+                        type_fn(val) if val is not None else None
+                    )
                 except (ValueError, TypeError):
                     cfg.data["video"][config_key] = val
             updated[config_key] = cfg.data["video"][config_key]
@@ -732,11 +826,13 @@ def video_config():
     cfg.save()
     logger.info(f"[VIDEO] Updated config: {updated}")
 
-    return jsonify({
-        "status": "ok",
-        "updated": updated,
-        "video_config": cfg.data.get("video", {}),
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "updated": updated,
+            "video_config": cfg.data.get("video", {}),
+        }
+    )
 
 
 @video_maker_bp.route("/start_video", methods=["POST"])
@@ -764,13 +860,18 @@ def start_video():
     # Check ensemble constraint - ensemble data has no temporal sequence
     piv_type = cfg.video_piv_type
     if piv_type == "ensemble":
-        return jsonify({
-            "error": (
-                "Cannot create video from ensemble data. Ensemble averaging "
-                "produces a single mean field with no temporal sequence."
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Cannot create video from ensemble data. Ensemble averaging "
+                        "produces a single mean field with no temporal sequence."
+                    ),
+                    "constraint_violation": "ensemble_blocked",
+                }
             ),
-            "constraint_violation": "ensemble_blocked",
-        }), 400
+            400,
+        )
 
     # Get base path from request or config
     # Priority: base_path (direct) > base_path_idx > source_path_idx > config.video_base_path_idx
@@ -778,13 +879,22 @@ def start_video():
     if base_path_str:
         base = Path(base_path_str).expanduser()
     else:
-        base_path_idx = data.get("base_path_idx", data.get("source_path_idx", cfg.video_base_path_idx))
+        base_path_idx = data.get(
+            "base_path_idx", data.get("source_path_idx", cfg.video_base_path_idx)
+        )
         try:
             base_path_idx = int(base_path_idx)
         except (ValueError, TypeError):
             base_path_idx = 0
         if base_path_idx >= len(cfg.base_paths):
-            return jsonify({"error": f"Invalid base_path_idx {base_path_idx}. Only {len(cfg.base_paths)} paths configured."}), 400
+            return (
+                jsonify(
+                    {
+                        "error": f"Invalid base_path_idx {base_path_idx}. Only {len(cfg.base_paths)} paths configured."
+                    }
+                ),
+                400,
+            )
         base = cfg.base_paths[base_path_idx]
 
     if not base.exists():
@@ -813,7 +923,14 @@ def start_video():
     data_source = data.get("data_source", cfg.video_data_source)
     valid_sources = ("calibrated", "uncalibrated", "merged", "stereo", "inst_stats")
     if data_source not in valid_sources:
-        return jsonify({"error": f"Invalid data_source. Must be one of: {', '.join(valid_sources)}"}), 400
+        return (
+            jsonify(
+                {
+                    "error": f"Invalid data_source. Must be one of: {', '.join(valid_sources)}"
+                }
+            ),
+            400,
+        )
 
     var = data.get("var", cfg.video_variable)
 
@@ -837,9 +954,19 @@ def start_video():
 
     # For stats variables, auto-switch to inst_stats source
     STATS_VARIABLES = {
-        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
-        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
-        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+        "u_prime",
+        "v_prime",
+        "w_prime",  # Legacy fluctuations
+        "uu_inst",
+        "vv_inst",
+        "ww_inst",
+        "uv_inst",
+        "uw_inst",
+        "vw_inst",  # Stress tensor components
+        "vorticity",
+        "divergence",
+        "gamma1",
+        "gamma2",  # Derived stats
     }
     if var in STATS_VARIABLES and data_source != "inst_stats":
         data_source = "inst_stats"
@@ -848,30 +975,56 @@ def start_video():
     if not available[data_source]["exists"]:
         available_sources = [k for k, v in available.items() if v["exists"]]
         if not available_sources:
-            return jsonify({
-                "error": f"No PIV data found for camera {cam}. Please run PIV processing first.",
-                "available_sources": []
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "error": f"No PIV data found for camera {cam}. Please run PIV processing first.",
+                        "available_sources": [],
+                    }
+                ),
+                404,
+            )
         else:
-            return jsonify({
-                "error": f"No {data_source} data found for camera {cam}. Available sources: {', '.join(available_sources)}",
-                "available_sources": available_sources,
-                "selected_source": data_source
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "error": f"No {data_source} data found for camera {cam}. Available sources: {', '.join(available_sources)}",
+                        "available_sources": available_sources,
+                        "selected_source": data_source,
+                    }
+                ),
+                404,
+            )
 
     # Validate variable - allow any plottable variable
     # Instead of a hardcoded list, we allow any variable that was detected as plottable
     # This includes dynamically computed statistics
     VALID_VARIABLES = {
-        "ux", "uy", "uz", "mag", "b_mask",  # PIV variables
-        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
-        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
-        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+        "ux",
+        "uy",
+        "uz",
+        "mag",
+        "b_mask",  # PIV variables
+        "u_prime",
+        "v_prime",
+        "w_prime",  # Legacy fluctuations
+        "uu_inst",
+        "vv_inst",
+        "ww_inst",
+        "uv_inst",
+        "uw_inst",
+        "vw_inst",  # Stress tensor components
+        "vorticity",
+        "divergence",
+        "gamma1",
+        "gamma2",  # Derived stats
     }
     # Note: We now accept any variable as the backend will try to load it dynamically
     # This allows new computed statistics to work without code changes
     if var not in VALID_VARIABLES:
-        logger.info(f"[VIDEO] Variable '{var}' not in known list, will attempt to load dynamically")
+        logger.info(
+            f"[VIDEO] Variable '{var}' not in known list, will attempt to load dynamically"
+        )
 
     # Get video parameters from config (with request overrides for backward compat)
     fps = data.get("fps", cfg.video_fps)
@@ -944,7 +1097,8 @@ def start_video():
                     progress=progress,
                     current_frame=current,
                     total_frames=total,
-                    message=f"Processing frame {current}/{total}" + (f" - {msg}" if msg else ""),
+                    message=f"Processing frame {current}/{total}"
+                    + (f" - {msg}" if msg else ""),
                 )
 
             # Run video generation using process_video
@@ -1002,12 +1156,17 @@ def start_video():
     thread = threading.Thread(target=run_video, daemon=True)
     thread.start()
 
-    return jsonify({
-        "job_id": job_id,
-        "status": "starting",
-        "data_source": data_source,
-        "frame_count": available[data_source]["frame_count"],
-    }), 202
+    return (
+        jsonify(
+            {
+                "job_id": job_id,
+                "status": "starting",
+                "data_source": data_source,
+                "frame_count": available[data_source]["frame_count"],
+            }
+        ),
+        202,
+    )
 
 
 @video_maker_bp.route("/start_batch", methods=["POST"])
@@ -1079,9 +1238,19 @@ def start_video_batch():
 
     # For stats variables, auto-switch to inst_stats source
     STATS_VARIABLES = {
-        "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
-        "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
-        "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+        "u_prime",
+        "v_prime",
+        "w_prime",  # Legacy fluctuations
+        "uu_inst",
+        "vv_inst",
+        "ww_inst",
+        "uv_inst",
+        "uw_inst",
+        "vw_inst",  # Stress tensor components
+        "vorticity",
+        "divergence",
+        "gamma1",
+        "gamma2",  # Derived stats
     }
     if var in STATS_VARIABLES and data_source != "inst_stats":
         data_source = "inst_stats"
@@ -1092,19 +1261,23 @@ def start_video_batch():
         targets = []
         if process_merged:
             # Process merged data only
-            targets.append({
-                "camera": None,
-                "is_merged": True,
-                "label": "Merged",
-            })
+            targets.append(
+                {
+                    "camera": None,
+                    "is_merged": True,
+                    "label": "Merged",
+                }
+            )
         else:
             # Process all cameras from config.camera_numbers
             for cam in cfg.camera_numbers:
-                targets.append({
-                    "camera": cam,
-                    "is_merged": False,
-                    "label": f"Cam{cam}",
-                })
+                targets.append(
+                    {
+                        "camera": cam,
+                        "is_merged": False,
+                        "label": f"Cam{cam}",
+                    }
+                )
 
         if not targets:
             return jsonify({"error": "No targets to process"}), 400
@@ -1148,12 +1321,14 @@ def start_video_batch():
                 data_source=effective_source,
                 run=run,
             )
-            sub_jobs.append({
-                "job_id": job_id,
-                "type": "merged" if use_merged else f"camera_{cam_num}",
-                "path_idx": base_path_idx,
-                "label": target["label"],
-            })
+            sub_jobs.append(
+                {
+                    "job_id": job_id,
+                    "type": "merged" if use_merged else f"camera_{cam_num}",
+                    "path_idx": base_path_idx,
+                    "label": target["label"],
+                }
+            )
 
             # Create cancel event for this job
             cancel_event = threading.Event()
@@ -1188,14 +1363,16 @@ def start_video_batch():
         # Update parent job with sub_jobs list
         job_manager.update_job(parent_job_id, sub_jobs=sub_jobs, status="running")
 
-        return jsonify({
-            "parent_job_id": parent_job_id,
-            "sub_jobs": sub_jobs,
-            "total_targets": len(targets),
-            "processed_targets": len(sub_jobs),
-            "status": "starting",
-            "message": f"Video creation started for {len(sub_jobs)} target(s)",
-        })
+        return jsonify(
+            {
+                "parent_job_id": parent_job_id,
+                "sub_jobs": sub_jobs,
+                "total_targets": len(targets),
+                "processed_targets": len(sub_jobs),
+                "status": "starting",
+                "message": f"Video creation started for {len(sub_jobs)} target(s)",
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error starting batch video creation: {e}", exc_info=True)
@@ -1241,7 +1418,8 @@ def _run_video_job(
                 progress=progress,
                 current_frame=current,
                 total_frames=total,
-                message=f"Processing frame {current}/{total}" + (f" - {msg}" if msg else ""),
+                message=f"Processing frame {current}/{total}"
+                + (f" - {msg}" if msg else ""),
             )
 
         # Run video generation
@@ -1351,7 +1529,12 @@ def cancel_video():
             job_manager.update_job(job_id, message="Cancellation requested")
             return jsonify({"status": "cancelling", "job_id": job_id}), 202
         else:
-            return jsonify({"error": "Job not found or already completed", "job_id": job_id}), 404
+            return (
+                jsonify(
+                    {"error": "Job not found or already completed", "job_id": job_id}
+                ),
+                404,
+            )
     else:
         # Cancel all running video jobs
         cancelled = []
@@ -1425,11 +1608,13 @@ def download_video():
             return jsonify({"error": "Invalid file"}), 400
         user_home = Path.home()
         cwd = Path.cwd()
-        
+
         # Get configured base paths for data access
         cfg = get_config(refresh=True)
-        config_base_paths = [Path(bp).resolve() for bp in cfg.base_paths if Path(bp).exists()]
-        
+        config_base_paths = [
+            Path(bp).resolve() for bp in cfg.base_paths if Path(bp).exists()
+        ]
+
         allowed_roots = [
             user_home,
             cwd,
@@ -1438,10 +1623,10 @@ def download_video():
             Path("/Users"),
             Path("/home"),
         ]
-        
+
         # Add configured base paths to allowed roots
         allowed_roots.extend(config_base_paths)
-        
+
         if os.name == "nt":
             allowed_roots.extend([Path("C:\\Users"), Path("C:\\temp"), Path("C:\\tmp")])
         path_allowed = any(
@@ -1479,7 +1664,9 @@ def delete_video():
 
         # Security: reuse same allowed-roots logic as download
         cfg = get_config(refresh=True)
-        config_base_paths = [Path(bp).resolve() for bp in cfg.base_paths if Path(bp).exists()]
+        config_base_paths = [
+            Path(bp).resolve() for bp in cfg.base_paths if Path(bp).exists()
+        ]
         allowed_roots = [Path.home(), Path.cwd()]
         allowed_roots.extend(config_base_paths)
         if os.name == "nt":
@@ -1525,10 +1712,15 @@ def check_runs():
             if cfg.base_paths:
                 base_path_str = cfg.base_paths[0]
             else:
-                return jsonify({
-                    "success": False,
-                    "error": "No base_path provided and no default configured"
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "No base_path provided and no default configured",
+                        }
+                    ),
+                    400,
+                )
 
         try:
             camera = int(camera_raw)
@@ -1539,41 +1731,78 @@ def check_runs():
 
         base_path = Path(base_path_str).expanduser()
         if not base_path.exists():
-            return jsonify({
-                "success": False,
-                "error": f"Base path does not exist: {base_path}"
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Base path does not exist: {base_path}",
+                    }
+                ),
+                404,
+            )
 
         # For stats variables, auto-switch to inst_stats
         STATS_VARIABLES = {
-            "u_prime", "v_prime", "w_prime",  # Legacy fluctuations
-            "uu_inst", "vv_inst", "ww_inst", "uv_inst", "uw_inst", "vw_inst",  # Stress tensor components
-            "vorticity", "divergence", "gamma1", "gamma2",  # Derived stats
+            "u_prime",
+            "v_prime",
+            "w_prime",  # Legacy fluctuations
+            "uu_inst",
+            "vv_inst",
+            "ww_inst",
+            "uv_inst",
+            "uw_inst",
+            "vw_inst",  # Stress tensor components
+            "vorticity",
+            "divergence",
+            "gamma1",
+            "gamma2",  # Derived stats
         }
         if var in STATS_VARIABLES:
             data_source = "inst_stats"
 
         # Get data directory based on data_source
         if data_source == "inst_stats":
-            data_dir = base_path / "statistics" / str(cfg.num_frame_pairs) / f"Cam{camera}" / "instantaneous" / "instantaneous_stats"
+            data_dir = (
+                base_path
+                / "statistics"
+                / str(cfg.num_frame_pairs)
+                / f"Cam{camera}"
+                / "instantaneous"
+                / "instantaneous_stats"
+            )
         elif data_source == "stereo":
             # Handle stereo data - find Cam{n}_Cam{m} folder
             stereo_base_dir = base_path / "stereo_calibrated" / str(cfg.num_frame_pairs)
             data_dir = None
             if stereo_base_dir.exists():
-                cam_folders = [d for d in stereo_base_dir.iterdir() if d.is_dir() and d.name.startswith("Cam")]
+                cam_folders = [
+                    d
+                    for d in stereo_base_dir.iterdir()
+                    if d.is_dir() and d.name.startswith("Cam")
+                ]
                 for cam_folder in cam_folders:
                     inst_dir = cam_folder / "instantaneous"
-                    if inst_dir.exists() and _count_vector_files(inst_dir, cfg.vector_format, cfg.num_frame_pairs) > 0:
+                    if (
+                        inst_dir.exists()
+                        and _count_vector_files(
+                            inst_dir, cfg.vector_format, cfg.num_frame_pairs
+                        )
+                        > 0
+                    ):
                         data_dir = inst_dir
                         break
             if data_dir is None:
-                return jsonify({
-                    "success": False,
-                    "error": "No stereo data found",
-                    "runs": [],
-                    "highest_run": 1
-                }), 404
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "No stereo data found",
+                            "runs": [],
+                            "highest_run": 1,
+                        }
+                    ),
+                    404,
+                )
         else:
             # Determine flags based on data_source
             use_uncalibrated = data_source == "uncalibrated"
@@ -1591,12 +1820,17 @@ def check_runs():
             data_dir = Path(paths["data_dir"])
 
         if not data_dir.exists():
-            return jsonify({
-                "success": False,
-                "error": f"Data directory does not exist: {data_dir}",
-                "runs": [],
-                "highest_run": 1
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Data directory does not exist: {data_dir}",
+                        "runs": [],
+                        "highest_run": 1,
+                    }
+                ),
+                404,
+            )
 
         # Find first mat file to check runs
         fmt = cfg.vector_format
@@ -1607,12 +1841,17 @@ def check_runs():
         ]
 
         if not mat_files:
-            return jsonify({
-                "success": False,
-                "error": "No .mat files found",
-                "runs": [],
-                "highest_run": 1
-            }), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "No .mat files found",
+                        "runs": [],
+                        "highest_run": 1,
+                    }
+                ),
+                404,
+            )
 
         # Load first file and check valid runs
         first_file = mat_files[0]
@@ -1622,21 +1861,23 @@ def check_runs():
             highest_run = max(valid_runs) if valid_runs else 1
         except Exception as e:
             logger.error(f"Error reading runs from {first_file}: {e}")
-            return jsonify({
-                "success": False,
-                "error": str(e),
-                "runs": [1],
-                "highest_run": 1
-            }), 500
+            return (
+                jsonify(
+                    {"success": False, "error": str(e), "runs": [1], "highest_run": 1}
+                ),
+                500,
+            )
 
-        return jsonify({
-            "success": True,
-            "runs": valid_runs,
-            "highest_run": highest_run,
-            "total_runs": len(valid_runs),
-            "data_source": data_source,
-            "camera": camera,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "runs": valid_runs,
+                "highest_run": highest_run,
+                "total_runs": len(valid_runs),
+                "data_source": data_source,
+                "camera": camera,
+            }
+        )
 
     except Exception as e:
         logger.exception(f"[VIDEO] Failed to check runs: {e}")

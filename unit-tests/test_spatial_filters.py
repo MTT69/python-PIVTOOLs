@@ -8,23 +8,20 @@ and the unified apply_all_filters_slim pipeline.
 
 import numpy as np
 import pytest
-from scipy.ndimage import (
-    gaussian_filter as scipy_gaussian,
-    median_filter as scipy_median,
-    maximum_filter as scipy_maximum,
-    minimum_filter as scipy_minimum,
-    uniform_filter as scipy_uniform,
-)
+from scipy.ndimage import maximum_filter as scipy_maximum
+from scipy.ndimage import median_filter as scipy_median
+from scipy.ndimage import minimum_filter as scipy_minimum
+from scipy.ndimage import uniform_filter as scipy_uniform
 
 from pivtools_cli.processing.dask_pipeline import (
     _apply_spatial_filters_numpy,
     apply_all_filters_slim,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def synthetic_block():
@@ -37,21 +34,24 @@ def synthetic_block():
 # Per-filter golden-value tests
 # ---------------------------------------------------------------------------
 
+
 class TestGaussianFilter:
     def test_matches_fir_kernel(self, synthetic_block):
         """Gaussian filter uses explicit FIR kernel matching MATLAB fspecial."""
         from scipy.ndimage import correlate
+
         spec = [{"type": "gaussian", "sigma": 1.5, "size": [7, 7]}]
         result = _apply_spatial_filters_numpy(synthetic_block.copy(), spec)
         # Build the same FIR kernel as the implementation
         from pivtools_cli.processing.dask_pipeline import _gaussian_kernel_1d
+
         ky = _gaussian_kernel_1d(7, 1.5)
         kx = _gaussian_kernel_1d(7, 1.5)
         kernel_2d = np.outer(ky, kx).astype(np.float32)
         expected = synthetic_block.astype(np.float32).copy()
         for i in range(expected.shape[0]):
             for j in range(expected.shape[1]):
-                expected[i, j] = correlate(expected[i, j], kernel_2d, mode='constant')
+                expected[i, j] = correlate(expected[i, j], kernel_2d, mode="constant")
         np.testing.assert_allclose(result, expected, rtol=1e-5)
 
     def test_shape_dtype(self, synthetic_block):
@@ -97,7 +97,7 @@ class TestNormFilter:
         spec = [{"type": "norm", "size": [7, 7], "max_gain": 1.0}]
         result = _apply_spatial_filters_numpy(synthetic_block.copy(), spec)
         assert result.min() >= -0.01  # should be ~0
-        assert result.max() <= 1.01   # should be ~1
+        assert result.max() <= 1.01  # should be ~1
 
 
 class TestMaxnormFilter:
@@ -113,8 +113,8 @@ class TestMaxnormFilter:
         # mode='constant' matches convn(..., 'same') zero-pad (uniform_filter).
         spatial_size = (1, 1) + size
         block_float = synthetic_block.astype(np.float32)
-        local_min = scipy_minimum(block_float, size=spatial_size, mode='nearest')
-        smoothed_min = scipy_uniform(local_min, size=spatial_size, mode='constant')
+        local_min = scipy_minimum(block_float, size=spatial_size, mode="nearest")
+        smoothed_min = scipy_uniform(local_min, size=spatial_size, mode="constant")
         denom = np.maximum(smoothed_min, 1.0 / max_gain)
         expected = (np.maximum(block_float, 0) / denom).astype(synthetic_block.dtype)
 
@@ -132,6 +132,7 @@ class TestLmaxFilter:
 # ---------------------------------------------------------------------------
 # Pixel mask + spatial ordering
 # ---------------------------------------------------------------------------
+
 
 class TestIntegerDtypeConversion:
     def test_uint16_norm_no_underflow(self):
@@ -164,7 +165,9 @@ class TestPixelMaskThenSpatial:
 
         filter_specs = [{"type": "gaussian", "sigma": 2.0}]
         result = apply_all_filters_slim(
-            block, filter_specs=filter_specs, pixel_mask=mask,
+            block,
+            filter_specs=filter_specs,
+            pixel_mask=mask,
         )
 
         # After masking + gaussian, the center of the masked region should
@@ -178,6 +181,7 @@ class TestPixelMaskThenSpatial:
 # Unified pipeline consistency
 # ---------------------------------------------------------------------------
 
+
 class TestApplyAllFiltersSlim:
     def test_matches_manual_pieces(self, synthetic_block):
         """apply_all_filters_slim produces identical output to calling pieces."""
@@ -188,7 +192,9 @@ class TestApplyAllFiltersSlim:
 
         # Unified path
         unified = apply_all_filters_slim(
-            synthetic_block, filter_specs=filter_specs, pixel_mask=None,
+            synthetic_block,
+            filter_specs=filter_specs,
+            pixel_mask=None,
         )
 
         # Manual path: copy + spatial
@@ -205,7 +211,9 @@ class TestApplyAllFiltersSlim:
         filter_specs = [{"type": "gaussian", "sigma": 1.0}]
 
         unified = apply_all_filters_slim(
-            synthetic_block, filter_specs=filter_specs, pixel_mask=mask,
+            synthetic_block,
+            filter_specs=filter_specs,
+            pixel_mask=mask,
         )
 
         manual = synthetic_block.copy()
@@ -217,7 +225,9 @@ class TestApplyAllFiltersSlim:
     def test_no_filters_returns_unchanged(self, synthetic_block):
         """No filters and no mask returns input unchanged (zero-copy contract)."""
         result = apply_all_filters_slim(
-            synthetic_block, filter_specs=[], pixel_mask=None,
+            synthetic_block,
+            filter_specs=[],
+            pixel_mask=None,
         )
         # Zero-copy: no filters means no allocation, returns same object
         assert result is synthetic_block
@@ -243,13 +253,17 @@ class TestApplyAllFiltersSlim:
         ]
 
         result_a = apply_all_filters_slim(
-            synthetic_block, filter_specs=specs_a, pixel_mask=None,
+            synthetic_block,
+            filter_specs=specs_a,
+            pixel_mask=None,
         )
         result_b = apply_all_filters_slim(
-            synthetic_block, filter_specs=specs_b, pixel_mask=None,
+            synthetic_block,
+            filter_specs=specs_b,
+            pixel_mask=None,
         )
 
         # gaussian→median should differ from median→gaussian
-        assert not np.array_equal(result_a, result_b), (
-            "Different filter orderings should produce different results"
-        )
+        assert not np.array_equal(
+            result_a, result_b
+        ), "Different filter orderings should produce different results"

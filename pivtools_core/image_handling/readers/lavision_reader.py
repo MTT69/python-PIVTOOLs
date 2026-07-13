@@ -3,6 +3,7 @@
 Thin wrappers over the pure-Python im7_reader and set_reader modules.
 No dependency on lvpyio — works on macOS, Linux, and Windows.
 """
+
 import os
 from typing import Optional
 

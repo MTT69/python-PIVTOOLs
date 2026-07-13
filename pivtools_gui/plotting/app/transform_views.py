@@ -19,8 +19,8 @@ from pivtools_gui.transforms import (
     VALID_TRANSFORMATIONS,
     VectorTransformProcessor,
 )
-from ...utils import camera_number
 
+from ...utils import camera_number
 
 transform_bp = Blueprint("transform", __name__)
 
@@ -71,10 +71,15 @@ def transform_frame():
             return jsonify({"success": False, "error": "base_path required"}), 400
 
         if transformation not in VALID_TRANSFORMATIONS:
-            return jsonify({
-                "success": False,
-                "error": f"Invalid transformation. Valid: {VALID_TRANSFORMATIONS}"
-            }), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Invalid transformation. Valid: {VALID_TRANSFORMATIONS}",
+                    }
+                ),
+                400,
+            )
 
         # Use the processor
         processor = VectorTransformProcessor(
@@ -92,14 +97,23 @@ def transform_frame():
         )
 
         if result["success"]:
-            return jsonify({
-                "success": True,
-                "message": f"Transformation {transformation} applied successfully",
-                "pending_transformations": result.get("pending_transformations", []),
-                "has_original": result.get("has_original", True),
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f"Transformation {transformation} applied successfully",
+                    "pending_transformations": result.get(
+                        "pending_transformations", []
+                    ),
+                    "has_original": result.get("has_original", True),
+                }
+            )
         else:
-            return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": result.get("error", "Unknown error")}
+                ),
+                400,
+            )
 
     except ValueError as e:
         logger.warning(f"transform_frame: validation error: {e}")
@@ -144,7 +158,9 @@ def clear_transform():
             merged = bool(merged_raw)
         type_name = data.get("type_name", config.transforms_type_name)
 
-        logger.info(f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}, merged={merged}")
+        logger.info(
+            f"clear_transform: base_path={base_path}, camera={camera}, frame={frame}, merged={merged}"
+        )
 
         if not base_path:
             return jsonify({"success": False, "error": "base_path required"}), 400
@@ -160,13 +176,20 @@ def clear_transform():
         result = processor.clear_transformations(frame=frame, camera=camera)
 
         if result["success"]:
-            return jsonify({
-                "success": True,
-                "message": "Transformations reset to original",
-                "has_original": result.get("has_original", False),
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "message": "Transformations reset to original",
+                    "has_original": result.get("has_original", False),
+                }
+            )
         else:
-            return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": result.get("error", "Unknown error")}
+                ),
+                400,
+            )
 
     except ValueError as e:
         logger.warning(f"clear_transform: validation error: {e}")
@@ -223,13 +246,22 @@ def check_transform_status():
         result = processor.get_transform_status(frame=frame, camera=camera)
 
         if result["success"]:
-            return jsonify({
-                "success": True,
-                "has_original": result.get("has_original", False),
-                "pending_transformations": result.get("pending_transformations", []),
-            })
+            return jsonify(
+                {
+                    "success": True,
+                    "has_original": result.get("has_original", False),
+                    "pending_transformations": result.get(
+                        "pending_transformations", []
+                    ),
+                }
+            )
         else:
-            return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 400
+            return (
+                jsonify(
+                    {"success": False, "error": result.get("error", "Unknown error")}
+                ),
+                400,
+            )
 
     except Exception as e:
         logger.exception(f"check_transform_status: unexpected error: {e}")
@@ -294,13 +326,31 @@ def transform_all_frames():
             use_merged=merged,
         )
 
-        status_result = processor.get_transform_status(frame=source_frame, camera=source_camera)
+        status_result = processor.get_transform_status(
+            frame=source_frame, camera=source_camera
+        )
         if not status_result["success"]:
-            return jsonify({"success": False, "error": status_result.get("error", "Unknown error")}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": status_result.get("error", "Unknown error"),
+                    }
+                ),
+                400,
+            )
 
         transformations = status_result.get("pending_transformations", [])
         if not transformations:
-            return jsonify({"success": False, "error": "No pending transformations found on source frame"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "No pending transformations found on source frame",
+                    }
+                ),
+                400,
+            )
 
     except Exception as e:
         logger.exception(f"Error getting transform status: {e}")
@@ -365,12 +415,14 @@ def transform_all_frames():
     thread.daemon = True
     thread.start()
 
-    return jsonify({
-        "job_id": job_id,
-        "status": "starting",
-        "message": f"Transformations {transformations} job started across all cameras",
-        "transformations": transformations,
-    })
+    return jsonify(
+        {
+            "job_id": job_id,
+            "status": "starting",
+            "message": f"Transformations {transformations} job started across all cameras",
+            "transformations": transformations,
+        }
+    )
 
 
 @transform_bp.route("/transform_all_frames/status/<job_id>", methods=["GET"])

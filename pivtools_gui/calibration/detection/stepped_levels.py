@@ -58,6 +58,7 @@ class SteppedBoardSpec:
 # Per-level grid detection (k=5 after level separation)
 # ---------------------------------------------------------------------------
 
+
 def find_grid_vectors(
     centers: np.ndarray,
 ) -> Optional[Tuple[np.ndarray, np.ndarray, float]]:
@@ -119,9 +120,12 @@ def run_single_level_detection(
 
     ransac_thresh = 0.15 * spacing_px
     H, inlier_mask = cv2.findHomography(
-        src_pts, dst_pts, cv2.RANSAC,
+        src_pts,
+        dst_pts,
+        cv2.RANSAC,
         ransacReprojThreshold=ransac_thresh,
-        maxIters=2000, confidence=0.995,
+        maxIters=2000,
+        confidence=0.995,
     )
     if H is None:
         return None
@@ -143,7 +147,10 @@ def run_single_level_detection(
     # Template rescue for missing interior dots
     if flat_field is not None:
         validated, rescued_centers, _rescued_nodes = _rescue_missing_dots(
-            validated, centers, flat_field, spacing_px,
+            validated,
+            centers,
+            flat_field,
+            spacing_px,
         )
         all_centers = rescued_centers
     else:
@@ -174,21 +181,22 @@ def run_single_level_detection(
     n_rows = int(gi[:, 1].max() - gi[:, 1].min()) + 1
 
     return {
-        'centers': ctrs,
-        'grid_indices': gi,
-        'n_cols': n_cols,
-        'n_rows': n_rows,
-        'n_points': len(ctrs),
-        'vec1': vec1,
-        'vec2': vec2,
-        'spacing_px': spacing_px,
-        'H': H,
+        "centers": ctrs,
+        "grid_indices": gi,
+        "n_cols": n_cols,
+        "n_rows": n_rows,
+        "n_points": len(ctrs),
+        "vec1": vec1,
+        "vec2": vec2,
+        "spacing_px": spacing_px,
+        "H": H,
     }
 
 
 # ---------------------------------------------------------------------------
 # Row clustering + level separation (alternating-row parity)
 # ---------------------------------------------------------------------------
+
 
 def cluster_into_rows(
     centers: np.ndarray, spacing_px: float
@@ -256,7 +264,7 @@ def cluster_into_rows(
             )
 
             new_label = n_rows
-            for idx in sorted_indices[max_gap_pos + 1:]:
+            for idx in sorted_indices[max_gap_pos + 1 :]:
                 row_labels[idx] = new_label
             n_rows += 1
             splits_done = True
@@ -325,17 +333,18 @@ def separate_levels(
     level_B_mask = odd_rows if n_even >= n_odd else even_rows
 
     return {
-        'centers': centers_clean,
-        'row_labels': row_labels_clean,
-        'mask_level_A': level_A_mask,
-        'mask_level_B': level_B_mask,
-        'n_rows': n_rows,
+        "centers": centers_clean,
+        "row_labels": row_labels_clean,
+        "mask_level_A": level_A_mask,
+        "mask_level_B": level_B_mask,
+        "n_rows": n_rows,
     }
 
 
 # ---------------------------------------------------------------------------
 # Cross-level stitch into one pose-local frame
 # ---------------------------------------------------------------------------
+
 
 def stitch_levels_pose_local(
     level_A_data: Optional[dict],
@@ -380,70 +389,70 @@ def stitch_levels_pose_local(
         return None
     if level_A_data is None:
         return {
-            'reference': {
-                'centers': np.asarray(level_B_data['centers']).copy(),
-                'grid_indices': np.asarray(level_B_data['grid_indices']).copy(),
-                'source_level': 'B',
+            "reference": {
+                "centers": np.asarray(level_B_data["centers"]).copy(),
+                "grid_indices": np.asarray(level_B_data["grid_indices"]).copy(),
+                "source_level": "B",
             },
-            'metadata': {
-                'n_reference': int(len(level_B_data['centers'])),
-                'n_other': 0,
-                'n_anchors': 0,
-                'consensus_pct': float('nan'),
-                'swap_axes': False,
-                'col_sign': 1,
-                'row_sign': 1,
-                'degraded_single_level': True,
+            "metadata": {
+                "n_reference": int(len(level_B_data["centers"])),
+                "n_other": 0,
+                "n_anchors": 0,
+                "consensus_pct": float("nan"),
+                "swap_axes": False,
+                "col_sign": 1,
+                "row_sign": 1,
+                "degraded_single_level": True,
             },
         }
     if level_B_data is None:
         return {
-            'reference': {
-                'centers': np.asarray(level_A_data['centers']).copy(),
-                'grid_indices': np.asarray(level_A_data['grid_indices']).copy(),
-                'source_level': 'A',
+            "reference": {
+                "centers": np.asarray(level_A_data["centers"]).copy(),
+                "grid_indices": np.asarray(level_A_data["grid_indices"]).copy(),
+                "source_level": "A",
             },
-            'metadata': {
-                'n_reference': int(len(level_A_data['centers'])),
-                'n_other': 0,
-                'n_anchors': 0,
-                'consensus_pct': float('nan'),
-                'swap_axes': False,
-                'col_sign': 1,
-                'row_sign': 1,
-                'degraded_single_level': True,
+            "metadata": {
+                "n_reference": int(len(level_A_data["centers"])),
+                "n_other": 0,
+                "n_anchors": 0,
+                "consensus_pct": float("nan"),
+                "swap_axes": False,
+                "col_sign": 1,
+                "row_sign": 1,
+                "degraded_single_level": True,
             },
         }
 
     # Pick the larger level as the reference frame
-    n_A = len(level_A_data['centers'])
-    n_B = len(level_B_data['centers'])
+    n_A = len(level_A_data["centers"])
+    n_B = len(level_B_data["centers"])
     if n_A >= n_B:
         ref_data = level_A_data
-        ref_letter = 'A'
+        ref_letter = "A"
         other_data = level_B_data
-        other_letter = 'B'
+        other_letter = "B"
     else:
         ref_data = level_B_data
-        ref_letter = 'B'
+        ref_letter = "B"
         other_data = level_A_data
-        other_letter = 'A'
+        other_letter = "A"
 
-    ref_centers = np.asarray(ref_data['centers']).copy()
-    ref_gi = np.asarray(ref_data['grid_indices']).copy()
+    ref_centers = np.asarray(ref_data["centers"]).copy()
+    ref_gi = np.asarray(ref_data["grid_indices"]).copy()
 
     # Decide the axis orientation for the other level's BFS grid. Trust the
     # orientation_override (from the datum pose's resolved frame) verbatim when
     # given; otherwise derive from raw BFS vec1/vec2 dot products.
     if orientation_override is not None:
-        swap_axes = bool(orientation_override['swap_axes'])
-        col_sign = int(orientation_override['col_sign'])
-        row_sign = int(orientation_override['row_sign'])
+        swap_axes = bool(orientation_override["swap_axes"])
+        col_sign = int(orientation_override["col_sign"])
+        row_sign = int(orientation_override["row_sign"])
     else:
-        ref_vec1 = np.asarray(ref_data.get('vec1', [1.0, 0.0]), dtype=np.float64)
-        ref_vec2 = np.asarray(ref_data.get('vec2', [0.0, 1.0]), dtype=np.float64)
-        other_vec1 = np.asarray(other_data.get('vec1', [1.0, 0.0]), dtype=np.float64)
-        other_vec2 = np.asarray(other_data.get('vec2', [0.0, 1.0]), dtype=np.float64)
+        ref_vec1 = np.asarray(ref_data.get("vec1", [1.0, 0.0]), dtype=np.float64)
+        ref_vec2 = np.asarray(ref_data.get("vec2", [0.0, 1.0]), dtype=np.float64)
+        other_vec1 = np.asarray(other_data.get("vec1", [1.0, 0.0]), dtype=np.float64)
+        other_vec2 = np.asarray(other_data.get("vec2", [0.0, 1.0]), dtype=np.float64)
 
         def _unit(v):
             n = float(np.linalg.norm(v))
@@ -482,7 +491,7 @@ def stitch_levels_pose_local(
         return out
 
     oriented_ref_gi = _orient(ref_gi)
-    other_bfs_gi = np.asarray(other_data['grid_indices'], dtype=np.int32).copy()
+    other_bfs_gi = np.asarray(other_data["grid_indices"], dtype=np.int32).copy()
     oriented_other_gi = _orient(other_bfs_gi)
 
     # Cross-level anchor: each other-level dot is at +half-spacing from the mean of
@@ -493,23 +502,24 @@ def stitch_levels_pose_local(
     ref_phys_y = oriented_ref_gi[:, 1].astype(float) * spacing
 
     ref_tree = cKDTree(ref_centers)
-    other_centers = np.asarray(other_data['centers']).copy()
+    other_centers = np.asarray(other_data["centers"]).copy()
     n_other = len(other_centers)
     if n_other == 0:
         return {
-            'reference': {
-                'centers': ref_centers, 'grid_indices': oriented_ref_gi,
-                'source_level': ref_letter,
+            "reference": {
+                "centers": ref_centers,
+                "grid_indices": oriented_ref_gi,
+                "source_level": ref_letter,
             },
-            'metadata': {
-                'n_reference': int(len(ref_centers)),
-                'n_other': 0,
-                'n_anchors': 0,
-                'consensus_pct': float('nan'),
-                'swap_axes': bool(swap_axes),
-                'col_sign': int(col_sign),
-                'row_sign': int(row_sign),
-                'degraded_single_level': True,
+            "metadata": {
+                "n_reference": int(len(ref_centers)),
+                "n_other": 0,
+                "n_anchors": 0,
+                "consensus_pct": float("nan"),
+                "swap_axes": bool(swap_axes),
+                "col_sign": int(col_sign),
+                "row_sign": int(row_sign),
+                "degraded_single_level": True,
             },
         }
 
@@ -536,19 +546,20 @@ def stitch_levels_pose_local(
             f"level ({n_other} dots, reference has {len(ref_centers)})"
         )
         return {
-            'reference': {
-                'centers': ref_centers, 'grid_indices': ref_gi,
-                'source_level': ref_letter,
+            "reference": {
+                "centers": ref_centers,
+                "grid_indices": ref_gi,
+                "source_level": ref_letter,
             },
-            'metadata': {
-                'n_reference': int(len(ref_centers)),
-                'n_other': int(n_other),
-                'n_anchors': 0,
-                'consensus_pct': float('nan'),
-                'swap_axes': bool(swap_axes),
-                'col_sign': int(col_sign),
-                'row_sign': int(row_sign),
-                'degraded_single_level': True,
+            "metadata": {
+                "n_reference": int(len(ref_centers)),
+                "n_other": int(n_other),
+                "n_anchors": 0,
+                "consensus_pct": float("nan"),
+                "swap_axes": bool(swap_axes),
+                "col_sign": int(col_sign),
+                "row_sign": int(row_sign),
+                "degraded_single_level": True,
             },
         }
 
@@ -566,22 +577,24 @@ def stitch_levels_pose_local(
 
     other_gi_final = oriented_other_gi + abs_offset
     return {
-        'reference': {
-            'centers': ref_centers, 'grid_indices': oriented_ref_gi,
-            'source_level': ref_letter,
+        "reference": {
+            "centers": ref_centers,
+            "grid_indices": oriented_ref_gi,
+            "source_level": ref_letter,
         },
-        'other': {
-            'centers': other_centers, 'grid_indices': other_gi_final,
-            'source_level': other_letter,
+        "other": {
+            "centers": other_centers,
+            "grid_indices": other_gi_final,
+            "source_level": other_letter,
         },
-        'metadata': {
-            'n_reference': int(len(ref_centers)),
-            'n_other': int(n_other),
-            'n_anchors': int(len(anchor_offsets)),
-            'consensus_pct': float(consensus_pct),
-            'swap_axes': bool(swap_axes),
-            'col_sign': int(col_sign),
-            'row_sign': int(row_sign),
-            'degraded_single_level': False,
+        "metadata": {
+            "n_reference": int(len(ref_centers)),
+            "n_other": int(n_other),
+            "n_anchors": int(len(anchor_offsets)),
+            "consensus_pct": float(consensus_pct),
+            "swap_axes": bool(swap_axes),
+            "col_sign": int(col_sign),
+            "row_sign": int(row_sign),
+            "degraded_single_level": False,
         },
     }

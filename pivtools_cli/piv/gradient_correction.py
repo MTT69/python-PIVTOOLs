@@ -32,6 +32,7 @@ Sign convention notes:
   gradients, and the UV cross-term flips sign consistently with the (un-negated) raw
   UV_stress. dy is kept positive only to honestly reflect the image convention.
 """
+
 import logging
 from typing import Optional, Tuple
 
@@ -49,9 +50,17 @@ def compute_gradient_corrections(
     dx: float,
     dy: float,
     window_size: Tuple[int, int],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
-           np.ndarray, np.ndarray, np.ndarray,
-           np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
     """
     Compute gradient-corrected Reynolds stresses with separate window and particle corrections.
 
@@ -102,14 +111,14 @@ def compute_gradient_corrections(
     dV_dy = np.gradient(V, dy, axis=0)
 
     # Window averaging effect: L²/12 (variance of uniform distribution over window)
-    L_x_sq_12 = (L_x ** 2) / 12.0
-    L_y_sq_12 = (L_y ** 2) / 12.0
+    L_x_sq_12 = (L_x**2) / 12.0
+    L_y_sq_12 = (L_y**2) / 12.0
 
     # =========================================================================
     # UU corrections: Corr_uu = (∂u/∂x)² × (L_x²/12 + σ_A_x) + (∂u/∂y)² × (L_y²/12 + σ_A_y)
     # =========================================================================
-    dU_dx_sq = dU_dx ** 2
-    dU_dy_sq = dU_dy ** 2
+    dU_dx_sq = dU_dx**2
+    dU_dy_sq = dU_dy**2
 
     # Window correction for UU
     UU_window_corr = L_x_sq_12 * dU_dx_sq + L_y_sq_12 * dU_dy_sq
@@ -120,8 +129,8 @@ def compute_gradient_corrections(
     # =========================================================================
     # VV corrections: Corr_vv = (∂v/∂x)² × (L_x²/12 + σ_A_x) + (∂v/∂y)² × (L_y²/12 + σ_A_y)
     # =========================================================================
-    dV_dx_sq = dV_dx ** 2
-    dV_dy_sq = dV_dy ** 2
+    dV_dx_sq = dV_dx**2
+    dV_dy_sq = dV_dy**2
 
     # Window correction for VV
     VV_window_corr = L_x_sq_12 * dV_dx_sq + L_y_sq_12 * dV_dy_sq
@@ -153,9 +162,17 @@ def compute_gradient_corrections(
     VV_corrected = VV_stress - VV_total_corr
     UV_corrected = UV_stress - UV_total_corr
 
-    return (UU_corrected, VV_corrected, UV_corrected,
-            UU_window_corr, VV_window_corr, UV_window_corr,
-            UU_particle_corr, VV_particle_corr, UV_particle_corr)
+    return (
+        UU_corrected,
+        VV_corrected,
+        UV_corrected,
+        UU_window_corr,
+        VV_window_corr,
+        UV_window_corr,
+        UU_particle_corr,
+        VV_particle_corr,
+        UV_particle_corr,
+    )
 
 
 def apply_gradient_correction_to_pass(
@@ -170,9 +187,17 @@ def apply_gradient_correction_to_pass(
     win_ctrs_y: np.ndarray,
     image_height: int,
     window_size: Optional[Tuple[int, int]] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray,
-           Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray],
-           Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    Optional[np.ndarray],
+    Optional[np.ndarray],
+    Optional[np.ndarray],
+    Optional[np.ndarray],
+    Optional[np.ndarray],
+    Optional[np.ndarray],
+]:
     """
     Apply gradient correction to a single pass result.
 
@@ -222,7 +247,9 @@ def apply_gradient_correction_to_pass(
     """
     # Check if we have required parameters
     if sig_A_x is None or sig_A_y is None:
-        logging.warning("sig_A_x or sig_A_y not available, skipping gradient correction")
+        logging.warning(
+            "sig_A_x or sig_A_y not available, skipping gradient correction"
+        )
         return UU_stress, VV_stress, UV_stress, None, None, None, None, None, None
 
     if ux is None or uy is None:
@@ -252,12 +279,22 @@ def apply_gradient_correction_to_pass(
     else:
         dy = 1.0
 
-    logging.debug(f"Gradient correction: dx={dx:.2f}, dy={dy:.2f}, window_size={window_size} (image coords)")
+    logging.debug(
+        f"Gradient correction: dx={dx:.2f}, dy={dy:.2f}, window_size={window_size} (image coords)"
+    )
 
     # Apply correction
-    (UU_corrected, VV_corrected, UV_corrected,
-     UU_window_corr, VV_window_corr, UV_window_corr,
-     UU_particle_corr, VV_particle_corr, UV_particle_corr) = compute_gradient_corrections(
+    (
+        UU_corrected,
+        VV_corrected,
+        UV_corrected,
+        UU_window_corr,
+        VV_window_corr,
+        UV_window_corr,
+        UU_particle_corr,
+        VV_particle_corr,
+        UV_particle_corr,
+    ) = compute_gradient_corrections(
         U=ux,
         V=uy,
         sig_A_x=sig_A_x,
@@ -270,6 +307,14 @@ def apply_gradient_correction_to_pass(
         window_size=window_size,
     )
 
-    return (UU_corrected, VV_corrected, UV_corrected,
-            UU_window_corr, VV_window_corr, UV_window_corr,
-            UU_particle_corr, VV_particle_corr, UV_particle_corr)
+    return (
+        UU_corrected,
+        VV_corrected,
+        UV_corrected,
+        UU_window_corr,
+        VV_window_corr,
+        UV_window_corr,
+        UU_particle_corr,
+        VV_particle_corr,
+        UV_particle_corr,
+    )

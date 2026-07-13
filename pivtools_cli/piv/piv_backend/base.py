@@ -1,15 +1,11 @@
 from abc import ABC, abstractmethod
-import sys
-from pathlib import Path
 from typing import List
 
 import cv2
-import dask.array as da
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from scipy.interpolate import griddata
-from skimage.restoration import inpaint_biharmonic
 
 # Try to import line_profiler for detailed profiling
 try:
@@ -18,16 +14,18 @@ except ImportError:
     profile = lambda f: f
 
 
-from pivtools_core.config import Config
-
 import logging
-from typing import Callable, Optional
+from typing import Callable
+
+from pivtools_core.config import Config
 
 
 class CrossCorrelator(ABC):
 
     @abstractmethod
-    def correlate_batch(self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None):
+    def correlate_batch(
+        self, images: np.ndarray, config: Config, vector_masks: List[np.ndarray] = None
+    ):
         pass
 
     @staticmethod
@@ -125,7 +123,7 @@ class CrossCorrelator(ABC):
         2. 'nearest' to fill any remaining NaNs (e.g., extrapolation).
         """
         mask = np.isnan(A)
-        
+
         # If there are no NaNs, return immediately
         if not mask.any():
             return A
@@ -138,13 +136,13 @@ class CrossCorrelator(ABC):
         # If there are no known points, we can't interpolate.
         # Return the array as-is (or return np.zeros_like(A))
         if known_points.size == 0:
-            return A 
+            return A
 
         # Pass 1: Linear interpolation
         interp_values = griddata(
             known_points, known_values, nan_points, method="linear"
         )
-        
+
         # Pass 2: Find where linear failed (still NaN) and fill with nearest
         nan_mask_pass1 = np.isnan(interp_values)
         if nan_mask_pass1.any():
@@ -156,7 +154,7 @@ class CrossCorrelator(ABC):
         # Fill the original array
         A_filled = np.copy(A)
         A_filled[mask] = interp_values
-        
+
         return A_filled
 
     def _inpaint_nans_matlab(self, A):
@@ -852,12 +850,16 @@ class CrossCorrelator(ABC):
         self.ksize_filt: list[tuple[int, int]] = []
         self.sd: list[float] = []
         self.G_smooth_predictor: list[np.ndarray] = []
-        self.padding_per_pass: list[tuple[int, int, int, int]] = []  # For single mode coordinate conversion
+        self.padding_per_pass: list[tuple[int, int, int, int]] = (
+            []
+        )  # For single mode coordinate conversion
 
         H, W = config.image_shape
 
         for pass_idx in range(len(window_sizes)):
-            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y, padding = compute_window_fn(pass_idx, config)
+            spacing_x, spacing_y, win_ctrs_x, win_ctrs_y, padding = compute_window_fn(
+                pass_idx, config
+            )
             self.padding_per_pass.append(padding)
 
             # Compute padded window centers (pre/post)
@@ -915,8 +917,11 @@ class CrossCorrelator(ABC):
             # --- Insert boundary condition positions into padded grid ---
             if predictor_boundary_conditions:
                 for bc in predictor_boundary_conditions:
-                    bc_y_img = float(H - 1 - bc["y_position"]) if bc["edge"] == "bottom" \
-                               else float(bc["y_position"])
+                    bc_y_img = (
+                        float(H - 1 - bc["y_position"])
+                        if bc["edge"] == "bottom"
+                        else float(bc["y_position"])
+                    )
 
                     # Only add to padding zone (outside measured grid)
                     if bc["edge"] == "bottom" and bc_y_img > win_ctrs_y[-1]:
@@ -988,7 +993,9 @@ class CrossCorrelator(ABC):
                     self.win_spacing_x[pass_idx - 1],
                 )
                 k_filt = (
-                    np.round(np.array(prev_win_size) / np.array(prev_spacing)).astype(int)
+                    np.round(np.array(prev_win_size) / np.array(prev_spacing)).astype(
+                        int
+                    )
                     + 1
                 )
                 k_filt_list = [int(k) for k in k_filt.tolist()]
@@ -1004,7 +1011,9 @@ class CrossCorrelator(ABC):
                 self.G_smooth_predictor.append(g_kernel)
 
         # Store predictor BCs for runtime use in _get_im_mesh
-        self.predictor_bcs = predictor_boundary_conditions if predictor_boundary_conditions else []
+        self.predictor_bcs = (
+            predictor_boundary_conditions if predictor_boundary_conditions else []
+        )
 
         logging.debug(f"Cached window padding for {len(window_sizes)} passes")
 
@@ -1057,8 +1066,7 @@ class CrossCorrelator(ABC):
             map_x_1d = np.interp(x_coords, points_x, np.arange(len(points_x)))
             map_y_1d = np.interp(y_coords, points_y, np.arange(len(points_y)))
             map_y_2d, map_x_2d = np.meshgrid(
-                map_y_1d.astype(np.float32), map_x_1d.astype(np.float32),
-                indexing="ij"
+                map_y_1d.astype(np.float32), map_x_1d.astype(np.float32), indexing="ij"
             )
             self.cached_dense_maps.append((map_x_2d, map_y_2d))
 

@@ -98,7 +98,9 @@ def test_coords_spec_merges_with_sequence(tmp_path):
         ),
     }
     coords = dict(try_load_inputs(model_dir).coords)
-    coords.update(sv._spec_to_coords(specs, [1, 2], True, {"stereo_config": "same_side"}))
+    coords.update(
+        sv._spec_to_coords(specs, [1, 2], True, {"stereo_config": "same_side"})
+    )
     save_inputs(model_dir, path_type="stepped", board_type="stepped", coords=coords)
 
     side = try_load_inputs(model_dir)

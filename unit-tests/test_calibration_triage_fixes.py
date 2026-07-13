@@ -28,9 +28,15 @@ from pivtools_gui.calibration.detection.grid_detection import _bfs_grid_walk_dic
 
 def _pinhole() -> CameraModel:
     K = np.array([[1000.0, 0, 512], [0, 1000.0, 512], [0, 0, 1]])
-    return CameraModel(K=K, dist=np.zeros(4), R=np.eye(3), t=np.zeros((3, 1)),
-                       image_size=(1024, 1024),
-                       distortion_model=DistortionModel.STANDARD, rms=0.1)
+    return CameraModel(
+        K=K,
+        dist=np.zeros(4),
+        R=np.eye(3),
+        t=np.zeros((3, 1)),
+        image_size=(1024, 1024),
+        distortion_model=DistortionModel.STANDARD,
+        rms=0.1,
+    )
 
 
 def test_load_mono_raises_on_unknown_model_type(tmp_path):
@@ -83,9 +89,12 @@ def _lattice_with_decoy():
     centre + (30, 70), whose nearest blob is the dot ABOVE the centre — so the
     real reciprocity check rejects it.
     """
-    pts = [np.array([i * SPACING, j * SPACING], float)
-           for i in range(5) for j in range(5)
-           if not (i == 3 and j == 2)]          # hole right of the centre (2,2)
+    pts = [
+        np.array([i * SPACING, j * SPACING], float)
+        for i in range(5)
+        for j in range(5)
+        if not (i == 3 and j == 2)
+    ]  # hole right of the centre (2,2)
     decoy = np.array([2 * SPACING + 130.0, 2 * SPACING + 70.0])
     centers = np.vstack(pts + [decoy])
     return centers, len(centers) - 1
@@ -93,8 +102,9 @@ def _lattice_with_decoy():
 
 def test_bfs_rejects_off_lattice_decoy():
     centers, decoy_idx = _lattice_with_decoy()
-    grid = _bfs_grid_walk_dict(centers, np.array([SPACING, 0.0]),
-                               np.array([0.0, SPACING]), cKDTree(centers))
+    grid = _bfs_grid_walk_dict(
+        centers, np.array([SPACING, 0.0]), np.array([0.0, SPACING]), cKDTree(centers)
+    )
     assert decoy_idx not in grid.values(), "decoy blob entered the grid"
     # Every true lattice dot is still reachable (the walk routes around the hole).
     assert len(grid) == len(centers) - 1

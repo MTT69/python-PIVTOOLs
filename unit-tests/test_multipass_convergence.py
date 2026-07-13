@@ -21,7 +21,6 @@ Usage:
 """
 
 import json
-import logging
 import os
 import shutil
 import stat
@@ -36,14 +35,14 @@ import yaml
 # Ensure production code is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pivtools_cli.piv.save_results import (
+    get_ensemble_output_path,
+    get_output_path,
+    load_ensemble_result,
+)
 from pivtools_core.config import Config, reload_config
 from pivtools_core.instantaneous import run_instantaneous_piv
 from pivtools_core.vector_loading import read_mat_contents
-from pivtools_cli.piv.save_results import (
-    get_output_path,
-    get_ensemble_output_path,
-    load_ensemble_result,
-)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -58,6 +57,7 @@ PARAMS_PATH = ENSEMBLE_DATA_DIR / "params.json"
 # ---------------------------------------------------------------------------
 def _robust_rmtree(path):
     """Remove directory tree, handling Windows/OneDrive file locking."""
+
     def _onerror(func, fpath, _exc_info):
         os.chmod(fpath, stat.S_IWRITE)
         func(fpath)
@@ -87,7 +87,7 @@ def _poiseuille_ux_pixels(row_centers, image_height, u_max):
     Returns ux in pixels (positive = rightward).
     """
     y_norm = 2.0 * row_centers / image_height - 1.0
-    return u_max * (1.0 - y_norm ** 2)
+    return u_max * (1.0 - y_norm**2)
 
 
 def _interior_mask(grid_shape, exclude_fraction=0.15):
@@ -167,9 +167,7 @@ def _run_ensemble_piv(fit_method):
         },
         "outlier_detection": {
             "enabled": True,
-            "methods": [
-                {"type": "median_2d", "threshold": 3.0, "epsilon": 0.1}
-            ],
+            "methods": [{"type": "median_2d", "threshold": 3.0, "epsilon": 0.1}],
         },
         "infilling": {
             "mid_pass": {"method": "nearest", "parameters": {}},
@@ -177,9 +175,7 @@ def _run_ensemble_piv(fit_method):
         },
         "ensemble_outlier_detection": {
             "enabled": True,
-            "methods": [
-                {"type": "median_2d", "threshold": 3.0, "epsilon": 0.1}
-            ],
+            "methods": [{"type": "median_2d", "threshold": 3.0, "epsilon": 0.1}],
         },
         "ensemble_infilling": {
             "mid_pass": {"method": "nearest", "parameters": {}},
@@ -196,16 +192,15 @@ def _run_ensemble_piv(fit_method):
     reload_config()
     config = Config(path=str(config_path))
 
-    output_path = get_ensemble_output_path(
-        config, camera=1, use_uncalibrated=True
-    )
+    output_path = get_ensemble_output_path(config, camera=1, use_uncalibrated=True)
+
+    from dask.distributed import Client
 
     from pivtools_core.ensemble import run_ensemble_piv
-    from dask.distributed import Client
 
     print(f"\n{'='*60}")
     print(f"  Running ensemble PIV — fit_method={fit_method}")
-    print(f"  3 passes: 32std -> 16single -> 16single")
+    print("  3 passes: 32std -> 16single -> 16single")
     print(f"  {num_pairs} pairs, batch_size=10, omp_threads=4, workers=2")
     print(f"{'='*60}")
 
@@ -246,8 +241,10 @@ def _run_ensemble_piv(fit_method):
             "b_mask": p.b_mask,
         }
 
-    print(f"\n  Loaded passes: {sorted(pass_data.keys())} "
-          f"(grid shapes: {[pass_data[k]['ux'].shape for k in sorted(pass_data.keys())]})")
+    print(
+        f"\n  Loaded passes: {sorted(pass_data.keys())} "
+        f"(grid shapes: {[pass_data[k]['ux'].shape for k in sorted(pass_data.keys())]})"
+    )
 
     return {
         "pass_data": pass_data,
@@ -261,6 +258,7 @@ def _run_ensemble_piv(fit_method):
 # ===================================================================
 # Part A: Instantaneous PIV (single image pair)
 # ===================================================================
+
 
 @pytest.fixture(scope="module")
 def instantaneous_workspace():
@@ -324,9 +322,7 @@ def instantaneous_workspace():
         },
         "outlier_detection": {
             "enabled": True,
-            "methods": [
-                {"type": "median_2d", "threshold": 3.0, "epsilon": 0.1}
-            ],
+            "methods": [{"type": "median_2d", "threshold": 3.0, "epsilon": 0.1}],
         },
         "infilling": {
             "mid_pass": {"method": "nearest", "parameters": {}},
@@ -348,6 +344,7 @@ def instantaneous_workspace():
     )
 
     from dask.distributed import Client
+
     client = Client(processes=False, n_workers=1, threads_per_worker=1)
     try:
         run_instantaneous_piv(
@@ -400,9 +397,9 @@ class TestInstantaneousWarping:
 
         err = np.abs(ux[interior] - gt_grid[interior])
         median_err = np.median(err)
-        assert median_err < 0.3, (
-            f"median |ux - gt| = {median_err:.3f} px, expected < 0.3"
-        )
+        assert (
+            median_err < 0.3
+        ), f"median |ux - gt| = {median_err:.3f} px, expected < 0.3"
 
     def test_uy_near_zero(self, instantaneous_workspace):
         """Vertical displacement should be near zero for Poiseuille."""
@@ -410,9 +407,7 @@ class TestInstantaneousWarping:
         uy, valid = res["uy"], res["valid"]
         interior = _interior_mask(uy.shape) & valid
         median_uy = np.median(np.abs(uy[interior]))
-        assert median_uy < 0.15, (
-            f"median |uy| = {median_uy:.3f} px, expected < 0.15"
-        )
+        assert median_uy < 0.15, f"median |uy| = {median_uy:.3f} px, expected < 0.15"
 
 
 # ===================================================================
@@ -425,7 +420,7 @@ PASS_2_IDX = 1  # first 16×16 single pass (0-based)
 PASS_3_IDX = 2  # second 16×16 single pass (0-based, final)
 
 
-@pytest.fixture(scope="module", params=["kspace"])
+@pytest.fixture(scope="module", params=["kspace", "kspace_linear"])
 def ensemble_workspace(request):
     """
     Run 3-pass ensemble PIV, parametrized by fit_method.
@@ -512,8 +507,12 @@ class TestFinalPassConvergence:
         p2 = ws["pass_data"][PASS_2_IDX]
         p3 = ws["pass_data"][PASS_3_IDX]
 
-        valid = (np.isfinite(p2["ux"]) & np.isfinite(p3["ux"])
-                 & np.isfinite(p2["uy"]) & np.isfinite(p3["uy"]))
+        valid = (
+            np.isfinite(p2["ux"])
+            & np.isfinite(p3["ux"])
+            & np.isfinite(p2["uy"])
+            & np.isfinite(p3["uy"])
+        )
         interior = _interior_mask(p2["ux"].shape) & valid
 
         ux_diff = np.median(np.abs(p3["ux"][interior] - p2["ux"][interior]))
@@ -570,8 +569,7 @@ class TestVelocityAccuracy:
         interior = _interior_mask(uy.shape) & valid
         median_uy = np.median(np.abs(uy[interior]))
         assert median_uy < 0.1, (
-            f"[{ws['fit_method']}] median |uy| = {median_uy:.3f} px, "
-            f"expected < 0.1"
+            f"[{ws['fit_method']}] median |uy| = {median_uy:.3f} px, " f"expected < 0.1"
         )
 
 
@@ -583,15 +581,11 @@ class TestSingleModeSpecific:
         ws = ensemble_workspace
         for pidx in [PASS_2_IDX, PASS_3_IDX]:
             p = ws["pass_data"][pidx]
-            assert p["ux"] is not None, (
-                f"[{ws['fit_method']}] Pass {pidx+1} ux is None"
-            )
-            assert p["uy"] is not None, (
-                f"[{ws['fit_method']}] Pass {pidx+1} uy is None"
-            )
-            assert p["peakheight"] is not None, (
-                f"[{ws['fit_method']}] Pass {pidx+1} peakheight is None"
-            )
+            assert p["ux"] is not None, f"[{ws['fit_method']}] Pass {pidx+1} ux is None"
+            assert p["uy"] is not None, f"[{ws['fit_method']}] Pass {pidx+1} uy is None"
+            assert (
+                p["peakheight"] is not None
+            ), f"[{ws['fit_method']}] Pass {pidx+1} peakheight is None"
             valid = np.isfinite(p["ux"])
             assert valid.sum() > 10, (
                 f"[{ws['fit_method']}] Pass {pidx+1} has too few valid "
@@ -608,6 +602,7 @@ class TestDiagnosticFigures:
             pytest.skip("Pass --make-figures to generate diagnostic plots")
 
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
@@ -640,8 +635,13 @@ class TestDiagnosticFigures:
 
         # Analytical
         y_fine = np.linspace(0, H - 1, 200)
-        ax.plot(_poiseuille_ux_pixels(y_fine, H, u_max), y_fine, "k--",
-                linewidth=2, label="Analytical")
+        ax.plot(
+            _poiseuille_ux_pixels(y_fine, H, u_max),
+            y_fine,
+            "k--",
+            linewidth=2,
+            label="Analytical",
+        )
         ax.set_xlabel("ux (px)")
         ax.set_ylabel("Row (px)")
         ax.set_title("ux profile")
@@ -662,7 +662,7 @@ class TestDiagnosticFigures:
 
         if pred_errors:
             passes, errs = zip(*pred_errors)
-            ax.bar(passes, errs, color=["#4c72b0", "#dd8452"][:len(passes)])
+            ax.bar(passes, errs, color=["#4c72b0", "#dd8452"][: len(passes)])
             ax.set_xlabel("Pass number")
             ax.set_ylabel("median |pred_x - ux| (px)")
             ax.set_title("Predictor convergence")

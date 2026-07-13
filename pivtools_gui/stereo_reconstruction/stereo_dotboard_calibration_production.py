@@ -12,19 +12,18 @@ Saves results to: {BASE_DIR}/calibration/stereo_cam{N}_cam{M}/
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import cv2
 import numpy as np
 from loguru import logger
 
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.image_handling.calibration_loader import get_calibration_frame_count
-
 from pivtools_gui.calibration.detection.grid_detection import (
-    to_grayscale_2d,
     detect_grid_automatic,
+    to_grayscale_2d,
 )
-from pivtools_gui.stereo_reconstruction.stereo_calibration_base import BaseStereoCalibrator
-
+from pivtools_gui.stereo_reconstruction.stereo_calibration_base import (
+    BaseStereoCalibrator,
+)
 
 # ===================== CONFIGURATION VARIABLES =====================
 # Set these variables for your calibration setup (CLI mode)
@@ -75,7 +74,9 @@ def apply_cli_settings_to_config() -> Config:
     else:
         config.save()
         config = reload_config()
-        detected_count = get_calibration_frame_count(camera=CAMERA_PAIR[0], config=config)
+        detected_count = get_calibration_frame_count(
+            camera=CAMERA_PAIR[0], config=config
+        )
         if detected_count > 0:
             config.data["calibration"]["num_images"] = detected_count
             logger.info(f"Auto-detected {detected_count} calibration images")
@@ -144,10 +145,10 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         # Get params from config if available
         if config is not None:
             stereo_cfg = config.stereo_dotboard_calibration
-            dot_spacing_mm = stereo_cfg.get('dot_spacing_mm', dot_spacing_mm)
-            datum_camera = stereo_cfg.get('datum_camera', datum_camera)
-            datum_frame = stereo_cfg.get('datum_frame', datum_frame)
-            dt = stereo_cfg.get('dt', dt)
+            dot_spacing_mm = stereo_cfg.get("dot_spacing_mm", dot_spacing_mm)
+            datum_camera = stereo_cfg.get("datum_camera", datum_camera)
+            datum_frame = stereo_cfg.get("datum_frame", datum_frame)
+            dt = stereo_cfg.get("dt", dt)
 
         self.dot_spacing_mm = dot_spacing_mm
         self.datum_camera = datum_camera
@@ -174,7 +175,9 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
 
     def detect_pattern(
         self, image: np.ndarray
-    ) -> Tuple[bool, Optional[np.ndarray], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    ) -> Tuple[
+        bool, Optional[np.ndarray], Optional[Dict[str, Any]], Optional[Dict[str, Any]]
+    ]:
         """Detect grid using automatic RANSAC-based detection.
 
         Returns
@@ -187,14 +190,18 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         gray = to_grayscale_2d(image)
 
         success, grid_data, info = detect_grid_automatic(
-            gray, mask=None, grid_spacing_mm=self.dot_spacing_mm,
+            gray,
+            mask=None,
+            grid_spacing_mm=self.dot_spacing_mm,
         )
 
         if success and grid_data is not None:
-            self._detected_cols = grid_data['n_cols']
-            self._detected_rows = grid_data['n_rows']
-            logger.debug(f"Auto-detected {grid_data['n_cols']}x{grid_data['n_rows']} grid with {len(grid_data['centers'])} points")
-            return True, grid_data['centers'], grid_data, info
+            self._detected_cols = grid_data["n_cols"]
+            self._detected_rows = grid_data["n_rows"]
+            logger.debug(
+                f"Auto-detected {grid_data['n_cols']}x{grid_data['n_rows']} grid with {len(grid_data['centers'])} points"
+            )
+            return True, grid_data["centers"], grid_data, info
 
         return False, None, None, info
 
@@ -241,10 +248,10 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
         if grid_data_1 is None or grid_data_2 is None:
             return None
 
-        centers_1 = grid_data_1['centers']
-        centers_2 = grid_data_2['centers']
-        indices_1 = grid_data_1['grid_indices']
-        indices_2 = grid_data_2['grid_indices']
+        centers_1 = grid_data_1["centers"]
+        centers_2 = grid_data_2["centers"]
+        indices_1 = grid_data_1["grid_indices"]
+        indices_2 = grid_data_2["grid_indices"]
 
         # Build lookup from grid position to index
         pos_to_idx_1 = {(gi[0], gi[1]): i for i, gi in enumerate(indices_1)}
@@ -283,19 +290,21 @@ class StereoDotboardCalibrator(BaseStereoCalibrator):
     def get_pattern_params(self) -> Dict[str, Any]:
         """Get pattern-specific parameters for saving."""
         return {
-            'pattern_type': 'circle_grid_automatic',
-            'detected_cols': self._detected_cols,
-            'detected_rows': self._detected_rows,
-            'dot_spacing_mm': self.dot_spacing_mm,
-            'datum_camera': self.datum_camera,
-            'datum_frame': self.datum_frame,
+            "pattern_type": "circle_grid_automatic",
+            "detected_cols": self._detected_cols,
+            "detected_rows": self._detected_rows,
+            "dot_spacing_mm": self.dot_spacing_mm,
+            "datum_camera": self.datum_camera,
+            "datum_frame": self.datum_frame,
         }
 
 
 def main():
     """Main entry point using hardcoded configuration."""
     if USE_CONFIG_DIRECTLY:
-        logger.info("Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)")
+        logger.info(
+            "Loading settings directly from config.yaml (USE_CONFIG_DIRECTLY=True)"
+        )
         config = get_config()
     else:
         config = apply_cli_settings_to_config()

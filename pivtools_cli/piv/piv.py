@@ -1,15 +1,18 @@
 import logging
-import sys
-import numpy as np
 from pathlib import Path
 from typing import List, Optional
+
+import numpy as np
 from dask import array as da
 from dask.distributed import Client
-from pivtools_core.config import Config
 
 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 from pivtools_cli.piv.piv_result import PIVResult
-from pivtools_cli.piv.save_results import save_piv_result_distributed
+from pivtools_cli.piv.save_results import (
+    save_corr_plane_dump,
+    save_piv_result_distributed,
+)
+from pivtools_core.config import Config
 
 
 def _batch_policy(config: Config) -> int:
@@ -33,11 +36,11 @@ def _process_and_save_batch(
 ) -> str:
     """
     Combined PIV processing and saving for a single image pair.
-    
+
     This function is designed to be called via client.map() for efficient
     batch submission of tasks. It combines PIV computation and saving into
     a single atomic operation to reduce task graph complexity.
-    
+
     Parameters
     ----------
     image_pair : da.Array
@@ -56,7 +59,7 @@ def _process_and_save_batch(
         List of pass indices (0-based) to save.
     vector_format : str
         Format string for output filenames.
-        
+
     Returns
     -------
     str
@@ -70,11 +73,21 @@ def _process_and_save_batch(
     for i, piv_result in enumerate(piv_results):
         img_idx = start_img_idx + i
         path = save_piv_result_distributed(
-            piv_result, output_path, img_idx, runs_to_save, vector_format,
+            piv_result,
+            output_path,
+            img_idx,
+            runs_to_save,
+            vector_format,
             save_mode=config.instantaneous_save_mode,
             do_compression=config.instantaneous_save_compression,
         )
         saved_paths.append(path)
+
+        if config.dump_correlation_planes:
+            save_corr_plane_dump(piv_result, output_path, img_idx, vector_format)
+            # Free the plane payloads before the next pair is processed
+            for pass_result in piv_result.passes:
+                pass_result.debug_dump = None
 
     return saved_paths
 
@@ -146,19 +159,21 @@ def perform_piv_and_save(
     if scattered_masks is None and vector_masks is not None:
         scattered_masks = client.scatter(vector_masks, broadcast=True)
         total_mask_size = sum(m.nbytes for m in vector_masks) / 1024
-        logging.info(f"Broadcast vector masks to all workers ({total_mask_size:.1f} KB)")
+        logging.info(
+            f"Broadcast vector masks to all workers ({total_mask_size:.1f} KB)"
+        )
 
     num_images = int(images.shape[0])
-    
+
     # Convert Dask array to delayed objects (still lazy!)
     # This gives us individual delayed tasks, one per image
     delayed_blocks = images.to_delayed().ravel()
-    
+
     # Prepare frame numbers
     frame_numbers = list(range(start_frame, start_frame + num_images))
-    
+
     logging.info(f"Submitting {num_images} independent tasks to cluster")
-    
+
     # Use client.map() to submit all tasks at once
     # Dask scheduler will distribute to workers efficiently
     # Each worker will process tasks one-by-one as they become available
@@ -173,12 +188,12 @@ def perform_piv_and_save(
         runs_to_save=runs_to_save,
         vector_format=config.vector_format,
     )
-    
+
     logging.info(
-        f"Tasks submitted. Dask scheduler managing distribution across workers. "
-        f"Each worker processes ONE image at a time."
+        "Tasks submitted. Dask scheduler managing distribution across workers. "
+        "Each worker processes ONE image at a time."
     )
-    
+
     # Gather results (this will block until all complete)
     # Workers process in parallel but each holds only 1 image at a time
     try:
@@ -187,7 +202,7 @@ def perform_piv_and_save(
     except Exception as e:
         logging.error(f"PIV processing failed: {e}")
         raise
-    
+
     return all_saved_paths, scattered_cache
 
 
@@ -199,15 +214,19 @@ def _piv_inst_batch(
 ) -> PIVResult:
     try:
         # Handle both Dask arrays and numpy arrays
-        if hasattr(image_block, 'compute'):
+        if hasattr(image_block, "compute"):
             image_block = image_block.compute()
 
-        #if image_block.ndim == 3:
-            # Shape: (2, H, W)
+        # if image_block.ndim == 3:
+        # Shape: (2, H, W)
         #    image_block = image_block[np.newaxis, ...]  # Shape: (1, 2, H, W)
-        logging.debug(f"Starting PIV processing for image block with shape {image_block.shape}")
+        logging.debug(
+            f"Starting PIV processing for image block with shape {image_block.shape}"
+        )
         correlator = make_correlator_backend(config, precomputed_cache=correlator_cache)
-        piv_results = correlator.correlate_batch(image_block, config=config, vector_masks=vector_masks)
+        piv_results = correlator.correlate_batch(
+            image_block, config=config, vector_masks=vector_masks
+        )
     except Exception as e:
         # Fail visibly: a single PIVResult here violates the list contract the
         # caller iterates over (piv.py:_process_and_save_batch), which previously

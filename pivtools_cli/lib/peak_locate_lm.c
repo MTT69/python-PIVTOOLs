@@ -19,12 +19,12 @@
  * stay float).
  *
  * KNOWN TECHNICAL DEBT:
- * - Code duplication: LM iteration logic is repeated in lm_gauss4_fit, 
- *   lm_gauss5_fit, and lm_gauss6_fit. This should be refactored into a 
- *   common helper function that accepts function pointers for model 
+ * - Code duplication: LM iteration logic is repeated in lm_gauss4_fit,
+ *   lm_gauss5_fit, and lm_gauss6_fit. This should be refactored into a
+ *   common helper function that accepts function pointers for model
  *   evaluation and Jacobian computation.
- * 
- * - Non-standard 6-DOF parameterization: The 6-DOF model uses inverse 
+ *
+ * - Non-standard 6-DOF parameterization: The 6-DOF model uses inverse
  *   covariance matrix elements instead of standard deviations and rotation,
  *   making it confusing and error-prone. See lm_gauss6_fit() for details.
  ******************************************************************************/
@@ -34,7 +34,7 @@ static void threept_estimate(const float *xcorr, const int *N, float *peak_loc, 
 {
 	float x_fit[3], y_fit[3];
 	int i;
-	
+
 	/* Extract 3 points along each axis */
 	for(i = 0; i < 3; ++i)
 	{
@@ -43,21 +43,21 @@ static void threept_estimate(const float *xcorr, const int *N, float *peak_loc, 
 		x_fit[i] = (float)log((x_fit[i] < FLT_EPSILON) ? FLT_EPSILON : x_fit[i]);
 		y_fit[i] = (float)log((y_fit[i] < FLT_EPSILON) ? FLT_EPSILON : y_fit[i]);
 	}
-	
+
 	/* Parabolic fit: peak location is at i0 = numer/denom */
 	float denom_x = 2*x_fit[0] - 4*x_fit[1] + 2*x_fit[2];
 	float denom_y = 2*y_fit[0] - 4*y_fit[1] + 2*y_fit[2];
-	
+
 	if(fabs(denom_x) > FLT_EPSILON)
 		peak_loc[0] = (x_fit[0] - x_fit[2]) / denom_x;
 	else
 		peak_loc[0] = 0.0f;
-		
+
 	if(fabs(denom_y) > FLT_EPSILON)
 		peak_loc[1] = (y_fit[0] - y_fit[2]) / denom_y;
 	else
 		peak_loc[1] = 0.0f;
-	
+
 	*A_out = xcorr[(N[0]-1)/2 * N[1] + (N[1]-1)/2];
 	*sx_out = (float)sqrt(-4.0f / (denom_x + FLT_EPSILON));
 	*sy_out = (float)sqrt(-4.0f / (denom_y + FLT_EPSILON));
@@ -79,7 +79,7 @@ static inline float eval_gauss5(float i, float j, float A, float i0, float j0, f
 	return A * expf(-(di*di + dj*dj));
 }
 
-/* Evaluate 6-DOF Gaussian with correlation term - rotated elliptical 
+/* Evaluate 6-DOF Gaussian with correlation term - rotated elliptical
  * NOTE: sx, sy, sxy are elements of the INVERSE covariance matrix, not standard deviations
  * Model: A * exp(-0.5 * (di^2/sx + dj^2/sy + 2*di*dj*sxy))
  * where sx = sigma_x^2, sy = sigma_y^2 in the inverse covariance representation
@@ -419,19 +419,19 @@ static int lm_gauss4_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	int iter, ii, jj, idx;
 	const int max_iter = 20;
 	const float tol = 1e-6f;
-	
+
 	/* Get initial guess */
 	float sx, sy;
 	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
 	i0 = peak_loc[0];
 	j0 = peak_loc[1];
 	s = sqrtf(sx * sx + sy * sy); /* Combined width */
-	
+
 	/* Clamp bounds */
 	i0 = fminf(fmaxf(i0, -2.0f), 2.0f);
 	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
 	s = fminf(fmaxf(s, 0.5f), 3.0f);
-	
+
 	/* Fill the pred cache (residual pass), then build the Jacobian from it. */
 	residual = compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, NULL, NULL, 0, pred_cache);
 	compute_residual_jacobian_4dof(xcorr, N, A, i0, j0, s, JtJ, Jtr, 1, pred_cache);
@@ -569,17 +569,17 @@ static int lm_gauss5_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	return fit_ok ? 0 : -1;
 }
 
-/* Fast Levenberg-Marquardt for 6-DOF Gaussian fitting 
- * 
+/* Fast Levenberg-Marquardt for 6-DOF Gaussian fitting
+ *
  * WARNING: This function uses a non-standard parameterization!
  * - Parameters sx, sy, sxy represent elements of the INVERSE covariance matrix
  * - sx and sy behave like variances (sigma^2), NOT standard deviations
  * - Output parameters sig[0] and sig[1] are SWAPPED (sig[0]=sy, sig[1]=sx)
- * 
+ *
  * KNOWN ISSUES:
  * - Confusing parameterization makes the code hard to understand and verify
  * - Output parameter swapping is error-prone and undocumented
- * 
+ *
  * RECOMMENDATION: Refactor to use standard Gaussian parameterization with
  * amplitude, center (i0, j0), standard deviations (sigma_x, sigma_y), and
  * rotation angle theta. This would make derivatives easier to verify and
@@ -597,17 +597,17 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	int iter, ii, jj, idx;
 	const int max_iter = 20;
 	const float tol = 1e-6f;
-	
+
 	threept_estimate(xcorr, N, peak_loc, &A, &sx, &sy);
 	i0 = peak_loc[0];
 	j0 = peak_loc[1];
 	sxy = 0.0f;
-	
+
 	i0 = fminf(fmaxf(i0, -2.0f), 2.0f);
 	j0 = fminf(fmaxf(j0, -2.0f), 2.0f);
 	sx = fminf(fmaxf(sx * sx, 0.25f), 9.0f);
 	sy = fminf(fmaxf(sy * sy, 0.25f), 9.0f);
-	
+
 	/* Fill the pred cache (residual pass), then build the Jacobian from it. */
 	residual = compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, NULL, NULL, 0, pred_cache);
 	compute_residual_jacobian_6dof(xcorr, N, A, i0, j0, sx, sy, sxy, JtJ, Jtr, 1, pred_cache);
@@ -659,7 +659,7 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 	sig[0] = sx;  /* Row direction variance */
 	sig[1] = sy;  /* Col direction variance */
 	sig[2] = sxy; /* Covariance term */
-	
+
 	if(fitval) {
 		for(ii = 0; ii < N[0]; ++ii) {
 			float i = (float)(ii - (N[0]-1)/2);
@@ -703,7 +703,7 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 	}
 	Nsub[0] = PKSIZE_X;
 	Nsub[1] = PKSIZE_Y;
-	
+
 	for(iPeak = 0; iPeak < nPeaks; ++iPeak)
 	{
 		i0 = j0 = 0;
@@ -717,7 +717,7 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 				}
 			}
 		}
-		
+
 		if(fPeakHeight <= 0 ||
 		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
 		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
@@ -734,14 +734,14 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 			std_dev[SUB2IND_2D(2, iPeak, nPeaks)] = 0;
 			continue;
 		}
-		
+
 		/* Extract subwindow */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
 				subxcorr[i * PKSIZE_Y + j] = src[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
 			}
 		}
-		
+
 		/* Perform fit based on type - only use higher order fits for first peak */
 		int fit_status = 0;  /* LM fitters report failure; 3-point cannot fail past the gate */
 		if(iPeak == 0) {
@@ -789,7 +789,7 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 				}
 			}
 		}
-		
+
 		/* Save results. A FAILED LM fit gets the same NaN sentinel as a failed
 		 * peak search above — the caller must not mistake a non-converged /
 		 * degenerate fit for a converged one (no silent fallbacks). Downstream
@@ -826,4 +826,55 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 
 	if(xcorr_copy) free(xcorr_copy);
 }
-			
+
+/* CPU capability check for the wheel's ISA floor. The x86 wheels are built
+ * with AVX2+FMA (Haswell 2013+ / Excavator+); arm64 NEON is architectural
+ * baseline. Deliberately NOT __builtin_cpu_supports: that builtin drags in
+ * the libgcc/compiler-rt __cpu_model runtime (undefined symbol under
+ * clang-cl, and a shared-library init dependency on Linux). Explicit
+ * CPUID + XGETBV instructions have no runtime dependence at all. */
+#if defined(_M_X64)
+#include <intrin.h>              /* MSVC cl and clang-cl */
+#endif
+
+PEAK_EXPORT int pivtools_cpu_supported(void)
+{
+#if defined(_M_X64) || defined(__x86_64__)
+	int eax1, ebx1, ecx1, edx1;      /* CPUID leaf 1 */
+	int ebx7;                        /* CPUID leaf 7.0 EBX */
+	unsigned int xlo, xhi;           /* XGETBV(0) = XCR0 */
+#if defined(_M_X64)
+	int info[4];
+	unsigned long long xcr0;
+	__cpuid(info, 1);
+	ecx1 = info[2];
+	(void)eax1; (void)ebx1; (void)edx1;
+	if (!(ecx1 & (1 << 12)))         /* FMA */
+		return 0;
+	if (!(ecx1 & (1 << 27)))         /* OSXSAVE: XGETBV usable */
+		return 0;
+	xcr0 = _xgetbv(0);
+	if ((xcr0 & 0x6) != 0x6)         /* OS saves XMM+YMM state */
+		return 0;
+	__cpuidex(info, 7, 0);
+	ebx7 = info[1];
+#else
+	__asm__ volatile("cpuid"
+	                 : "=a"(eax1), "=b"(ebx1), "=c"(ecx1), "=d"(edx1)
+	                 : "a"(1), "c"(0));
+	if (!(ecx1 & (1 << 12)))         /* FMA */
+		return 0;
+	if (!(ecx1 & (1 << 27)))         /* OSXSAVE: XGETBV usable */
+		return 0;
+	__asm__ volatile("xgetbv" : "=a"(xlo), "=d"(xhi) : "c"(0));
+	if ((xlo & 0x6) != 0x6)          /* OS saves XMM+YMM state */
+		return 0;
+	__asm__ volatile("cpuid"
+	                 : "=a"(eax1), "=b"(ebx7), "=c"(ecx1), "=d"(edx1)
+	                 : "a"(7), "c"(0));
+#endif
+	return (ebx7 & (1 << 5)) != 0;   /* AVX2 */
+#else
+	return 1;                        /* arm64: NEON is baseline */
+#endif
+}

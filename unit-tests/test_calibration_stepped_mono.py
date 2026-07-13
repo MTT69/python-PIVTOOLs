@@ -33,8 +33,8 @@ FIG_DIR = Path(__file__).resolve().parent.parent / "figures" / "debug"
 SPACING_MM = 15.0
 STEP_MM = 3.0
 OFFSET_MM = SPACING_MM / 2.0
-PEAK_COLS, PEAK_ROWS = 9, 9        # 81 peak dots (the larger level)
-TROUGH_COLS, TROUGH_ROWS = 8, 8    # 64 trough dots
+PEAK_COLS, PEAK_ROWS = 9, 9  # 81 peak dots (the larger level)
+TROUGH_COLS, TROUGH_ROWS = 8, 8  # 64 trough dots
 
 # Distinct board orientations for good intrinsic conditioning; index 0 = datum.
 POSE_RVECS = [
@@ -55,7 +55,9 @@ def _board_points_mm():
             peak.append([c * SPACING_MM, r * SPACING_MM, 0.0])
     for r in range(TROUGH_ROWS):
         for c in range(TROUGH_COLS):
-            trough.append([c * SPACING_MM + OFFSET_MM, r * SPACING_MM + OFFSET_MM, -STEP_MM])
+            trough.append(
+                [c * SPACING_MM + OFFSET_MM, r * SPACING_MM + OFFSET_MM, -STEP_MM]
+            )
     return np.array(peak, np.float64), np.array(trough, np.float64)
 
 
@@ -76,6 +78,7 @@ def _render_pose(rvec, K, fill=0.62):
     proj = cv2.projectPoints(allpts, rvec, tvec, K, dist)[0].reshape(-1, 2)
 
     from scipy.spatial import cKDTree
+
     tree = cKDTree(proj)
     nn = tree.query(proj, k=2)[0][:, 1]
     radii = np.maximum(np.round(0.22 * nn).astype(int), 2)
@@ -125,13 +128,17 @@ def stepped_mono_scene():
         "x_axis": datum_proj[1].tolist(),
         "y_axis": datum_proj[PEAK_COLS].tolist(),
     }
-    det = SteppedDetector(SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM))
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
     detections = [det.detect(im) for im in images]
 
     # Ground-truth z per projected point (peak block z=0, trough block z=-step),
     # used to label each pose's level A — the synthetic analogue of GUI click-to-label.
     n_peak = PEAK_COLS * PEAK_ROWS
-    gt_z = np.concatenate([np.zeros(n_peak), np.full(TROUGH_COLS * TROUGH_ROWS, -STEP_MM)])
+    gt_z = np.concatenate(
+        [np.zeros(n_peak), np.full(TROUGH_COLS * TROUGH_ROWS, -STEP_MM)]
+    )
     pose_levels = [_level_a_label(d, p, gt_z) for d, p in zip(detections, projs)]
     return K_true, images, detections, fiducials, pose_levels
 
@@ -158,19 +165,25 @@ def test_stepped_mono_recovers_intrinsics_and_frame(stepped_mono_scene, request)
     # Intrinsics recovered (noise-free synthetic -> tight).
     fx_true = float(K_true[0, 0])
     fx_fit = float(cam.K[0, 0])
-    assert abs(fx_fit - fx_true) / fx_true < 0.03, f"fx {fx_fit:.1f} vs true {fx_true:.1f}"
+    assert (
+        abs(fx_fit - fx_true) / fx_true < 0.03
+    ), f"fx {fx_fit:.1f} vs true {fx_true:.1f}"
     assert abs(cam.K[0, 2] - W / 2.0) < 0.06 * W, f"cx off: {cam.K[0, 2]:.1f}"
     assert abs(cam.K[1, 2] - H / 2.0) < 0.06 * H, f"cy off: {cam.K[1, 2]:.1f}"
 
     # Sub-pixel fit on noise-free renders.
     assert cam.rms < 1.0, f"overall RMS too high: {cam.rms:.3f}px"
-    assert max(record.per_view_rms) < 1.0, f"per-view RMS too high: {record.per_view_rms}"
+    assert (
+        max(record.per_view_rms) < 1.0
+    ), f"per-view RMS too high: {record.per_view_rms}"
 
     # World frame anchored to the datum clicks: origin click back-projects to (0,0,0).
     origin_world = cam.back_project_to_plane(
         np.array([fiducials["origin"]]), z_world=0.0
     )[0]
-    assert np.linalg.norm(origin_world) < SPACING_MM / 8.0, f"origin world {origin_world}"
+    assert (
+        np.linalg.norm(origin_world) < SPACING_MM / 8.0
+    ), f"origin world {origin_world}"
 
     # +X click lands along +X at one spacing, +Y click along +Y.
     x_world = cam.back_project_to_plane(np.array([fiducials["x_axis"]]), z_world=0.0)[0]
@@ -210,9 +223,9 @@ def test_stepped_mono_single_view_pinhole(stepped_mono_scene, request):
     # Focal recovered from one view (noise-free synthetic). Looser than the multi-view
     # bound — a single view constrains the focal less, but it is well within usable range.
     fx_true = float(K_true[0, 0])
-    assert abs(float(cam.K[0, 0]) - fx_true) / fx_true < 0.05, (
-        f"single-view fx {cam.K[0, 0]:.1f} vs true {fx_true:.1f}"
-    )
+    assert (
+        abs(float(cam.K[0, 0]) - fx_true) / fx_true < 0.05
+    ), f"single-view fx {cam.K[0, 0]:.1f} vs true {fx_true:.1f}"
     # Self-consistent sub-pixel fit on noise-free renders.
     assert cam.rms < 1.0, f"single-view RMS too high: {cam.rms:.3f}px"
 
@@ -220,7 +233,9 @@ def test_stepped_mono_single_view_pinhole(stepped_mono_scene, request):
     origin_world = cam.back_project_to_plane(
         np.array([fiducials["origin"]]), z_world=0.0
     )[0]
-    assert np.linalg.norm(origin_world) < SPACING_MM / 8.0, f"origin world {origin_world}"
+    assert (
+        np.linalg.norm(origin_world) < SPACING_MM / 8.0
+    ), f"origin world {origin_world}"
 
     if request.config.getoption("--make-figures", default=False):
         _make_figure(K_true, _images, detections, record, fiducials, slug="single-view")
@@ -230,17 +245,26 @@ def test_stepped_mono_round_trips_through_record(stepped_mono_scene, tmp_path):
     _K, _imgs, detections, fiducials, pose_levels = stepped_mono_scene
     board = SteppedBoardSpec(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
     record = calibrate_stepped_mono(
-        detections=detections, fiducials=fiducials, clicked_level="peak",
-        pose_levels=pose_levels, board=board,
-        image_size=(W, H), camera=1, datum_index=0,
+        detections=detections,
+        fiducials=fiducials,
+        clicked_level="peak",
+        pose_levels=pose_levels,
+        board=board,
+        image_size=(W, H),
+        camera=1,
+        datum_index=0,
     )
     path = save_mono(record, tmp_path / "model")
     reloaded = load_mono(path)
 
     assert reloaded.board_type == "stepped"
     assert reloaded.world_frame.mode == "clicks"
-    np.testing.assert_allclose(reloaded.camera_model.K, record.camera_model.K, rtol=1e-9)
-    np.testing.assert_allclose(reloaded.camera_model.R, record.camera_model.R, atol=1e-9)
+    np.testing.assert_allclose(
+        reloaded.camera_model.K, record.camera_model.K, rtol=1e-9
+    )
+    np.testing.assert_allclose(
+        reloaded.camera_model.R, record.camera_model.R, atol=1e-9
+    )
     assert reloaded.board_meta["clicked_level"] == "peak"
     assert float(reloaded.board_meta["step_height_mm"]) == STEP_MM
 
@@ -254,13 +278,20 @@ def test_stepped_mono_rejects_label_conflict(stepped_mono_scene):
     bad[0] = "trough" if pose_levels[0] == "peak" else "peak"
     with pytest.raises(ValueError, match="conflicts with the fiducial-derived"):
         calibrate_stepped_mono(
-            detections=detections, fiducials=fiducials, clicked_level="peak",
+            detections=detections,
+            fiducials=fiducials,
+            clicked_level="peak",
             pose_levels=bad,
-            board=board, image_size=(W, H), camera=1, datum_index=0,
+            board=board,
+            image_size=(W, H),
+            camera=1,
+            datum_index=0,
         )
 
 
-def _make_figure(K_true, images, detections, record, fiducials, slug="stepped-mono-fit"):
+def _make_figure(
+    K_true, images, detections, record, fiducials, slug="stepped-mono-fit"
+):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -276,19 +307,37 @@ def _make_figure(K_true, images, detections, record, fiducials, slug="stepped-mo
 
     a = labels == "A"
     ax[0].imshow(images[0], cmap="gray", origin="upper")
-    ax[0].scatter(ip[a, 0], ip[a, 1], s=12, facecolors="none", edgecolors="tab:blue", label="peak (A)")
-    ax[0].scatter(ip[~a, 0], ip[~a, 1], s=12, facecolors="none", edgecolors="tab:red", label="trough (B)")
+    ax[0].scatter(
+        ip[a, 0],
+        ip[a, 1],
+        s=12,
+        facecolors="none",
+        edgecolors="tab:blue",
+        label="peak (A)",
+    )
+    ax[0].scatter(
+        ip[~a, 0],
+        ip[~a, 1],
+        s=12,
+        facecolors="none",
+        edgecolors="tab:red",
+        label="trough (B)",
+    )
     for key, mk in (("origin", "P0"), ("x_axis", "+X"), ("y_axis", "+Y")):
         px = fiducials[key]
         ax[0].plot(px[0], px[1], "y*", ms=14)
         ax[0].annotate(mk, (px[0], px[1]), color="yellow", fontsize=9)
     ax[0].set_title("datum: detection + fiducials")
-    ax[0].set_xlabel("x [px]"); ax[0].set_ylabel("y [px]"); ax[0].legend(loc="upper right")
+    ax[0].set_xlabel("x [px]")
+    ax[0].set_ylabel("y [px]")
+    ax[0].legend(loc="upper right")
 
     ax[1].bar(range(len(record.per_view_rms)), record.per_view_rms, color="tab:green")
     ax[1].axhline(cam.rms, color="k", ls="--", label=f"overall {cam.rms:.3f}px")
     ax[1].set_title("per-view reprojection RMS")
-    ax[1].set_xlabel("pose"); ax[1].set_ylabel("RMS [px]"); ax[1].legend()
+    ax[1].set_xlabel("pose")
+    ax[1].set_ylabel("RMS [px]")
+    ax[1].legend()
 
     txt = (
         f"fx fit  = {cam.K[0,0]:.1f}\nfx true = {K_true[0,0]:.1f}\n"

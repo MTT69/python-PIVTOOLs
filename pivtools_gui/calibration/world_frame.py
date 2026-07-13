@@ -54,7 +54,10 @@ def resolve_world_frame(
     if clicks is None:
         c0, r0 = int(gi[:, 0].min()), int(gi[:, 1].min())
         return WorldFrame(
-            mode="default", swap_axes=False, col_sign=1, row_sign=1,
+            mode="default",
+            swap_axes=False,
+            col_sign=1,
+            row_sign=1,
             origin_grid=np.array([c0, r0], dtype=np.float64),
         )
 
@@ -78,7 +81,9 @@ def resolve_world_frame(
         origin_px=np.asarray(clicks["origin"], dtype=np.float64).reshape(2),
         x_axis_px=np.asarray(clicks["x_axis"], dtype=np.float64).reshape(2),
         y_axis_px=np.asarray(clicks["y_axis"], dtype=np.float64).reshape(2),
-        swap_axes=swap, col_sign=sx, row_sign=sy,
+        swap_axes=swap,
+        col_sign=sx,
+        row_sign=sy,
         origin_grid=g_o.astype(np.float64),
     )
 
@@ -105,7 +110,10 @@ def resolve_world_frame_from_grid(origin_gi, x_axis_gi, y_axis_gi) -> WorldFrame
     sy = int(np.sign(dy[ax_y])) or 1
     swap = ax_x == 1
     return WorldFrame(
-        mode="grid", swap_axes=swap, col_sign=sx, row_sign=sy,
+        mode="grid",
+        swap_axes=swap,
+        col_sign=sx,
+        row_sign=sy,
         origin_grid=g_o.astype(np.float64),
     )
 

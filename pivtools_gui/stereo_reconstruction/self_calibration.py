@@ -29,9 +29,9 @@ import cv2
 import numpy as np
 from scipy.optimize import least_squares
 
-from pivtools_core.window_utils import compute_window_centers
-from pivtools_cli.piv.piv_backend.outlier_detection import median_outlier_detection
 from pivtools_cli.piv.piv_backend.infilling import infill_nearest
+from pivtools_cli.piv.piv_backend.outlier_detection import median_outlier_detection
+from pivtools_core.window_utils import compute_window_centers
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +40,15 @@ logger = logging.getLogger(__name__)
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PinholeCamera:
     """Pinhole camera model compatible with OpenCV conventions."""
 
-    K: np.ndarray          # (3,3) intrinsic matrix
-    dist: np.ndarray       # (5,) distortion coefficients
-    R: np.ndarray          # (3,3) rotation world→camera
-    t: np.ndarray          # (3,1) translation world→camera
+    K: np.ndarray  # (3,3) intrinsic matrix
+    dist: np.ndarray  # (5,) distortion coefficients
+    R: np.ndarray  # (3,3) rotation world→camera
+    t: np.ndarray  # (3,1) translation world→camera
     image_size: Tuple[int, int]  # (width, height)
 
     def project(self, points_world: np.ndarray) -> np.ndarray:
@@ -55,7 +56,8 @@ class PinholeCamera:
         rvec, _ = cv2.Rodrigues(self.R)
         pts2d, _ = cv2.projectPoints(
             points_world.astype(np.float64),
-            rvec, self.t.astype(np.float64),
+            rvec,
+            self.t.astype(np.float64),
             self.K.astype(np.float64),
             self.dist.astype(np.float64),
         )
@@ -116,6 +118,7 @@ class SelfCalibrationResult:
 # ---------------------------------------------------------------------------
 # Dewarping primitives
 # ---------------------------------------------------------------------------
+
 
 def estimate_pixel_scale(
     cam1: PinholeCamera,
@@ -215,13 +218,19 @@ def estimate_disparity_sensitivity(
     rvec2, _ = cv2.Rodrigues(cam2.R)
 
     q1 = _pixels_to_world_mm(
-        raw_px_cam1.astype(np.float32), cam1.K, cam1.dist,
-        rvec1.flatten(), cam1.t.flatten(),
+        raw_px_cam1.astype(np.float32),
+        cam1.K,
+        cam1.dist,
+        rvec1.flatten(),
+        cam1.t.flatten(),
     )[0]
 
     q2 = _pixels_to_world_mm(
-        raw_px_cam2.astype(np.float32), cam2.K, cam2.dist,
-        rvec2.flatten(), cam2.t.flatten(),
+        raw_px_cam2.astype(np.float32),
+        cam2.K,
+        cam2.dist,
+        rvec2.flatten(),
+        cam2.t.flatten(),
     )[0]
 
     disp_mm = q2 - q1
@@ -295,7 +304,9 @@ def dewarp_image(
 ) -> np.ndarray:
     """Remap an image using precomputed dewarp maps."""
     return cv2.remap(
-        image, map_x, map_y,
+        image,
+        map_x,
+        map_y,
         interpolation=cv2.INTER_CUBIC,
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=0,
@@ -317,33 +328,44 @@ def _load_xcorr_library():
 
     lib_ext = ".dll" if os.name == "nt" else ".so"
     lib_path = os.path.join(
-        os.path.dirname(__file__), "..", "..",
-        "pivtools_cli", "lib", f"libbulkxcorr2d{lib_ext}",
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "pivtools_cli",
+        "lib",
+        f"libbulkxcorr2d{lib_ext}",
     )
     lib_path = os.path.abspath(lib_path)
 
     if not os.path.isfile(lib_path):
-        raise FileNotFoundError(
-            f"Cross-correlation library not found: {lib_path}"
-        )
+        raise FileNotFoundError(f"Cross-correlation library not found: {lib_path}")
+
+    from pivtools_cli.piv.piv_backend.lib_guard import require_cpu_supported
 
     lib = ctypes.CDLL(lib_path)
+    require_cpu_supported(lib, lib_path)
 
     lib.bulkxcorr2d_accumulate.restype = ctypes.c_ubyte
     lib.bulkxcorr2d_accumulate.argtypes = [
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageA_stack
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fImageB_stack
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fMask
-        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nImageSize
-        ctypes.c_int,                                                      # N_images
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nImageSize
+        ctypes.c_int,  # N_images
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsX
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWinCtrsY
-        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindows
-        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightA
-        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fWindowWeightB
-        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nWindowSize
-        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),    # nFitWindowSize
-        np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),  # fCorrelPlane_Sum (output)
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindows
+        np.ctypeslib.ndpointer(
+            dtype=np.float32, flags="C_CONTIGUOUS"
+        ),  # fWindowWeightA
+        np.ctypeslib.ndpointer(
+            dtype=np.float32, flags="C_CONTIGUOUS"
+        ),  # fWindowWeightB
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nWindowSize
+        np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS"),  # nFitWindowSize
+        np.ctypeslib.ndpointer(
+            dtype=np.float32, flags="C_CONTIGUOUS"
+        ),  # fCorrelPlane_Sum (output)
     ]
 
     _xcorr_lib = lib
@@ -398,21 +420,23 @@ def accumulate_ensemble_correlation(
     corr_sum = np.zeros(total_windows * ws * ws, dtype=np.float32)
 
     error_code = lib.bulkxcorr2d_accumulate(
-        stack_a, stack_b,
-        mask, image_size, N,
+        stack_a,
+        stack_b,
+        mask,
+        image_size,
+        N,
         np.ascontiguousarray(win_ctrs_x, dtype=np.float32),
         np.ascontiguousarray(win_ctrs_y, dtype=np.float32),
         n_windows,
-        weight, weight,
+        weight,
+        weight,
         win_size_arr,
         win_size_arr,  # nFitWindowSize == nWindowSize (no central extraction)
         corr_sum,
     )
 
     if error_code != 0:
-        raise RuntimeError(
-            f"bulkxcorr2d_accumulate returned error code {error_code}"
-        )
+        raise RuntimeError(f"bulkxcorr2d_accumulate returned error code {error_code}")
 
     return corr_sum.reshape(n_win_y, n_win_x, ws, ws)
 
@@ -420,6 +444,7 @@ def accumulate_ensemble_correlation(
 # ---------------------------------------------------------------------------
 # 6-DOF Gaussian peak fitting (Python re-implementation of peak_locate_lm.c)
 # ---------------------------------------------------------------------------
+
 
 def _gaussian_6dof_model(params, i_coords, j_coords):
     """Rotated elliptical Gaussian model (type=6 from peak_locate_lm.c).
@@ -453,7 +478,7 @@ def fit_gaussian_6dof_peak(corr_plane: np.ndarray):
 
     # Search central 75% for coarse peak
     margin = max(ws // 8, 2)
-    search_region = corr_plane[margin:ws - margin, margin:ws - margin]
+    search_region = corr_plane[margin : ws - margin, margin : ws - margin]
     coarse_idx = np.unravel_index(np.argmax(search_region), search_region.shape)
     iy = coarse_idx[0] + margin
     ix = coarse_idx[1] + margin
@@ -464,12 +489,12 @@ def fit_gaussian_6dof_peak(corr_plane: np.ndarray):
 
     # Extract 5x5 region
     r = 2
-    region = corr_plane[iy - r:iy + r + 1, ix - r:ix + r + 1].copy()
+    region = corr_plane[iy - r : iy + r + 1, ix - r : ix + r + 1].copy()
     region_min = region.min()
     region = region - region_min  # shift to zero baseline
 
     # Build coordinate grids for the 5x5 region
-    ii, jj = np.mgrid[-r:r + 1, -r:r + 1]
+    ii, jj = np.mgrid[-r : r + 1, -r : r + 1]
     ii_flat = ii.ravel().astype(np.float64)
     jj_flat = jj.ravel().astype(np.float64)
     data_flat = region.ravel().astype(np.float64)
@@ -503,9 +528,11 @@ def fit_gaussian_6dof_peak(corr_plane: np.ndarray):
 
     try:
         result = least_squares(
-            _gaussian_6dof_residuals, p0,
+            _gaussian_6dof_residuals,
+            p0,
             args=(ii_flat, jj_flat, data_flat),
-            method='lm', max_nfev=20,
+            method="lm",
+            max_nfev=20,
         )
         A_fit, i0_fit, j0_fit = result.x[0], result.x[1], result.x[2]
     except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
@@ -561,6 +588,7 @@ def extract_disparity_field(
 # ---------------------------------------------------------------------------
 # Outlier detection + plane fitting
 # ---------------------------------------------------------------------------
+
 
 def clean_disparity_field(
     dx: np.ndarray,
@@ -632,8 +660,7 @@ def fit_disparity_plane(
     valid = np.isfinite(dx) & np.isfinite(dy)
     X = grid_x_mm[valid].ravel()
     Y = grid_y_mm[valid].ravel()
-    D = (dx[valid].ravel() * disp_direction[0] +
-         dy[valid].ravel() * disp_direction[1])
+    D = dx[valid].ravel() * disp_direction[0] + dy[valid].ravel() * disp_direction[1]
 
     # Least-squares: D_projected = a + b*X + c*Y
     A_mat = np.column_stack([np.ones_like(X), X, Y])
@@ -641,7 +668,7 @@ def fit_disparity_plane(
     a, b, c = coeffs
 
     residual = D - A_mat @ coeffs
-    rms = float(np.sqrt(np.mean(residual ** 2)))
+    rms = float(np.sqrt(np.mean(residual**2)))
 
     # Convert projected disparity to physical corrections.
     # D_projected (px) = disp_px_per_mm * dZ(mm)
@@ -670,6 +697,7 @@ def fit_disparity_plane(
 # ---------------------------------------------------------------------------
 # Main iterative loop
 # ---------------------------------------------------------------------------
+
 
 def run_self_calibration(
     cam1: PinholeCamera,
@@ -716,15 +744,16 @@ def run_self_calibration(
     R_rel = cam2.R @ cam1.R.T
     trace_val = np.trace(R_rel)
     full_angle = math.acos(max(-1.0, min(1.0, (trace_val - 1.0) / 2.0)))
-    logger.info(
-        f"Stereo full angle: {math.degrees(full_angle):.1f} deg"
-    )
+    logger.info(f"Stereo full angle: {math.degrees(full_angle):.1f} deg")
 
     # Numerically compute disparity sensitivity and direction — works for any
     # stereo geometry including transmission (~180°) where the analytic
     # tan(θ) formula diverges.
     disp_px_per_mm, disp_direction = estimate_disparity_sensitivity(
-        cam1, cam2, world_bounds, mm_per_pixel,
+        cam1,
+        cam2,
+        world_bounds,
+        mm_per_pixel,
     )
 
     # Use the user-supplied window size verbatim. If the search range
@@ -737,7 +766,9 @@ def run_self_calibration(
 
     # Window grid
     wc = compute_window_centers(
-        (out_h, out_w), (window_size, window_size), overlap,
+        (out_h, out_w),
+        (window_size, window_size),
+        overlap,
     )
     win_ctrs_x = wc.win_ctrs_x
     win_ctrs_y = wc.win_ctrs_y
@@ -766,36 +797,53 @@ def run_self_calibration(
     dy_after = None
     peak_q = None
     corr_first_iter = None  # iteration 1 accumulated correlation planes
-    corr_last_iter = None   # most recent accumulated correlation planes
+    corr_last_iter = None  # most recent accumulated correlation planes
 
     for iteration in range(max_iterations):
         logger.info(f"Self-calibration iteration {iteration + 1}/{max_iterations}")
 
         # Build dewarp maps with cumulative corrections
         maps_cam1 = compute_dewarp_maps(
-            cam1, world_bounds, mm_per_pixel,
-            cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
+            cam1,
+            world_bounds,
+            mm_per_pixel,
+            cumulative_z,
+            cumulative_tilt_x,
+            cumulative_tilt_y,
         )
         maps_cam2 = compute_dewarp_maps(
-            cam2, world_bounds, mm_per_pixel,
-            cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
+            cam2,
+            world_bounds,
+            mm_per_pixel,
+            cumulative_z,
+            cumulative_tilt_x,
+            cumulative_tilt_y,
         )
 
         # Dewarp all images
-        dw1 = np.stack([
-            dewarp_image(img, maps_cam1[0], maps_cam1[1]).astype(np.float32)
-            for img in images_cam1
-        ])
-        dw2 = np.stack([
-            dewarp_image(img, maps_cam2[0], maps_cam2[1]).astype(np.float32)
-            for img in images_cam2
-        ])
+        dw1 = np.stack(
+            [
+                dewarp_image(img, maps_cam1[0], maps_cam1[1]).astype(np.float32)
+                for img in images_cam1
+            ]
+        )
+        dw2 = np.stack(
+            [
+                dewarp_image(img, maps_cam2[0], maps_cam2[1]).astype(np.float32)
+                for img in images_cam2
+            ]
+        )
 
         # Cross-correlate cam1 vs cam2
         corr_sum = accumulate_ensemble_correlation(
-            lib, dw1, dw2,
-            win_ctrs_x, win_ctrs_y,
-            n_win_x, n_win_y, window_size,
+            lib,
+            dw1,
+            dw2,
+            win_ctrs_x,
+            win_ctrs_y,
+            n_win_x,
+            n_win_y,
+            window_size,
         )
 
         # Capture correlation planes — first iteration is kept verbatim,
@@ -814,7 +862,10 @@ def run_self_calibration(
 
         # Clean
         dx_clean, dy_clean = clean_disparity_field(
-            dx_raw, dy_raw, peak_q, quality_threshold,
+            dx_raw,
+            dy_raw,
+            peak_q,
+            quality_threshold,
         )
 
         # RMS disparity
@@ -823,16 +874,17 @@ def run_self_calibration(
             logger.warning("No valid disparity points — aborting")
             break
 
-        rms = float(np.sqrt(
-            np.mean(dx_clean[valid] ** 2 + dy_clean[valid] ** 2)
-        ))
+        rms = float(np.sqrt(np.mean(dx_clean[valid] ** 2 + dy_clean[valid] ** 2)))
         logger.info(f"  RMS disparity: {rms:.4f} px")
 
         # Fit plane to get corrections
         fit = fit_disparity_plane(
-            dx_clean, dy_clean,
-            grid_x_mm, grid_y_mm,
-            disp_px_per_mm, mm_per_pixel,
+            dx_clean,
+            dy_clean,
+            grid_x_mm,
+            grid_y_mm,
+            disp_px_per_mm,
+            mm_per_pixel,
             disp_direction=disp_direction,
         )
         delta_z = fit["z_offset"]
@@ -843,16 +895,18 @@ def run_self_calibration(
         cumulative_tilt_x += delta_tx
         cumulative_tilt_y += delta_ty
 
-        history.append(IterationRecord(
-            iteration=iteration + 1,
-            rms_disparity=rms,
-            delta_z=delta_z,
-            delta_tilt_x=delta_tx,
-            delta_tilt_y=delta_ty,
-            cumulative_z=cumulative_z,
-            cumulative_tilt_x=cumulative_tilt_x,
-            cumulative_tilt_y=cumulative_tilt_y,
-        ))
+        history.append(
+            IterationRecord(
+                iteration=iteration + 1,
+                rms_disparity=rms,
+                delta_z=delta_z,
+                delta_tilt_x=delta_tx,
+                delta_tilt_y=delta_ty,
+                cumulative_z=cumulative_z,
+                cumulative_tilt_x=cumulative_tilt_x,
+                cumulative_tilt_y=cumulative_tilt_y,
+            )
+        )
 
         logger.info(
             f"  Corrections: dZ={delta_z:.4f} mm, "
@@ -910,25 +964,42 @@ def run_self_calibration(
     # Did not converge — do one final pass to get "after" disparity
     logger.info("Generating final disparity field...")
     maps_cam1 = compute_dewarp_maps(
-        cam1, world_bounds, mm_per_pixel,
-        cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
+        cam1,
+        world_bounds,
+        mm_per_pixel,
+        cumulative_z,
+        cumulative_tilt_x,
+        cumulative_tilt_y,
     )
     maps_cam2 = compute_dewarp_maps(
-        cam2, world_bounds, mm_per_pixel,
-        cumulative_z, cumulative_tilt_x, cumulative_tilt_y,
+        cam2,
+        world_bounds,
+        mm_per_pixel,
+        cumulative_z,
+        cumulative_tilt_x,
+        cumulative_tilt_y,
     )
-    dw1 = np.stack([
-        dewarp_image(img, maps_cam1[0], maps_cam1[1]).astype(np.float32)
-        for img in images_cam1
-    ])
-    dw2 = np.stack([
-        dewarp_image(img, maps_cam2[0], maps_cam2[1]).astype(np.float32)
-        for img in images_cam2
-    ])
+    dw1 = np.stack(
+        [
+            dewarp_image(img, maps_cam1[0], maps_cam1[1]).astype(np.float32)
+            for img in images_cam1
+        ]
+    )
+    dw2 = np.stack(
+        [
+            dewarp_image(img, maps_cam2[0], maps_cam2[1]).astype(np.float32)
+            for img in images_cam2
+        ]
+    )
     corr_sum = accumulate_ensemble_correlation(
-        lib, dw1, dw2,
-        win_ctrs_x, win_ctrs_y,
-        n_win_x, n_win_y, window_size,
+        lib,
+        dw1,
+        dw2,
+        win_ctrs_x,
+        win_ctrs_y,
+        n_win_x,
+        n_win_y,
+        window_size,
     )
     # The post-loop pass IS the most recent correlation we have at the
     # final cumulative correction — overwrite corr_last_iter with it.

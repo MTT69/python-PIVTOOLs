@@ -13,22 +13,31 @@ def _cam(fx, cx, cy, tz):
     return CameraModel(
         K=np.array([[fx, 0, cx], [0, fx, cy], [0, 0, 1.0]]),
         dist=np.array([-0.01, 0.02, 0.001, -0.0005, 0.0]),
-        R=np.eye(3), t=np.array([[1.0], [2.0], [tz]]), image_size=(1280, 1024))
+        R=np.eye(3),
+        t=np.array([[1.0], [2.0], [tz]]),
+        image_size=(1280, 1024),
+    )
 
 
 def _joint_record():
-    board = {(0, 0): np.array([0.0, 0.0, 0.0]),
-             (1, 0): np.array([15.0, 0.0, 0.1]),
-             (0, 1): np.array([0.0, 15.0, -0.2]),
-             (2, 3): np.array([30.0, 45.0, 0.4])}
+    board = {
+        (0, 0): np.array([0.0, 0.0, 0.0]),
+        (1, 0): np.array([15.0, 0.0, 0.1]),
+        (0, 1): np.array([0.0, 15.0, -0.2]),
+        (2, 3): np.array([30.0, 45.0, 0.4]),
+    }
     return REC.JointRecord(
-        cameras=[1, 2], board_type="dotboard",
+        cameras=[1, 2],
+        board_type="dotboard",
         models={1: _cam(1200, 640, 512, 700), 2: _cam(1250, 600, 500, 720)},
         board=board,
         world_frame=REC.WorldFrame(mode="global_grid", origin_mm=np.array([5.0, -3.0])),
-        spacing_mm=15.0, board_release="full3d",
-        per_camera_rms={1: 0.18, 2: 0.21}, rms_px=0.20,
-        board_meta={"n_union": 4, "converged": 1})
+        spacing_mm=15.0,
+        board_release="full3d",
+        per_camera_rms={1: 0.18, 2: 0.21},
+        rms_px=0.20,
+        board_meta={"n_union": 4, "converged": 1},
+    )
 
 
 def test_joint_record_roundtrip(tmp_path):
@@ -66,8 +75,12 @@ def test_load_camera_model_falls_back_to_mono(tmp_path):
     root = tmp_path
     mono_dir = root / "Cam1" / "dotboard_planar" / "model"
     mono_dir.mkdir(parents=True)
-    mono = REC.MonoRecord(camera=1, board_type="dotboard", camera_model=_cam(999, 640, 512, 700),
-                          world_frame=REC.WorldFrame(mode="clicks"))
+    mono = REC.MonoRecord(
+        camera=1,
+        board_type="dotboard",
+        camera_model=_cam(999, 640, 512, 700),
+        world_frame=REC.WorldFrame(mode="clicks"),
+    )
     REC.save_mono(mono, mono_dir)
 
     cam, wf = REC.load_camera_model(mono_dir, 1)
@@ -77,9 +90,16 @@ def test_load_camera_model_falls_back_to_mono(tmp_path):
 
 def _poly():
     return PolynomialModel(
-        coeffs_x=np.arange(10, dtype=float), coeffs_y=np.arange(10, 20, dtype=float),
-        x0=640.0, sx=640.0, y0=512.0, sy=512.0, image_size=(1280, 1024),
-        rms_x_mm=0.05, rms_y_mm=0.04)
+        coeffs_x=np.arange(10, dtype=float),
+        coeffs_y=np.arange(10, 20, dtype=float),
+        x0=640.0,
+        sx=640.0,
+        y0=512.0,
+        sy=512.0,
+        image_size=(1280, 1024),
+        rms_x_mm=0.05,
+        rms_y_mm=0.04,
+    )
 
 
 def test_mono_record_for_camera_pinhole_joint_never_shadows_polynomial(tmp_path):
@@ -87,8 +107,15 @@ def test_mono_record_for_camera_pinhole_joint_never_shadows_polynomial(tmp_path)
     root = tmp_path
     mono_dir = root / "Cam1" / "dotboard_planar" / "model"
     mono_dir.mkdir(parents=True)
-    REC.save_mono(REC.MonoRecord(camera=1, board_type="dotboard", camera_model=_poly(),
-                                 world_frame=REC.WorldFrame(mode="global_grid")), mono_dir)
+    REC.save_mono(
+        REC.MonoRecord(
+            camera=1,
+            board_type="dotboard",
+            camera_model=_poly(),
+            world_frame=REC.WorldFrame(mode="global_grid"),
+        ),
+        mono_dir,
+    )
     REC.save_joint(_joint_record(), root / "joint_dotboard" / "model")
 
     # Explicit polynomial request: the joint pinhole must be ignored.
@@ -110,8 +137,15 @@ def test_load_camera_model_joint_and_mono_agree(tmp_path):
     mono_dir.mkdir(parents=True)
     rec = _joint_record()
     # legacy mono for cam2
-    REC.save_mono(REC.MonoRecord(camera=2, board_type="dotboard", camera_model=rec.models[2],
-                                 world_frame=rec.world_frame), mono_dir)
+    REC.save_mono(
+        REC.MonoRecord(
+            camera=2,
+            board_type="dotboard",
+            camera_model=rec.models[2],
+            world_frame=rec.world_frame,
+        ),
+        mono_dir,
+    )
     cam_mono, _ = REC.load_camera_model(mono_dir, 2)
     # now add the joint record (should take precedence and match)
     REC.save_joint(rec, root / "joint_dotboard" / "model")

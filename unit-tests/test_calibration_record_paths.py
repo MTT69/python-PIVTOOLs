@@ -31,28 +31,49 @@ from pivtools_gui.calibration.camera_model import (
 
 def _pinhole() -> CameraModel:
     K = np.array([[1000.0, 0, 512], [0, 1000.0, 512], [0, 0, 1]])
-    return CameraModel(K=K, dist=np.zeros(5), R=np.eye(3), t=np.zeros((3, 1)),
-                       image_size=(1024, 1024),
-                       distortion_model=DistortionModel.STANDARD, rms=0.1)
+    return CameraModel(
+        K=K,
+        dist=np.zeros(5),
+        R=np.eye(3),
+        t=np.zeros((3, 1)),
+        image_size=(1024, 1024),
+        distortion_model=DistortionModel.STANDARD,
+        rms=0.1,
+    )
 
 
 def _polynomial() -> PolynomialModel:
-    return PolynomialModel(coeffs_x=np.arange(10, dtype=float),
-                           coeffs_y=np.arange(10, dtype=float) * 2,
-                           x0=512.0, sx=512.0, y0=512.0, sy=512.0,
-                           image_size=(1024, 1024), rms_x_mm=0.01, rms_y_mm=0.02)
+    return PolynomialModel(
+        coeffs_x=np.arange(10, dtype=float),
+        coeffs_y=np.arange(10, dtype=float) * 2,
+        x0=512.0,
+        sx=512.0,
+        y0=512.0,
+        sy=512.0,
+        image_size=(1024, 1024),
+        rms_x_mm=0.01,
+        rms_y_mm=0.02,
+    )
 
 
 def _mono_record(model, board="dotboard") -> rec.MonoRecord:
-    return rec.MonoRecord(camera=1, board_type=board, camera_model=model,
-                          per_view_rms=[0.1])
+    return rec.MonoRecord(
+        camera=1, board_type=board, camera_model=model, per_view_rms=[0.1]
+    )
 
 
 def _stereo_record(board="dotboard") -> rec.StereoRecord:
-    return rec.StereoRecord(cam1=1, cam2=2, board_type=board,
-                            model1=_pinhole(), model2=_pinhole(),
-                            R_stereo=np.eye(3), T_stereo=np.array([[100.0], [0], [0]]),
-                            per_view_rms1=[0.1], per_view_rms2=[0.2])
+    return rec.StereoRecord(
+        cam1=1,
+        cam2=2,
+        board_type=board,
+        model1=_pinhole(),
+        model2=_pinhole(),
+        R_stereo=np.eye(3),
+        T_stereo=np.array([[100.0], [0], [0]]),
+        per_view_rms1=[0.1],
+        per_view_rms2=[0.2],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -62,15 +83,22 @@ def _stereo_record(board="dotboard") -> rec.StereoRecord:
 
 def test_save_uses_per_type_filenames(tmp_path):
     assert rec.save_mono(_mono_record(_pinhole()), tmp_path).name == "model_pinhole.mat"
-    assert rec.save_mono(_mono_record(_polynomial()), tmp_path).name == "model_polynomial.mat"
-    assert rec.save_stereo(_stereo_record(), tmp_path).name == "stereo_model_pinhole.mat"
+    assert (
+        rec.save_mono(_mono_record(_polynomial()), tmp_path).name
+        == "model_polynomial.mat"
+    )
+    assert (
+        rec.save_stereo(_stereo_record(), tmp_path).name == "stereo_model_pinhole.mat"
+    )
 
 
 def test_mono_types_coexist_and_load_by_type(tmp_path):
     rec.save_mono(_mono_record(_pinhole()), tmp_path)
     rec.save_mono(_mono_record(_polynomial()), tmp_path)
     assert isinstance(rec.load_mono(tmp_path, "pinhole").camera_model, CameraModel)
-    assert isinstance(rec.load_mono(tmp_path, "polynomial").camera_model, PolynomialModel)
+    assert isinstance(
+        rec.load_mono(tmp_path, "polynomial").camera_model, PolynomialModel
+    )
 
 
 def test_load_mono_ambiguous_without_type(tmp_path):

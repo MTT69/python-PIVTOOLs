@@ -10,6 +10,7 @@ Analytic forms validated empirically against the production C correlator on 2026
   single autos (bsingle)   -> same triangle over the sum window
   single AB (singlepix/bsingle 16-in-32) -> trapezoid, plateau E = 1 for |d| <= 8
 """
+
 import numpy as np
 import pytest
 from scipy.signal import correlate2d
@@ -25,7 +26,7 @@ def bruteforce_envelope(wa, wb, corr_size):
     ch, cw = corr_size
     y0 = (h - 1) - ch // 2
     x0 = (w - 1) - cw // 2
-    env = full[y0:y0 + ch, x0:x0 + cw]
+    env = full[y0 : y0 + ch, x0 : x0 + cw]
     return env / env[ch // 2, cw // 2]
 
 
@@ -69,7 +70,7 @@ def test_single_ab_plateau_is_exactly_one():
     WB = CrossCorrelator._window_weight_fun(sumwin, "bsingle", sumwin)
     E_ab = _linear_pair_envelope(WA, WB, sumwin)
     c = sumwin[0] // 2
-    plateau = E_ab[c - 8:c + 9, c - 8:c + 9]
+    plateau = E_ab[c - 8 : c + 9, c - 8 : c + 9]
     np.testing.assert_allclose(plateau, 1.0, atol=1e-9)
     # and it genuinely falls off beyond the plateau (corner of the stored plane)
     assert E_ab[0, 0] < 0.6
@@ -91,8 +92,9 @@ def test_fit_window_crop_matches_full():
     WB = CrossCorrelator._window_weight_fun(sumwin, "bsingle", sumwin)
     E_full = _linear_pair_envelope(WB, WB, (32, 32))
     E_crop = _linear_pair_envelope(WB, WB, (24, 24))
-    np.testing.assert_allclose(E_crop, E_full[16 - 12:16 + 12, 16 - 12:16 + 12],
-                               atol=1e-12)
+    np.testing.assert_allclose(
+        E_crop, E_full[16 - 12 : 16 + 12, 16 - 12 : 16 + 12], atol=1e-12
+    )
     assert E_crop[12, 12] == pytest.approx(1.0)
 
 

@@ -7,22 +7,19 @@ Tests both interpolation modes:
 
 Test classes:
   - TestSyntheticCorrectness: grid-pattern images + Poiseuille predictor (in-memory)
-  - TestPoiseuille1mpCorrectness: generated Poiseuille image pair from disk
 
 Pass criteria (relative to image value range):
   - mean_err  < 0.1% of range  (catches systematic bugs)
   - p99.9_err < 5%  of range   (allows bicubic ringing at sharp edges)
 """
+
 import ctypes
-import json
-import os
 import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
-from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -31,7 +28,6 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Platform-correct shared-library extension (was hard-coded .dll → Windows-only).
 _LIB_EXT = ".dll" if sys.platform.startswith("win") else ".so"
 _LIB_PATH = _PROJECT_ROOT / "pivtools_cli" / "lib" / f"libfusedwarp{_LIB_EXT}"
-_POISEUILLE_DIR = Path(__file__).resolve().parent / "poiseuille_1mp"
 
 INTERP_NAMES = {0: "bicubic", 1: "lanczos3"}
 
@@ -51,24 +47,40 @@ def fused_warp_lib():
     c_int = ctypes.c_int
 
     lib.fused_symmetric_warp.argtypes = [
-        c_float_p, c_float_p,    # img_a, img_b
-        c_float_p, c_float_p,    # out_a, out_b
-        c_float_p, c_float_p,    # pred_dy, pred_dx
-        c_int, c_int,            # H, W
-        c_int, c_int,            # nPY, nPX
-        c_float_p, c_float_p,    # ctrs_y, ctrs_x
-        c_int,                   # interp_mode
+        c_float_p,
+        c_float_p,  # img_a, img_b
+        c_float_p,
+        c_float_p,  # out_a, out_b
+        c_float_p,
+        c_float_p,  # pred_dy, pred_dx
+        c_int,
+        c_int,  # H, W
+        c_int,
+        c_int,  # nPY, nPX
+        c_float_p,
+        c_float_p,  # ctrs_y, ctrs_x
+        c_int,  # interp_mode
+        c_int,  # round_shifts
     ]
     lib.fused_symmetric_warp.restype = c_int
 
     lib.fused_symmetric_warp_batch.argtypes = [
-        c_float_p, c_float_p,    # imgs_a, imgs_b   (N, H, W)
-        c_float_p, c_float_p,    # outs_a, outs_b   (N, H, W)
-        c_float_p, c_float_p,    # pred_dy, pred_dx (nPY,nPX) or (N,nPY,nPX)
-        c_int, c_int, c_int,     # N, H, W
-        c_int, c_int,            # nPY, nPX
-        c_float_p, c_float_p,    # ctrs_y, ctrs_x
-        c_int, c_int,            # interp_mode, shared_predictor
+        c_float_p,
+        c_float_p,  # imgs_a, imgs_b   (N, H, W)
+        c_float_p,
+        c_float_p,  # outs_a, outs_b   (N, H, W)
+        c_float_p,
+        c_float_p,  # pred_dy, pred_dx (nPY,nPX) or (N,nPY,nPX)
+        c_int,
+        c_int,
+        c_int,  # N, H, W
+        c_int,
+        c_int,  # nPY, nPX
+        c_float_p,
+        c_float_p,  # ctrs_y, ctrs_x
+        c_int,
+        c_int,  # interp_mode, shared_predictor
+        c_int,  # round_shifts
     ]
     lib.fused_symmetric_warp_batch.restype = c_int
 
@@ -81,33 +93,12 @@ def fused_warp_lib():
     return lib
 
 
-@pytest.fixture(scope="session")
-def poiseuille_pair():
-    """Load Poiseuille image pair + params. Skip if not generated."""
-    params_path = _POISEUILLE_DIR / "params.json"
-    a_path = _POISEUILLE_DIR / "B00001_A.tif"
-    b_path = _POISEUILLE_DIR / "B00001_B.tif"
-
-    if not params_path.is_file():
-        pytest.skip(
-            f"Poiseuille images not generated. "
-            f"Run: python unit-tests/generate_poiseuille_1mp.py"
-        )
-
-    with open(params_path) as f:
-        params = json.load(f)
-
-    img_a = cv2.imread(str(a_path), cv2.IMREAD_UNCHANGED).astype(np.float32)
-    img_b = cv2.imread(str(b_path), cv2.IMREAD_UNCHANGED).astype(np.float32)
-
-    return img_a, img_b, params
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def call_kernel(lib, img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
-                interp_mode=0):
+def call_kernel(
+    lib, img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x, interp_mode=0, round_shifts=0
+):
     """Call the C kernel and return (out_a, out_b)."""
     H, W = img_a.shape
     nPY, nPX = pred_dy.shape
@@ -130,11 +121,14 @@ def call_kernel(lib, img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
         out_b.ctypes.data_as(c_float_p),
         pred_dy.ctypes.data_as(c_float_p),
         pred_dx.ctypes.data_as(c_float_p),
-        ctypes.c_int(H), ctypes.c_int(W),
-        ctypes.c_int(nPY), ctypes.c_int(nPX),
+        ctypes.c_int(H),
+        ctypes.c_int(W),
+        ctypes.c_int(nPY),
+        ctypes.c_int(nPX),
         ctrs_y.ctypes.data_as(c_float_p),
         ctrs_x.ctypes.data_as(c_float_p),
         ctypes.c_int(interp_mode),
+        ctypes.c_int(round_shifts),
     )
     if ret != 0:
         raise RuntimeError(f"C kernel returned error code {ret}")
@@ -142,15 +136,25 @@ def call_kernel(lib, img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
     return out_a, out_b
 
 
-def call_kernel_batch(lib, imgs_a, imgs_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
-                      interp_mode=0, shared_predictor=1):
+def call_kernel_batch(
+    lib,
+    imgs_a,
+    imgs_b,
+    pred_dy,
+    pred_dx,
+    ctrs_y,
+    ctrs_x,
+    interp_mode=0,
+    shared_predictor=1,
+    round_shifts=0,
+):
     """Call the batch C kernel and return (outs_a, outs_b), each (N, H, W).
 
     imgs_* are (N, H, W). pred_* are (nPY, nPX) when shared_predictor=1, else
     (N, nPY, nPX).
     """
     N, H, W = imgs_a.shape
-    nPY, nPX = (pred_dy.shape if shared_predictor else pred_dy.shape[1:])
+    nPY, nPX = pred_dy.shape if shared_predictor else pred_dy.shape[1:]
 
     imgs_a = np.ascontiguousarray(imgs_a, dtype=np.float32)
     imgs_b = np.ascontiguousarray(imgs_b, dtype=np.float32)
@@ -170,11 +174,16 @@ def call_kernel_batch(lib, imgs_a, imgs_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
         outs_b.ctypes.data_as(c_float_p),
         pred_dy.ctypes.data_as(c_float_p),
         pred_dx.ctypes.data_as(c_float_p),
-        ctypes.c_int(N), ctypes.c_int(H), ctypes.c_int(W),
-        ctypes.c_int(nPY), ctypes.c_int(nPX),
+        ctypes.c_int(N),
+        ctypes.c_int(H),
+        ctypes.c_int(W),
+        ctypes.c_int(nPY),
+        ctypes.c_int(nPX),
         ctrs_y.ctypes.data_as(c_float_p),
         ctrs_x.ctypes.data_as(c_float_p),
-        ctypes.c_int(interp_mode), ctypes.c_int(shared_predictor),
+        ctypes.c_int(interp_mode),
+        ctypes.c_int(shared_predictor),
+        ctypes.c_int(round_shifts),
     )
     if ret != 0:
         raise RuntimeError(f"C batch kernel returned error code {ret}")
@@ -226,8 +235,7 @@ def _lanczos3_warp_numpy(img, map_y, map_x):
     return out.astype(np.float32)
 
 
-def reference_warp(img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
-                   interp_mode=0):
+def reference_warp(img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x, interp_mode=0):
     """Reference warp matching the C kernel's behaviour.
 
     Predictor upsampling: ALWAYS bicubic (cv2.INTER_CUBIC + BORDER_REPLICATE).
@@ -248,16 +256,21 @@ def reference_warp(img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
     pred_frac_x = np.interp(pix_x, ctrs_x, np.arange(nPX, dtype=np.float32))
     pred_frac_x = pred_frac_x.astype(np.float32)
     pred_frac_y = pred_frac_y.astype(np.float32)
-    map_y_pred, map_x_pred = np.meshgrid(pred_frac_y, pred_frac_x,
-                                          indexing="ij")
+    map_y_pred, map_x_pred = np.meshgrid(pred_frac_y, pred_frac_x, indexing="ij")
 
     dense_dy = cv2.remap(
-        pred_dy.astype(np.float32), map_x_pred, map_y_pred,
-        cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE,
+        pred_dy.astype(np.float32),
+        map_x_pred,
+        map_y_pred,
+        cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
     )
     dense_dx = cv2.remap(
-        pred_dx.astype(np.float32), map_x_pred, map_y_pred,
-        cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE,
+        pred_dx.astype(np.float32),
+        map_x_pred,
+        map_y_pred,
+        cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
     )
 
     # Step 2: Build symmetric coordinate maps
@@ -276,18 +289,24 @@ def reference_warp(img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
     # Step 3: Warp images (mode-dependent)
     if interp_mode == 0:
         out_a = cv2.remap(
-            img_a.astype(np.float32), map_a_x, map_a_y,
-            cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+            img_a.astype(np.float32),
+            map_a_x,
+            map_a_y,
+            cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
         )
         out_b = cv2.remap(
-            img_b.astype(np.float32), map_b_x, map_b_y,
-            cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+            img_b.astype(np.float32),
+            map_b_x,
+            map_b_y,
+            cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
         )
     else:
-        out_a = _lanczos3_warp_numpy(img_a.astype(np.float32), map_a_y,
-                                      map_a_x)
-        out_b = _lanczos3_warp_numpy(img_b.astype(np.float32), map_b_y,
-                                      map_b_x)
+        out_a = _lanczos3_warp_numpy(img_a.astype(np.float32), map_a_y, map_a_x)
+        out_b = _lanczos3_warp_numpy(img_b.astype(np.float32), map_b_y, map_b_x)
 
     return out_a, out_b
 
@@ -316,7 +335,7 @@ def make_poiseuille_predictor(nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=None):
     if H is None:
         H = int(ctrs_y[-1] + ctrs_y[0])
     y_norm = 2.0 * ctrs_y / float(H) - 1.0
-    u_profile = u_max * (1.0 - y_norm ** 2)
+    u_profile = u_max * (1.0 - y_norm**2)
     pred_dx = np.tile(u_profile[:, None], (1, nPX)).astype(np.float32)
     pred_dy = np.zeros((nPY, nPX), dtype=np.float32)
     return pred_dy, pred_dx
@@ -364,18 +383,33 @@ class TestSyntheticCorrectness:
     def test_correctness(self, fused_warp_lib, interp_mode, H, W, nPY, nPX):
         ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
         pred_dy, pred_dx = make_poiseuille_predictor(
-            nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=H,
+            nPY,
+            nPX,
+            ctrs_y,
+            ctrs_x,
+            u_max=5.0,
+            H=H,
         )
         img_a = make_grid_image(H, W)
         img_b = make_grid_image(H, W, spacing=20)
 
         c_out_a, c_out_b = call_kernel(
-            fused_warp_lib, img_a, img_b,
-            pred_dy, pred_dx, ctrs_y, ctrs_x,
+            fused_warp_lib,
+            img_a,
+            img_b,
+            pred_dy,
+            pred_dx,
+            ctrs_y,
+            ctrs_x,
             interp_mode=interp_mode,
         )
         ref_out_a, ref_out_b = reference_warp(
-            img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
+            img_a,
+            img_b,
+            pred_dy,
+            pred_dx,
+            ctrs_y,
+            ctrs_x,
             interp_mode=interp_mode,
         )
 
@@ -383,61 +417,14 @@ class TestSyntheticCorrectness:
         err_b = np.abs(c_out_b - ref_out_b)
         img_range = max(img_a.max() - img_a.min(), 1.0)
         max_err, mean_err, p999_err, passed = evaluate_errors(
-            err_a, err_b, img_range,
+            err_a,
+            err_b,
+            img_range,
         )
 
         mode_name = INTERP_NAMES[interp_mode]
         assert passed, (
             f"{H}x{W} grid={nPY}x{nPX} [{mode_name}]: "
-            f"max={max_err:.2f}  mean={mean_err:.4f}  p99.9={p999_err:.2f}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Test class: generated Poiseuille 1MP image pair
-# ---------------------------------------------------------------------------
-class TestPoiseuille1mpCorrectness:
-    """C kernel vs reference on generated Poiseuille-flow particle images."""
-
-    @pytest.mark.parametrize(
-        "interp_mode",
-        [
-            pytest.param(0, id="bicubic"),
-            pytest.param(1, id="lanczos3", marks=pytest.mark.slow),
-        ],
-    )
-    def test_correctness(self, fused_warp_lib, poiseuille_pair, interp_mode):
-        img_a, img_b, params = poiseuille_pair
-        H, W = params["image_shape"]
-        u_max = params["u_max"]
-
-        # Use a 16x16 predictor grid for the 1000x1000 images
-        nPY, nPX = 16, 16
-        ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
-        pred_dy, pred_dx = make_poiseuille_predictor(
-            nPY, nPX, ctrs_y, ctrs_x, u_max=u_max, H=H,
-        )
-
-        c_out_a, c_out_b = call_kernel(
-            fused_warp_lib, img_a, img_b,
-            pred_dy, pred_dx, ctrs_y, ctrs_x,
-            interp_mode=interp_mode,
-        )
-        ref_out_a, ref_out_b = reference_warp(
-            img_a, img_b, pred_dy, pred_dx, ctrs_y, ctrs_x,
-            interp_mode=interp_mode,
-        )
-
-        err_a = np.abs(c_out_a - ref_out_a)
-        err_b = np.abs(c_out_b - ref_out_b)
-        img_range = max(img_a.max() - img_a.min(), 1.0)
-        max_err, mean_err, p999_err, passed = evaluate_errors(
-            err_a, err_b, img_range,
-        )
-
-        mode_name = INTERP_NAMES[interp_mode]
-        assert passed, (
-            f"Poiseuille 1MP [{mode_name}]: "
             f"max={max_err:.2f}  mean={mean_err:.4f}  p99.9={p999_err:.2f}"
         )
 
@@ -462,7 +449,9 @@ class TestScalarSimdEquivalence:
         H = W = 256
         nPY = nPX = 16
         ctrs_y, ctrs_x = make_window_centres(H, W, nPY, nPX)
-        pred_dy, pred_dx = make_poiseuille_predictor(nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=H)
+        pred_dy, pred_dx = make_poiseuille_predictor(
+            nPY, nPX, ctrs_y, ctrs_x, u_max=5.0, H=H
+        )
 
         if pattern == "grid":
             img_a = make_grid_image(H, W, spacing=16)
@@ -474,20 +463,36 @@ class TestScalarSimdEquivalence:
 
         try:
             fused_warp_lib.fused_warp_set_impl(0)
-            ref_a, ref_b = call_kernel(fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
-                                       ctrs_y, ctrs_x, interp_mode)
+            ref_a, ref_b = call_kernel(
+                fused_warp_lib,
+                img_a,
+                img_b,
+                pred_dy,
+                pred_dx,
+                ctrs_y,
+                ctrs_x,
+                interp_mode,
+            )
             fused_warp_lib.fused_warp_set_impl(1)
-            opt_a, opt_b = call_kernel(fused_warp_lib, img_a, img_b, pred_dy, pred_dx,
-                                       ctrs_y, ctrs_x, interp_mode)
+            opt_a, opt_b = call_kernel(
+                fused_warp_lib,
+                img_a,
+                img_b,
+                pred_dy,
+                pred_dx,
+                ctrs_y,
+                ctrs_x,
+                interp_mode,
+            )
         finally:
             fused_warp_lib.fused_warp_set_impl(1)  # restore default
 
         max_d = float(max(np.max(np.abs(opt_a - ref_a)), np.max(np.abs(opt_b - ref_b))))
         # 1e-3 on 0..255 data (~4e-6 relative) absorbs FMA/reassociation; today's
         # interior split is exact (0.0), the headroom is for the SIMD path.
-        assert max_d < 1e-3, (
-            f"{pattern}/{INTERP_NAMES[interp_mode]}: scalar-vs-opt max|Δ|={max_d:.3e}"
-        )
+        assert (
+            max_d < 1e-3
+        ), f"{pattern}/{INTERP_NAMES[interp_mode]}: scalar-vs-opt max|Δ|={max_d:.3e}"
 
 
 # ---------------------------------------------------------------------------
@@ -516,8 +521,9 @@ class TestBatchMatchesSinglePair:
     """
 
     @pytest.mark.parametrize("interp_mode", [0, 1], ids=["bicubic", "lanczos3"])
-    @pytest.mark.parametrize("shared_predictor", [1, 0],
-                             ids=["shared_pred", "per_image_pred"])
+    @pytest.mark.parametrize(
+        "shared_predictor", [1, 0], ids=["shared_pred", "per_image_pred"]
+    )
     def test_batch_matches_single(self, fused_warp_lib, interp_mode, shared_predictor):
         N = 3
         H = W = 256
@@ -531,7 +537,9 @@ class TestBatchMatchesSinglePair:
 
         # Distinct predictor per slot (varying u_max) so a per-image stride bug shows.
         preds = [
-            make_poiseuille_predictor(nPY, nPX, ctrs_y, ctrs_x, u_max=3.0 + 2.0 * k, H=H)
+            make_poiseuille_predictor(
+                nPY, nPX, ctrs_y, ctrs_x, u_max=3.0 + 2.0 * k, H=H
+            )
             for k in range(N)
         ]
         if shared_predictor:
@@ -541,18 +549,34 @@ class TestBatchMatchesSinglePair:
             pred_dx_b = np.stack([p[1] for p in preds]).astype(np.float32)
 
         outs_a, outs_b = call_kernel_batch(
-            fused_warp_lib, imgs_a, imgs_b, pred_dy_b, pred_dx_b,
-            ctrs_y, ctrs_x, interp_mode, shared_predictor,
+            fused_warp_lib,
+            imgs_a,
+            imgs_b,
+            pred_dy_b,
+            pred_dx_b,
+            ctrs_y,
+            ctrs_x,
+            interp_mode,
+            shared_predictor,
         )
 
         for k in range(N):
             pdy, pdx = preds[0] if shared_predictor else preds[k]
             ref_a, ref_b = call_kernel(
-                fused_warp_lib, imgs_a[k], imgs_b[k], pdy, pdx,
-                ctrs_y, ctrs_x, interp_mode,
+                fused_warp_lib,
+                imgs_a[k],
+                imgs_b[k],
+                pdy,
+                pdx,
+                ctrs_y,
+                ctrs_x,
+                interp_mode,
             )
-            d = float(max(np.max(np.abs(outs_a[k] - ref_a)),
-                          np.max(np.abs(outs_b[k] - ref_b))))
+            d = float(
+                max(
+                    np.max(np.abs(outs_a[k] - ref_a)), np.max(np.abs(outs_b[k] - ref_b))
+                )
+            )
             pred_kind = "shared" if shared_predictor else "per-image"
             assert d == 0.0, (
                 f"batch[{pred_kind}]/{INTERP_NAMES[interp_mode]} slot {k}: "

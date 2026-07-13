@@ -10,8 +10,11 @@ Entry point for instantaneous PIV with true Dask patterns:
 Usage:
     python -m pivtools_core.instantaneous
 """
-from pivtools_core.config import Config
+
 import os
+
+from pivtools_core.config import Config
+
 config = Config()
 omp_threads = str(config.omp_threads)
 os.environ["OMP_NUM_THREADS"] = omp_threads
@@ -27,28 +30,27 @@ from typing import List, Optional
 
 from dask.distributed import Client, as_completed
 
-from pivtools_core.config import Config
-from pivtools_core.validation import (
-    validate_config,
-    log_validation_result,
-)
-from pivtools_core.image_handling.load_images import (
-    load_images,
-    load_mask_for_camera,
-    compute_vector_mask,
+from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+from pivtools_cli.piv.save_results import (
+    get_output_path,
+    save_coordinates_from_config_distributed,
 )
 from pivtools_cli.piv_cluster.cluster import start_cluster
-from pivtools_cli.piv.save_results import (
-    save_coordinates_from_config_distributed,
-    get_output_path,
-)
-from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 from pivtools_cli.processing.dask_pipeline import (
+    correlate_and_save_batch,
     create_filter_pipeline,
     scatter_immutable_data,
-    correlate_and_save_batch,
 )
-
+from pivtools_core.config import Config
+from pivtools_core.image_handling.load_images import (
+    compute_vector_mask,
+    load_images,
+    load_mask_for_camera,
+)
+from pivtools_core.validation import (
+    log_validation_result,
+    validate_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +73,6 @@ def process_instantaneous_sliding_window(
     Memory: ~2 batches per worker (bounded)
     I/O: Parallel (max_in_flight concurrent disk reads)
     """
-    from dask.distributed import as_completed
 
     num_workers = config.dask_workers_per_node
     max_in_flight_per_worker = config.dask_max_in_flight_per_worker
@@ -101,8 +102,8 @@ def process_instantaneous_sliding_window(
             filter_future,
             chunk_start + 1,  # 1-indexed frame number
             scattered_config,
-            scattered['cache'],
-            scattered['masks'],
+            scattered["cache"],
+            scattered["masks"],
             output_path,
             config.instantaneous_runs_0based,
             config.vector_format,
@@ -111,12 +112,14 @@ def process_instantaneous_sliding_window(
         pending[corr_future] = next_to_submit
         next_to_submit += 1
 
-    logger.info(f"  Initial window filled: {len(pending)}/{max_in_flight} tasks in flight")
+    logger.info(
+        f"  Initial window filled: {len(pending)}/{max_in_flight} tasks in flight"
+    )
 
     # Process as tasks complete (any order is fine for instantaneous)
     ac = as_completed(list(pending.keys()))
     for completed in ac:
-        chunk_idx = pending[completed]
+        pending[completed]
         saved_paths = completed.result()
         all_saved_paths.extend(saved_paths)
 
@@ -132,8 +135,8 @@ def process_instantaneous_sliding_window(
                 filter_future,
                 chunk_start + 1,
                 scattered_config,
-                scattered['cache'],
-                scattered['masks'],
+                scattered["cache"],
+                scattered["masks"],
                 output_path,
                 config.instantaneous_runs_0based,
                 config.vector_format,
@@ -146,7 +149,9 @@ def process_instantaneous_sliding_window(
         # Progress logging - report each new percentage point
         current_pct = round((completed_count / num_chunks) * 100)
         if current_pct > last_reported_pct:
-            logger.info(f"  Correlation progress: {current_pct}% ({len(pending)} in flight)")
+            logger.info(
+                f"  Correlation progress: {current_pct}% ({len(pending)} in flight)"
+            )
             last_reported_pct = current_pct
 
     return all_saved_paths
@@ -162,15 +167,26 @@ def signal_handler(signum, frame):
     """Handle termination signals for clean shutdown."""
     global _shutdown_requested
     _shutdown_requested = True
-    sig_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else str(signum)
+    sig_name = (
+        signal.Signals(signum).name if hasattr(signal, "Signals") else str(signum)
+    )
     logger.info(f"Received signal {sig_name}, initiating clean shutdown...")
     print(f"\n[CANCELLED] Received signal {sig_name}, shutting down...", flush=True)
 
     # Suppress noisy distributed logs during teardown
     import logging as _logging
-    for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
-                 "distributed.core", "distributed.comm", "distributed.comm.tcp",
-                 "distributed.batched", "tornado.application", "tornado.general"]:
+
+    for name in [
+        "distributed.worker",
+        "distributed.scheduler",
+        "distributed.nanny",
+        "distributed.core",
+        "distributed.comm",
+        "distributed.comm.tcp",
+        "distributed.batched",
+        "tornado.application",
+        "tornado.general",
+    ]:
         _logging.getLogger(name).setLevel(_logging.CRITICAL)
 
     # Close Dask client and cluster if they exist
@@ -189,6 +205,7 @@ def signal_handler(signum, frame):
 
     # Small delay to let workers finish cleanly
     import time as _time
+
     _time.sleep(0.5)
 
     try:
@@ -246,7 +263,9 @@ def run_instantaneous_piv(
     batch_size = config.batch_size
     logger.info(f"Loading images for camera {camera_num} (batch_size={batch_size})...")
     images = load_images(camera_num, config, source=source_path, batch_size=batch_size)
-    logger.info(f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks of size {images.chunks[0][0]}")
+    logger.info(
+        f"  Loaded: shape={images.shape}, {len(images.chunks[0])} chunks of size {images.chunks[0][0]}"
+    )
 
     # 2. Scatter immutable data once
     logger.info("Scattering immutable data...")
@@ -258,7 +277,9 @@ def run_instantaneous_piv(
     logger.info("Creating filter pipeline...")
     # Pass base_path to save intermediate filter outputs when filters are configured
     save_intermediate = base_path if config.filters else None
-    images = create_filter_pipeline(images, config, pixel_mask, save_intermediate_base=save_intermediate)
+    images = create_filter_pipeline(
+        images, config, pixel_mask, save_intermediate_base=save_intermediate
+    )
 
     # 4. Process using sliding window for parallel I/O with bounded memory
     num_chunks = len(images.chunks[0])
@@ -301,7 +322,6 @@ def main():
     """Main entry point for instantaneous PIV processing."""
     start_time = time.time()
 
-
     # Validate configuration
     is_valid, error_msg, warnings = validate_config(config)
     log_validation_result(is_valid, error_msg, warnings, config)
@@ -330,6 +350,7 @@ def main():
         print(f"Dask dashboard available at: {client.dashboard_link}", flush=True)
         if config.open_dashboard:
             import webbrowser
+
             webbrowser.open(client.dashboard_link)
 
         # Log worker info
@@ -339,6 +360,7 @@ def main():
 
         # Generate run timestamp for config traceability
         from datetime import datetime
+
         run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # Process each path and camera
@@ -348,7 +370,9 @@ def main():
         logger.info("")
         logger.info("=" * 80)
         logger.info("INSTANTANEOUS PIV PROCESSING (DASK-NATIVE)")
-        logger.info(f"Processing {len(active_path_indices)} path(s), {len(camera_numbers)} camera(s)")
+        logger.info(
+            f"Processing {len(active_path_indices)} path(s), {len(camera_numbers)} camera(s)"
+        )
         logger.info("=" * 80)
 
         for path_set_num, path_idx in enumerate(active_path_indices, start=1):
@@ -360,7 +384,9 @@ def main():
             base_path = config.base_paths[path_idx]
 
             # Save timestamped config copy for traceability
-            config_copy_path = config.save_timestamped_copy(base_path, timestamp=run_timestamp)
+            config_copy_path = config.save_timestamped_copy(
+                base_path, timestamp=run_timestamp
+            )
             logger.info(f"Config saved to: {config_copy_path}")
 
             logger.info("")
@@ -377,7 +403,9 @@ def main():
                 logger.info(f"Processing camera {camera_num}...")
 
                 # Load mask
-                mask = load_mask_for_camera(camera_num, config, source_path_idx=path_idx)
+                mask = load_mask_for_camera(
+                    camera_num, config, source_path_idx=path_idx
+                )
 
                 # Compute vector masks
                 vector_masks = None
@@ -417,26 +445,37 @@ def main():
 
                 logger.info("")
                 logger.info("=" * 60)
-                logger.info(f"INSTANTANEOUS PIV COMPLETE: {len(saved_paths)} results saved")
+                logger.info(
+                    f"INSTANTANEOUS PIV COMPLETE: {len(saved_paths)} results saved"
+                )
                 logger.info("=" * 60)
 
-                # Clean up (local only - gc.collect on workers causes SIGSEGV with FFTW)
+                # Clean up (local only — gc.collect on workers historically caused SIGSEGV (attributed to FFTW plan teardown; FFTW is gone and this is unverified against the codelet engine — guard retained))
                 gc.collect()
 
     except Exception as e:
         import traceback
+
         logger.error(f"Error: {e}")
         traceback.print_exc()
 
     finally:
         # Clean shutdown - suppress noisy distributed logs during teardown
+        import io as _io
         import logging as _logging
         import sys as _sys
-        import io as _io
 
-        for name in ["distributed.worker", "distributed.scheduler", "distributed.nanny",
-                     "distributed.core", "distributed.comm", "distributed.comm.tcp",
-                     "distributed.batched", "tornado.application", "tornado.general"]:
+        for name in [
+            "distributed.worker",
+            "distributed.scheduler",
+            "distributed.nanny",
+            "distributed.core",
+            "distributed.comm",
+            "distributed.comm.tcp",
+            "distributed.batched",
+            "tornado.application",
+            "tornado.general",
+        ]:
             _logging.getLogger(name).setLevel(_logging.CRITICAL)
 
         # Suppress stderr during cluster shutdown to hide Tornado tracebacks
@@ -446,7 +485,7 @@ def main():
         try:
             if _client is not None:
                 _client.close(timeout=5)
-        except Exception as e:
+        except Exception:
             pass  # Suppress errors during shutdown
 
         # Small delay to let workers finish cleanly
@@ -455,7 +494,7 @@ def main():
         try:
             if _cluster is not None:
                 _cluster.close(timeout=5)
-        except Exception as e:
+        except Exception:
             pass  # Suppress errors during shutdown
 
         # Wait a bit more for async cleanup to complete

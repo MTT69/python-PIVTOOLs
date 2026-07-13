@@ -21,9 +21,9 @@
 #define SQRT_PI							1.77245385f
 #define TRUE								1
 #define FALSE								0
-#ifndef NAN 
-#define NAN (0.0f/0.0f) 
-#endif 
+#ifndef NAN
+#define NAN (0.0f/0.0f)
+#endif
 
 #define CHUNKSIZE							256
 #define NUMTHREADS_MAX					omp_get_max_threads()
@@ -33,6 +33,6 @@
 #define ERROR_NOPLAN_FWD				2
 #define ERROR_NOPLAN_BWD				4
 #define ERROR_NOPLAN						8
-#define ERROR_OUT_OF_BOUNDS             9 
+#define ERROR_OUT_OF_BOUNDS             9
 
 #endif

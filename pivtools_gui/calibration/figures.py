@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import cv2
 import matplotlib
@@ -133,7 +133,7 @@ def _dot_at_grid(grid_indices: np.ndarray, image_points: np.ndarray, col, row):
 
 
 # GUI overlay convention (StereoSteppedCalibration.tsx): peak face blue, trough face red.
-_STEPPED_PEAK_COLOR = (80 / 255, 140 / 255, 1.0)     # GUI rgba(80,140,255)
+_STEPPED_PEAK_COLOR = (80 / 255, 140 / 255, 1.0)  # GUI rgba(80,140,255)
 _STEPPED_TROUGH_COLOR = (1.0, 120 / 255, 120 / 255)  # GUI rgba(255,120,120)
 
 
@@ -169,7 +169,11 @@ def _draw_stepped_grid_networks(ax, level_data, level_a_face) -> bool:
             continue
         _draw_grid_network(ax, c, g, color=colors[key])
         ax.scatter(
-            c[:, 0], c[:, 1], color=[colors[key]], s=12, zorder=5,
+            c[:, 0],
+            c[:, 1],
+            color=[colors[key]],
+            s=12,
+            zorder=5,
             label=f"{faces[key]} ({len(c)})",
         )
         drew = True
@@ -638,7 +642,9 @@ def _camera_records(models, labels, board_world):
     return recs
 
 
-def _draw_cameras_scene(ax, recs, bw, *, board_alpha, scatter_alpha, board_label) -> float:
+def _draw_cameras_scene(
+    ax, recs, bw, *, board_alpha, scatter_alpha, board_label
+) -> float:
     """Shared 3D rig scene: a translucent board plane + its dots, the world triad, and each
     camera's frustum + optical axis + label. The two callers differ only in the board/scatter
     alphas and the board legend label; the caller owns the title/legend/save. Returns the scene
@@ -770,7 +776,12 @@ def write_cameras_planes_3d(
         fig = plt.figure(figsize=(13, 10))
         ax = fig.add_subplot(111, projection="3d")
         _draw_cameras_scene(
-            ax, recs, bw, board_alpha=0.4, scatter_alpha=0.6, board_label="released board"
+            ax,
+            recs,
+            bw,
+            board_alpha=0.4,
+            scatter_alpha=0.6,
+            board_label="released board",
         )
         ax.set_title(f"Cameras relative to board — {len(cams)} cameras", fontsize=12)
         ax.legend(fontsize=9, loc="upper left")
@@ -981,7 +992,7 @@ def write_dewarp_overlay(
             if _is_2d_image(img2)
             else None
         )
-        shape = (r if r is not None else c)
+        shape = r if r is not None else c
         if shape is None:
             raise ValueError("both cam images unavailable")
         if r is None:
@@ -1058,12 +1069,30 @@ def write_dewarp_pair(
         if title:
             fig.suptitle(title, fontsize=13)
         _dewarp_panel(
-            ax1, model1, img1, board_world, spacing,
-            x_min, x_max, y_min, y_max, cam1_num, mm_per_px,
+            ax1,
+            model1,
+            img1,
+            board_world,
+            spacing,
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+            cam1_num,
+            mm_per_px,
         )
         _dewarp_panel(
-            ax2, model2, img2, board_world, spacing,
-            x_min, x_max, y_min, y_max, cam2_num, mm_per_px,
+            ax2,
+            model2,
+            img2,
+            board_world,
+            spacing,
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+            cam2_num,
+            mm_per_px,
         )
         _save(fig, output_path, dpi=160)
     except Exception:
@@ -1071,8 +1100,16 @@ def write_dewarp_pair(
 
 
 def _write_dewarp_single(
-    dewarp_fn, model, img, board_world, spacing, output_path,
-    title, default_title, mm_per_px, log_label,
+    dewarp_fn,
+    model,
+    img,
+    board_world,
+    spacing,
+    output_path,
+    title,
+    default_title,
+    mm_per_px,
+    log_label,
 ) -> None:
     """Shared body for the pinhole/polynomial single-image dewarp figures — they differ only in
     the image-remap function (``dewarp_fn``), the default title, and the log label."""
@@ -1100,9 +1137,16 @@ def write_dewarp_single(
 ) -> None:
     """Remap one image to the world Z=0 plane; a correct model rectifies the board to a regular grid."""
     _write_dewarp_single(
-        _dewarp_image_to_world, model, img, board_world, spacing, output_path,
-        title, "Dewarped board (model -> world plane; dots on the grid = good model)",
-        mm_per_px, "dewarp single",
+        _dewarp_image_to_world,
+        model,
+        img,
+        board_world,
+        spacing,
+        output_path,
+        title,
+        "Dewarped board (model -> world plane; dots on the grid = good model)",
+        mm_per_px,
+        "dewarp single",
     )
 
 
@@ -1131,8 +1175,16 @@ def _backproject_to_world_plane(model: "CameraModel", pixels) -> np.ndarray:
 
 
 def _write_dewarp_dots(
-    backproject_fn, models_by_cam, detect_pixels_by_cam, board_world, output_path,
-    labels, title, default_title, board_label, log_label,
+    backproject_fn,
+    models_by_cam,
+    detect_pixels_by_cam,
+    board_world,
+    output_path,
+    labels,
+    title,
+    default_title,
+    board_label,
+    log_label,
 ) -> None:
     """Shared body for the pinhole/polynomial dewarp-dots figures — they differ only in how each
     camera's pixels map to world XY (``backproject_fn``), the released-board legend label, the
@@ -1188,10 +1240,16 @@ def write_dewarp_dots(
 ) -> None:
     """Each camera's detected dots back-projected to the world plane (coincident markers = agree)."""
     _write_dewarp_dots(
-        _backproject_to_world_plane, models_by_cam, detect_pixels_by_cam, board_world,
-        output_path, labels, title,
+        _backproject_to_world_plane,
+        models_by_cam,
+        detect_pixels_by_cam,
+        board_world,
+        output_path,
+        labels,
+        title,
         "Detected dots dewarped to world (markers coincide = models agree)",
-        "released board", "dewarp dots",
+        "released board",
+        "dewarp dots",
     )
 
 
@@ -1239,7 +1297,9 @@ def _dewarp_image_to_world_poly(
             float(world[:, 1].max() - world[:, 1].min()),
         )
         img_diag = math.hypot(w - 1, h - 1)
-        mm_per_px = float(np.clip(world_diag / img_diag if img_diag else 0.1, 1e-3, 1.0))
+        mm_per_px = float(
+            np.clip(world_diag / img_diag if img_diag else 0.1, 1e-3, 1.0)
+        )
         ceiling = min(w * h, _DEWARP_ABS_MAX_PIXELS)
         if (span_x / mm_per_px) * (span_y / mm_per_px) > ceiling:
             mm_per_px = math.sqrt(span_x * span_y / ceiling)
@@ -1284,9 +1344,16 @@ def write_dewarp_single_poly(
     """Remap one image to the world plane through a planar polynomial; a correct fit rectifies the
     board to a regular grid (the polynomial analogue of ``write_dewarp_single``)."""
     _write_dewarp_single(
-        _dewarp_image_to_world_poly, model, img, board_world, spacing, output_path,
-        title, "Dewarped board (polynomial -> world plane; dots on the grid = good fit)",
-        mm_per_px, "dewarp single (poly)",
+        _dewarp_image_to_world_poly,
+        model,
+        img,
+        board_world,
+        spacing,
+        output_path,
+        title,
+        "Dewarped board (polynomial -> world plane; dots on the grid = good fit)",
+        mm_per_px,
+        "dewarp single (poly)",
     )
 
 
@@ -1300,16 +1367,23 @@ def write_dewarp_dots_poly(
     title=None,
 ) -> None:
     """Each camera's detected dots back-projected to the world plane via its polynomial (coincident
-    markers = cameras agree). The polynomial maps pixel->world directly — no ray/plane cast."""
+    markers = cameras agree). The polynomial maps pixel->world directly — no ray/plane cast.
+    """
 
     def _poly_backproject(model, px):
         return model.back_project_to_plane(np.asarray(px, np.float64))[:, :2]
 
     _write_dewarp_dots(
-        _poly_backproject, models_by_cam, detect_pixels_by_cam, board_world,
-        output_path, labels, title,
+        _poly_backproject,
+        models_by_cam,
+        detect_pixels_by_cam,
+        board_world,
+        output_path,
+        labels,
+        title,
         "Detected dots back-projected to world (coincident = cameras agree)",
-        "grid target", "dewarp dots (poly)",
+        "grid target",
+        "dewarp dots (poly)",
     )
 
 
@@ -1351,7 +1425,7 @@ def write_mono_figures(
     figd.mkdir(parents=True, exist_ok=True)
     pose_indices = [i for i, _ in used]
     objs = [d.board_local_points for _, d in used]
-    imgs = [d.image_points for _, d in used]
+    [d.image_points for _, d in used]
     datum_pos = pose_indices.index(datum_index) if datum_index in pose_indices else 0
 
     for i, d in used:
@@ -2316,8 +2390,14 @@ def write_self_cal_figures(
                 if crops is None:
                     for col in range(2):
                         axz[row][col].text(
-                            0.5, 0.5, "out of bounds", ha="center", va="center",
-                            transform=axz[row][col].transAxes, color="red", fontsize=9,
+                            0.5,
+                            0.5,
+                            "out of bounds",
+                            ha="center",
+                            va="center",
+                            transform=axz[row][col].transAxes,
+                            color="red",
+                            fontsize=9,
                         )
                         axz[row][col].set_xticks([])
                         axz[row][col].set_yticks([])
@@ -2325,9 +2405,7 @@ def write_self_cal_figures(
                 c1b, c2b, c1a, c2a = crops
                 axz[row][0].imshow(_rc(c1b, c2b), origin="lower")
                 axz[row][1].imshow(_rc(c1a, c2a), origin="lower")
-                axz[row][0].set_ylabel(
-                    f"{name}\n({xw:.0f}, {yw:.0f}) mm", fontsize=8
-                )
+                axz[row][0].set_ylabel(f"{name}\n({xw:.0f}, {yw:.0f}) mm", fontsize=8)
                 if row == 0:
                     axz[row][0].set_title("BEFORE", fontsize=10)
                     axz[row][1].set_title("AFTER", fontsize=10)

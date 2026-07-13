@@ -8,11 +8,11 @@ This module provides various methods for detecting outliers in PIV data:
 - Divergence/vorticity-based outlier detection
 """
 
-import numpy as np
 import bottleneck as bn
+import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
-from scipy.signal import convolve2d
 from scipy import ndimage as ndi
+from scipy.signal import convolve2d
 
 
 def peak_magnitude_detection(
@@ -21,7 +21,7 @@ def peak_magnitude_detection(
 ) -> np.ndarray:
     """
     Detect outliers based on peak magnitude threshold.
-    
+
     Vectors with peak magnitudes below the threshold are marked as outliers.
 
     Parameters
@@ -104,7 +104,7 @@ def median_outlier_detection(
         flat = win.reshape(U.shape[0], U.shape[1], size * size)
         centre = (size * size) // 2  # flat index of the node itself
         return np.concatenate(
-            [flat[..., :centre], flat[..., centre + 1:]], axis=-1
+            [flat[..., :centre], flat[..., centre + 1 :]], axis=-1
         )  # (H, W, size*size - 1)
 
     ux_nn = _neighbours(ux)
@@ -119,9 +119,7 @@ def median_outlier_detection(
 
     # Normalize by the median of the neighbour residual norms (relative to the
     # same neighbour median) plus epsilon (PIVware pwMedian of the residual).
-    r_i = np.sqrt(
-        (ux_nn - med_u[..., None]) ** 2 + (uy_nn - med_v[..., None]) ** 2
-    )
+    r_i = np.sqrt((ux_nn - med_u[..., None]) ** 2 + (uy_nn - med_v[..., None]) ** 2)
     r_m = bn.nanmedian(r_i, axis=-1)
 
     norm_resid = r_0 / (r_m + epsilon)
@@ -136,11 +134,7 @@ def median_outlier_detection(
     n_neigh = convolve2d(valid, ones3, mode="same", boundary="fill", fillvalue=0.0)
 
     # Boolean mask: true = outlier
-    b_filter = (
-        (norm_resid > threshold)
-        | ~np.isfinite(norm_resid)
-        | (n_neigh < 6)
-    )
+    b_filter = (norm_resid > threshold) | ~np.isfinite(norm_resid) | (n_neigh < 6)
     return b_filter
 
 
@@ -151,7 +145,7 @@ def sigma_outlier_detection(
 ) -> np.ndarray:
     """
     Detect outliers based on local standard deviation (sigma-based).
-    
+
     Vectors that deviate from the 8-neighbor mean by more than sigma_threshold
     times the local standard deviation are marked as outliers.
 
@@ -174,9 +168,9 @@ def sigma_outlier_detection(
     v0 = np.where(np.isfinite(v), v, 0.0)
 
     # 3x3 window means for value, value^2, and for the finite-mask
-    m9_v = ndi.uniform_filter(v0, size=3, mode='constant', cval=0.0)
-    m9_v2 = ndi.uniform_filter(v0 * v0, size=3, mode='constant', cval=0.0)
-    m9_cnt = ndi.uniform_filter(finite, size=3, mode='constant', cval=0.0)
+    m9_v = ndi.uniform_filter(v0, size=3, mode="constant", cval=0.0)
+    m9_v2 = ndi.uniform_filter(v0 * v0, size=3, mode="constant", cval=0.0)
+    m9_cnt = ndi.uniform_filter(finite, size=3, mode="constant", cval=0.0)
 
     # uniform_filter returns MEAN; convert to SUM by * 9
     sum9 = m9_v * 9.0
@@ -191,7 +185,7 @@ def sigma_outlier_detection(
     cnt8 = cnt9 - center_cnt
 
     # Mean and std over the 8 neighbours (ignore divisions by <=0 count)
-    with np.errstate(invalid='ignore', divide='ignore'):
+    with np.errstate(invalid="ignore", divide="ignore"):
         mean8 = sum8 / cnt8
         var8 = (sumsq8 / cnt8) - mean8 * mean8
     var8 = np.maximum(var8, 0.0)
@@ -216,7 +210,7 @@ def div_vort_outliers(
 ) -> np.ndarray:
     """
     Detect outliers based on divergence and vorticity thresholds.
-    
+
     Computes divergence and vorticity using central differences, then
     identifies outliers as vectors with extreme values. Thresholds are
     automatically computed from the field statistics if not provided.
@@ -242,10 +236,10 @@ def div_vort_outliers(
     dudy = 0.5 * (np.roll(ux, -1, 0) - np.roll(ux, 1, 0))
     dvdx = 0.5 * (np.roll(uy, -1, 1) - np.roll(uy, 1, 1))
     dvdy = 0.5 * (np.roll(uy, -1, 0) - np.roll(uy, 1, 0))
-    
+
     div = dudx + dvdy
     vort = dvdx - dudy
-    
+
     # Robust thresholds from field using MAD (Median Absolute Deviation)
     if div_thresh is None:
         div_finite = div[np.isfinite(div)]
@@ -255,7 +249,7 @@ def div_vort_outliers(
             div_thresh = 6 * mad
         else:
             div_thresh = np.inf
-    
+
     if vort_thresh is None:
         vort_finite = vort[np.isfinite(vort)]
         if vort_finite.size > 0:
@@ -264,7 +258,7 @@ def div_vort_outliers(
             vort_thresh = 6 * mad
         else:
             vort_thresh = np.inf
-    
+
     return (np.abs(div) > div_thresh) | (np.abs(vort) > vort_thresh)
 
 
@@ -276,7 +270,7 @@ def apply_outlier_detection(
 ) -> np.ndarray:
     """
     Apply multiple outlier detection methods and combine results.
-    
+
     This function applies a stack of outlier detection methods configured
     in the YAML file and combines their results with logical OR.
 
@@ -297,38 +291,42 @@ def apply_outlier_detection(
         Combined boolean mask of outliers (True = outlier).
     """
     combined_mask = np.zeros(ux.shape, dtype=bool)
-    
+
     for method_cfg in methods:
-        method_type = method_cfg.get('type', '').lower()
-        
-        if method_type == 'peak_mag':
+        method_type = method_cfg.get("type", "").lower()
+
+        if method_type == "peak_mag":
             if peak_mag is None:
-                raise ValueError("peak_mag array required for 'peak_mag' outlier detection")
-            threshold = method_cfg.get('threshold', 0.5)
+                raise ValueError(
+                    "peak_mag array required for 'peak_mag' outlier detection"
+                )
+            threshold = method_cfg.get("threshold", 0.5)
             mask = peak_magnitude_detection(peak_mag, threshold=threshold)
             combined_mask |= mask
-            
-        elif method_type == 'median_2d':
-            epsilon = method_cfg.get('epsilon', 0.1)
-            threshold = method_cfg.get('threshold', 2.0)
-            size = method_cfg.get('size', 5)
+
+        elif method_type == "median_2d":
+            epsilon = method_cfg.get("epsilon", 0.1)
+            threshold = method_cfg.get("threshold", 2.0)
+            size = method_cfg.get("size", 5)
             mask = median_outlier_detection(
                 ux, uy, epsilon=epsilon, threshold=threshold, size=size
             )
             combined_mask |= mask
-            
-        elif method_type == 'sigma':
-            sigma_threshold = method_cfg.get('sigma_threshold', 2.0)
+
+        elif method_type == "sigma":
+            sigma_threshold = method_cfg.get("sigma_threshold", 2.0)
             mask = sigma_outlier_detection(ux, uy, sigma_threshold=sigma_threshold)
             combined_mask |= mask
-            
-        elif method_type == 'div_vort':
-            div_thresh = method_cfg.get('div_thresh', None)
-            vort_thresh = method_cfg.get('vort_thresh', None)
-            mask = div_vort_outliers(ux, uy, div_thresh=div_thresh, vort_thresh=vort_thresh)
+
+        elif method_type == "div_vort":
+            div_thresh = method_cfg.get("div_thresh", None)
+            vort_thresh = method_cfg.get("vort_thresh", None)
+            mask = div_vort_outliers(
+                ux, uy, div_thresh=div_thresh, vort_thresh=vort_thresh
+            )
             combined_mask |= mask
-            
+
         else:
             raise ValueError(f"Unknown outlier detection method: {method_type}")
-    
+
     return combined_mask

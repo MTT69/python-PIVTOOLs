@@ -18,7 +18,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -28,9 +27,17 @@ from pivtools_gui.stereo_reconstruction.pixel_world import _pixels_to_world_mm
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _create_camera_looking_down(
-    fx=800.0, fy=800.0, cx=512.0, cy=384.0, z_mm=500.0,
-    k1=0.0, k2=0.0, p1=0.0, p2=0.0,
+    fx=800.0,
+    fy=800.0,
+    cx=512.0,
+    cy=384.0,
+    z_mm=500.0,
+    k1=0.0,
+    k2=0.0,
+    p1=0.0,
+    p2=0.0,
 ):
     """
     Build a camera looking straight down at Z=0 plane from height z_mm.
@@ -38,11 +45,14 @@ def _create_camera_looking_down(
     rvec = [pi, 0, 0]  →  camera z-axis points downward (into the plane).
     tvec places the camera at world origin (0, 0, z_mm) looking down.
     """
-    camera_matrix = np.array([
-        [fx, 0, cx],
-        [0, fy, cy],
-        [0,  0,  1],
-    ], dtype=np.float64)
+    camera_matrix = np.array(
+        [
+            [fx, 0, cx],
+            [0, fy, cy],
+            [0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
     dist_coeffs = np.array([k1, k2, p1, p2, 0.0], dtype=np.float64)
 
     # Camera looks down: rvec rotates world so camera z points along -world_z
@@ -59,6 +69,7 @@ def _create_camera_looking_down(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestPixelsToWorldMM:
     """Validate _pixels_to_world_mm against analytical pinhole formulas."""
@@ -91,16 +102,27 @@ class TestPixelsToWorldMM:
         """3x3 grid around principal point: verify pinhole formula."""
         fx, fy, z_mm = 800.0, 800.0, 500.0
         cam_mat, dist, rvec, tvec = _create_camera_looking_down(
-            fx=fx, fy=fy, z_mm=z_mm,
+            fx=fx,
+            fy=fy,
+            z_mm=z_mm,
         )
         cx, cy = cam_mat[0, 2], cam_mat[1, 2]
 
         # 3x3 grid offsets in pixels
-        offsets_px = np.array([
-            [-100, -100], [0, -100], [100, -100],
-            [-100,    0], [0,    0], [100,    0],
-            [-100,  100], [0,  100], [100,  100],
-        ], dtype=np.float64)
+        offsets_px = np.array(
+            [
+                [-100, -100],
+                [0, -100],
+                [100, -100],
+                [-100, 0],
+                [0, 0],
+                [100, 0],
+                [-100, 100],
+                [0, 100],
+                [100, 100],
+            ],
+            dtype=np.float64,
+        )
         pts = offsets_px + np.array([[cx, cy]])
 
         world = _pixels_to_world_mm(pts, cam_mat, dist, rvec, tvec)
@@ -110,7 +132,7 @@ class TestPixelsToWorldMM:
         # world_y = (py-cy)/fy * z_mm (y preserved after double-flip).
         # Verify by checking the actual pattern and matching it:
         expected_x = -(offsets_px[:, 0] / fx * z_mm)
-        expected_y = (offsets_px[:, 1] / fy * z_mm)
+        expected_y = offsets_px[:, 1] / fy * z_mm
 
         np.testing.assert_allclose(world[:, 0], expected_x, atol=1e-6)
         np.testing.assert_allclose(world[:, 1], expected_y, atol=1e-6)
@@ -139,7 +161,9 @@ class TestPixelsToWorldMM:
         """Without distortion, scale should be constant across the image."""
         fx, fy, z_mm = 800.0, 800.0, 500.0
         cam_mat, dist, rvec, tvec = _create_camera_looking_down(
-            fx=fx, fy=fy, z_mm=z_mm,
+            fx=fx,
+            fy=fy,
+            z_mm=z_mm,
         )
         cx, cy = cam_mat[0, 2], cam_mat[1, 2]
 
@@ -168,14 +192,17 @@ class TestPixelsToWorldMM:
             z_mm=z_mm,
         )
         cam_mat_dist, dist_dist, _, _ = _create_camera_looking_down(
-            z_mm=z_mm, k1=-0.15,
+            z_mm=z_mm,
+            k1=-0.15,
         )
         cx, cy = cam_mat_nodist[0, 2], cam_mat_nodist[1, 2]
 
         # Corner point (far from center)
         corner = np.array([[cx + 300, cy + 200]], dtype=np.float64)
 
-        world_nodist = _pixels_to_world_mm(corner, cam_mat_nodist, dist_nodist, rvec, tvec)
+        world_nodist = _pixels_to_world_mm(
+            corner, cam_mat_nodist, dist_nodist, rvec, tvec
+        )
         world_dist = _pixels_to_world_mm(corner, cam_mat_dist, dist_dist, rvec, tvec)
 
         # Barrel distortion (k1 < 0) makes corners appear closer to center

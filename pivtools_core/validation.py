@@ -7,14 +7,15 @@ Used by both instantaneous.py and ensemble.py entry points.
 
 import logging
 import re
-from pathlib import Path
 from typing import List, Tuple
 
 from pivtools_core.config import Config
 from pivtools_core.fft_sizes import BUILT_FFT_SIZES
 from pivtools_core.image_handling.load_images import create_piv_frame_reader
-from pivtools_core.image_handling.path_utils import format_to_glob, validate_images_generic
-
+from pivtools_core.image_handling.path_utils import (
+    format_to_glob,
+    validate_images_generic,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +91,12 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
         read_frame = create_piv_frame_reader(camera_path, camera_num, config)
 
         result = validate_images_generic(
-            camera_path, camera_num, format_str, image_type,
-            config.num_images, config.start_index == 0,
+            camera_path,
+            camera_num,
+            format_str,
+            image_type,
+            config.num_images,
+            config.start_index == 0,
             read_frame_fn=read_frame,
         )
 
@@ -122,7 +127,7 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
                 indices = []
                 for f in matching_files:
                     try:
-                        m = re.search(r'(\d+)', f.name)
+                        m = re.search(r"(\d+)", f.name)
                         if m:
                             indices.append(int(m.group(1)))
                     except Exception:
@@ -242,9 +247,7 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
     # 3. Validate overlap values are in range
     for i, ovlp in enumerate(overlaps):
         if ovlp < 0 or ovlp > 95:
-            errors.append(
-                f"Pass {i+1}: overlap {ovlp}% out of range (0-95%)"
-            )
+            errors.append(f"Pass {i+1}: overlap {ovlp}% out of range (0-95%)")
 
     # 4. Window sizes should decrease or stay the same across passes
     for i in range(1, len(window_sizes)):
@@ -257,7 +260,7 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
             )
 
     # 5. Validate sum_window when single mode is used
-    if 'single' in ensemble_types:
+    if "single" in ensemble_types:
         try:
             config.ensemble_sum_window
         except ValueError as e:
@@ -272,10 +275,22 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
 
     # 7. Validate fit_method
     try:
-        fit_method = config.ensemble_fit_method
+        config.ensemble_fit_method
     except ValueError as e:
         errors.append(f"Ensemble fit method: {e}")
-        fit_method = None
+
+    # 8. Validate background subtraction / per-pair normalization consistency
+    try:
+        bg_method = config.ensemble_background_subtraction_method
+    except ValueError as e:
+        errors.append(f"Ensemble background subtraction: {e}")
+        bg_method = None
+    if config.ensemble_per_pair_normalization and bg_method != "window_mean":
+        errors.append(
+            "ensemble_piv.per_pair_normalization requires "
+            "background_subtraction_method 'window_mean' (the per-pair energies "
+            f"must be fluctuation energies), got '{bg_method}'."
+        )
 
     # 9. Validate resume_from_pass
     resume = config.ensemble_resume_from_pass
@@ -291,7 +306,9 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
     return is_valid, errors, warnings
 
 
-def estimate_memory_requirement(image_height: int, image_width: int, batch_size: int) -> float:
+def estimate_memory_requirement(
+    image_height: int, image_width: int, batch_size: int
+) -> float:
     """
     Estimate minimum memory per worker in GB for PIV processing.
 
@@ -308,7 +325,7 @@ def estimate_memory_requirement(image_height: int, image_width: int, batch_size:
     """
     # 3 × batch_size × 2 images_per_pair × H × W × 4 bytes (float32)
     bytes_needed = 3 * batch_size * 2 * image_height * image_width * 4
-    return bytes_needed / (1024 ** 3)
+    return bytes_needed / (1024**3)
 
 
 def parse_memory_limit_gb(memory_limit: str) -> float:
@@ -322,12 +339,13 @@ def parse_memory_limit_gb(memory_limit: str) -> float:
         Memory in GB
     """
     import re
-    match = re.match(r'^([\d.]+)\s*(GB|MB)$', memory_limit.strip(), re.IGNORECASE)
+
+    match = re.match(r"^([\d.]+)\s*(GB|MB)$", memory_limit.strip(), re.IGNORECASE)
     if not match:
         return 0.0
     value = float(match.group(1))
     unit = match.group(2).upper()
-    if unit == 'MB':
+    if unit == "MB":
         return value / 1024
     return value
 
@@ -384,7 +402,7 @@ def validate_batch_size_for_pod(config: Config, batch_size: int) -> Tuple[bool, 
     """
     # Check if POD is configured
     filters = config.filters or []
-    has_pod = any(f.get('type') == 'pod' for f in filters)
+    has_pod = any(f.get("type") == "pod" for f in filters)
 
     if not has_pod:
         return True, ""
@@ -431,7 +449,9 @@ def log_validation_result(
         logger.error("ERRORS:")
         logger.error(error_msg)
         logger.error("=" * 80)
-        logger.error("\nPlease fix the configuration errors in config.yaml and try again.")
+        logger.error(
+            "\nPlease fix the configuration errors in config.yaml and try again."
+        )
         return
 
     logger.info("Configuration validated successfully")

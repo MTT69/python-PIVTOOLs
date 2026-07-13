@@ -8,8 +8,8 @@ inherited by both dotboard (circle grid) and ChArUco stereo calibrators.
 """
 
 import math
-from abc import ABC, abstractmethod
 import os
+from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -25,8 +25,8 @@ from pivtools_core.config import Config, get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_image
 
 from .calibration_io import (
-    is_container_format,
     find_calibration_images,
+    is_container_format,
 )
 
 
@@ -104,7 +104,7 @@ class BaseStereoCalibrator(ABC):
             raise ValueError("Either config or base_dir must be provided")
 
         # Camera pair
-        self.camera_pair = camera_pair or stereo_cfg.get('camera_pair', [1, 2])
+        self.camera_pair = camera_pair or stereo_cfg.get("camera_pair", [1, 2])
 
         # File pattern
         if file_pattern is not None:
@@ -138,10 +138,11 @@ class BaseStereoCalibrator(ABC):
             Detector object (e.g., SimpleBlobDetector for dotboard,
             (CharucoBoard, CharucoDetector) tuple for ChArUco)
         """
-        pass
 
     @abstractmethod
-    def detect_pattern(self, image: np.ndarray) -> Tuple[bool, Optional[np.ndarray], ...]:
+    def detect_pattern(
+        self, image: np.ndarray
+    ) -> Tuple[bool, Optional[np.ndarray], ...]:
         """Detect calibration pattern in image.
 
         Parameters
@@ -156,7 +157,6 @@ class BaseStereoCalibrator(ABC):
             points shape: (N, 2) if found
             Additional return values are subclass-specific (e.g., corner IDs for ChArUco)
         """
-        pass
 
     @abstractmethod
     def make_object_points(self) -> np.ndarray:
@@ -167,7 +167,6 @@ class BaseStereoCalibrator(ABC):
         np.ndarray
             Shape (N, 3) with Z=0 for planar targets
         """
-        pass
 
     @abstractmethod
     def get_pattern_params(self) -> Dict[str, Any]:
@@ -178,7 +177,6 @@ class BaseStereoCalibrator(ABC):
         dict
             Pattern parameters (e.g., pattern_type, pattern_cols, dot_spacing_mm)
         """
-        pass
 
     def _is_container_format(self) -> bool:
         """Check if file pattern is a container format (.set, .cine)."""
@@ -214,7 +212,9 @@ class BaseStereoCalibrator(ABC):
             return img
 
         except Exception as e:
-            logger.warning(f"Failed to read image camera={camera}, index={img_index}: {e}")
+            logger.warning(
+                f"Failed to read image camera={camera}, index={img_index}: {e}"
+            )
             return None
 
     def _get_camera_input_dir(self, cam_num: int) -> Path:
@@ -234,11 +234,12 @@ class BaseStereoCalibrator(ABC):
             Path to calibration images for this camera
         """
         if self._config is not None:
-            from pivtools_core.image_handling.path_utils import build_calibration_camera_path
+            from pivtools_core.image_handling.path_utils import (
+                build_calibration_camera_path,
+            )
+
             return build_calibration_camera_path(
-                self._config,
-                source_path_idx=self._source_path_idx,
-                camera=cam_num
+                self._config, source_path_idx=self._source_path_idx, camera=cam_num
             )
 
         # Fallback: use source_dir directly
@@ -301,11 +302,19 @@ class BaseStereoCalibrator(ABC):
         # Individual camera calibration
         logger.info("Calibrating individual cameras...")
         ret1, mtx1, dist1, rvecs1, tvecs1 = cv2.calibrateCamera(
-            objpoints_cv, imgpoints1_cv, image_size, None, None,
+            objpoints_cv,
+            imgpoints1_cv,
+            image_size,
+            None,
+            None,
             flags=cv2.CALIB_FIX_ASPECT_RATIO,
         )
         ret2, mtx2, dist2, rvecs2, tvecs2 = cv2.calibrateCamera(
-            objpoints_cv, imgpoints2_cv, image_size, None, None,
+            objpoints_cv,
+            imgpoints2_cv,
+            image_size,
+            None,
+            None,
             flags=cv2.CALIB_FIX_ASPECT_RATIO,
         )
         logger.info(f"Camera 1 RMS error: {ret1:.5f}")
@@ -317,16 +326,30 @@ class BaseStereoCalibrator(ABC):
         flags = cv2.CALIB_FIX_INTRINSIC
 
         ret, mtx1, dist1, mtx2, dist2, R, T, E, F = cv2.stereoCalibrate(
-            objpoints_cv, imgpoints1_cv, imgpoints2_cv,
-            mtx1, dist1, mtx2, dist2,
-            image_size, criteria=criteria, flags=flags
+            objpoints_cv,
+            imgpoints1_cv,
+            imgpoints2_cv,
+            mtx1,
+            dist1,
+            mtx2,
+            dist2,
+            image_size,
+            criteria=criteria,
+            flags=flags,
         )
         logger.info(f"Stereo RMS error: {ret:.5f}")
 
         # Stereo rectification
         R1, R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(
-            mtx1, dist1, mtx2, dist2, image_size, R, T,
-            flags=cv2.CALIB_ZERO_DISPARITY, alpha=-1
+            mtx1,
+            dist1,
+            mtx2,
+            dist2,
+            image_size,
+            R,
+            T,
+            flags=cv2.CALIB_ZERO_DISPARITY,
+            alpha=-1,
         )
 
         # Calculate relative angle between cameras
@@ -335,29 +358,29 @@ class BaseStereoCalibrator(ABC):
         logger.info(f"Relative angle between cameras: {angle_deg:.2f} degrees")
 
         return {
-            'camera_matrix_1': mtx1,
-            'dist_coeffs_1': dist1,
-            'camera_matrix_2': mtx2,
-            'dist_coeffs_2': dist2,
-            'rvecs_1': np.array([r.flatten() for r in rvecs1]),
-            'tvecs_1': np.array([t.flatten() for t in tvecs1]),
-            'rvecs_2': np.array([r.flatten() for r in rvecs2]),
-            'tvecs_2': np.array([t.flatten() for t in tvecs2]),
-            'rotation_matrix': R,
-            'translation_vector': T,
-            'essential_matrix': E,
-            'fundamental_matrix': F,
-            'rectification_R1': R1,
-            'rectification_R2': R2,
-            'projection_P1': P1,
-            'projection_P2': P2,
-            'disparity_to_depth_Q': Q,
-            'valid_pixel_ROI1': roi1,
-            'valid_pixel_ROI2': roi2,
-            'stereo_rms_error': ret,
-            'cam1_rms_error': ret1,
-            'cam2_rms_error': ret2,
-            'relative_angle_deg': angle_deg,
+            "camera_matrix_1": mtx1,
+            "dist_coeffs_1": dist1,
+            "camera_matrix_2": mtx2,
+            "dist_coeffs_2": dist2,
+            "rvecs_1": np.array([r.flatten() for r in rvecs1]),
+            "tvecs_1": np.array([t.flatten() for t in tvecs1]),
+            "rvecs_2": np.array([r.flatten() for r in rvecs2]),
+            "tvecs_2": np.array([t.flatten() for t in tvecs2]),
+            "rotation_matrix": R,
+            "translation_vector": T,
+            "essential_matrix": E,
+            "fundamental_matrix": F,
+            "rectification_R1": R1,
+            "rectification_R2": R2,
+            "projection_P1": P1,
+            "projection_P2": P2,
+            "disparity_to_depth_Q": Q,
+            "valid_pixel_ROI1": roi1,
+            "valid_pixel_ROI2": roi2,
+            "stereo_rms_error": ret,
+            "cam1_rms_error": ret1,
+            "cam2_rms_error": ret2,
+            "relative_angle_deg": angle_deg,
         }
 
     def _save_stereo_results(
@@ -401,13 +424,13 @@ class BaseStereoCalibrator(ABC):
         # Build stereo model data
         stereo_data = {
             **calibration_result,
-            'num_image_pairs': len(successful_pairs),
-            'image_size': list(image_size),
-            'timestamp': datetime.now().isoformat(),
-            'dt': self.dt,
-            'camera_pair': self.camera_pair,
-            'pattern_params': self.get_pattern_params(),
-            'successful_filenames': successful_pairs,
+            "num_image_pairs": len(successful_pairs),
+            "image_size": list(image_size),
+            "timestamp": datetime.now().isoformat(),
+            "dt": self.dt,
+            "camera_pair": self.camera_pair,
+            "pattern_params": self.get_pattern_params(),
+            "successful_filenames": successful_pairs,
         }
 
         # Save main stereo model
@@ -420,7 +443,9 @@ class BaseStereoCalibrator(ABC):
             indices_file = output_dir / "indices" / f"indexing_{frame_idx}.mat"
             savemat(str(indices_file), data)
 
-        logger.info(f"Saved {len(indices_data)} indexing files to {output_dir / 'indices'}")
+        logger.info(
+            f"Saved {len(indices_data)} indexing files to {output_dir / 'indices'}"
+        )
 
         return model_path
 
@@ -478,11 +503,11 @@ class BaseStereoCalibrator(ABC):
             if reprojection_error is not None:
                 title += f" - RMS: {reprojection_error:.3f}px"
             ax.set_title(title)
-            ax.axis('off')
+            ax.axis("off")
 
             plt.tight_layout()
             out_path = detections_dir / f"detection_cam{cam_num}_{frame_idx:03d}.png"
-            plt.savefig(out_path, dpi=100, bbox_inches='tight')
+            plt.savefig(out_path, dpi=100, bbox_inches="tight")
 
         except Exception as e:
             logger.warning(f"Failed to save visualization: {e}")
@@ -539,12 +564,15 @@ class BaseStereoCalibrator(ABC):
 
         # Get number of calibration images from config
         if self._config is None:
-            return {'success': False, 'error': 'Config required for stereo calibration'}
+            return {"success": False, "error": "Config required for stereo calibration"}
 
         # Use calibration_image_count (not num_frame_pairs which is for PIV images)
         num_frame_pairs = self._config.calibration_image_count
         if num_frame_pairs == 0:
-            return {'success': False, 'error': 'No calibration images found (calibration_image_count=0)'}
+            return {
+                "success": False,
+                "error": "No calibration images found (calibration_image_count=0)",
+            }
 
         logger.info(f"Processing {num_frame_pairs} calibration frame pairs")
 
@@ -553,7 +581,10 @@ class BaseStereoCalibrator(ABC):
             # Container file path comes from calibration_sources (no camera subfolders)
             container_file = self._get_camera_input_dir(cam1_val)
             if not container_file.exists():
-                return {'success': False, 'error': f'Container file not found: {container_file}'}
+                return {
+                    "success": False,
+                    "error": f"Container file not found: {container_file}",
+                }
             logger.info(f"Using container file: {container_file}")
 
         # Collect calibration data
@@ -574,8 +605,16 @@ class BaseStereoCalibrator(ABC):
 
             # Read both cameras in parallel
             with ThreadPoolExecutor(max_workers=2) as executor:
-                f1 = executor.submit(self._read_calibration_image_centralized, camera=cam1_val, img_index=img_index)
-                f2 = executor.submit(self._read_calibration_image_centralized, camera=cam2_val, img_index=img_index)
+                f1 = executor.submit(
+                    self._read_calibration_image_centralized,
+                    camera=cam1_val,
+                    img_index=img_index,
+                )
+                f2 = executor.submit(
+                    self._read_calibration_image_centralized,
+                    camera=cam2_val,
+                    img_index=img_index,
+                )
                 img1 = f1.result()
                 img2 = f2.result()
 
@@ -608,7 +647,9 @@ class BaseStereoCalibrator(ABC):
             else:
                 obj_pts = match_result
                 if len(grid1) != len(grid2):
-                    logger.warning(f"Point count mismatch in {filename}: {len(grid1)} vs {len(grid2)}")
+                    logger.warning(
+                        f"Point count mismatch in {filename}: {len(grid1)} vs {len(grid2)}"
+                    )
                     return img_index, None
 
             info1 = result1[3] if len(result1) >= 4 else None
@@ -617,22 +658,31 @@ class BaseStereoCalibrator(ABC):
             grid_data_2 = result2[2] if len(result2) >= 3 else None
 
             return img_index, {
-                'filename': filename,
-                'obj_pts': obj_pts, 'grid1': grid1, 'grid2': grid2,
-                'img1': img1, 'img2': img2,
-                'result1': result1, 'result2': result2,
-                'match_result': match_result,
-                'info1': info1, 'info2': info2,
-                'grid_data_1': grid_data_1, 'grid_data_2': grid_data_2,
-                'found1': found1, 'found2': found2,
-                'image_size': img1.shape[:2][::-1],
+                "filename": filename,
+                "obj_pts": obj_pts,
+                "grid1": grid1,
+                "grid2": grid2,
+                "img1": img1,
+                "img2": img2,
+                "result1": result1,
+                "result2": result2,
+                "match_result": match_result,
+                "info1": info1,
+                "info2": info2,
+                "grid_data_1": grid_data_1,
+                "grid_data_2": grid_data_2,
+                "found1": found1,
+                "found2": found2,
+                "image_size": img1.shape[:2][::-1],
             }
 
         # --- For containers, discover frame count first ---
         if is_container:
             container_count = 0
             for probe_idx in range(1, num_frame_pairs + 1):
-                probe_img = self._read_calibration_image_centralized(camera=cam1_val, img_index=probe_idx)
+                probe_img = self._read_calibration_image_centralized(
+                    camera=cam1_val, img_index=probe_idx
+                )
                 if probe_img is None:
                     break
                 container_count += 1
@@ -654,13 +704,17 @@ class BaseStereoCalibrator(ABC):
                 processed_count += 1
                 valid_so_far = sum(1 for r in raw_results.values() if r is not None)
                 if progress_callback:
-                    progress_callback({
-                        'progress': min(int((processed_count / num_frame_pairs) * 70), 70),
-                        'stage': 'detecting',
-                        'processed_pairs': processed_count,
-                        'valid_pairs': valid_so_far,
-                        'total_pairs': num_frame_pairs,
-                    })
+                    progress_callback(
+                        {
+                            "progress": min(
+                                int((processed_count / num_frame_pairs) * 70), 70
+                            ),
+                            "stage": "detecting",
+                            "processed_pairs": processed_count,
+                            "valid_pairs": valid_so_far,
+                            "total_pairs": num_frame_pairs,
+                        }
+                    )
 
         # --- Collect results in frame order ---
         for img_index in sorted(raw_results.keys()):
@@ -669,12 +723,12 @@ class BaseStereoCalibrator(ABC):
                 continue
 
             if image_size is None:
-                image_size = r['image_size']
+                image_size = r["image_size"]
 
-            obj_pts = r['obj_pts']
-            grid1, grid2 = r['grid1'], r['grid2']
-            filename = r['filename']
-            match_result = r['match_result']
+            obj_pts = r["obj_pts"]
+            grid1, grid2 = r["grid1"], r["grid2"]
+            filename = r["filename"]
+            match_result = r["match_result"]
 
             objpoints.append(obj_pts)
             imgpoints1.append(grid1)
@@ -685,42 +739,62 @@ class BaseStereoCalibrator(ABC):
 
             # Store indices data
             frame_indices = {
-                'grid_points_cam1': grid1,
-                'grid_points_cam2': grid2,
-                'object_points': obj_pts,
-                'frame_index': frame_idx,
-                'original_filename': filename,
+                "grid_points_cam1": grid1,
+                "grid_points_cam2": grid2,
+                "object_points": obj_pts,
+                "frame_index": frame_idx,
+                "original_filename": filename,
             }
 
             # Derive matched grid indices from object points
-            grid_data_1, grid_data_2 = r['grid_data_1'], r['grid_data_2']
+            grid_data_1, grid_data_2 = r["grid_data_1"], r["grid_data_2"]
             if isinstance(match_result, tuple) and len(match_result) == 3:
-                dot_spacing = getattr(self, 'dot_spacing_mm', None)
+                dot_spacing = getattr(self, "dot_spacing_mm", None)
                 if dot_spacing and dot_spacing > 0:
                     matched_indices = np.round(obj_pts[:, :2] / dot_spacing).astype(int)
-                    frame_indices['grid_indices_cam1'] = matched_indices
-                    frame_indices['grid_indices_cam2'] = matched_indices
+                    frame_indices["grid_indices_cam1"] = matched_indices
+                    frame_indices["grid_indices_cam2"] = matched_indices
             else:
-                if grid_data_1 is not None and isinstance(grid_data_1, dict) and 'grid_indices' in grid_data_1:
-                    frame_indices['grid_indices_cam1'] = grid_data_1['grid_indices']
-                if grid_data_2 is not None and isinstance(grid_data_2, dict) and 'grid_indices' in grid_data_2:
-                    frame_indices['grid_indices_cam2'] = grid_data_2['grid_indices']
+                if (
+                    grid_data_1 is not None
+                    and isinstance(grid_data_1, dict)
+                    and "grid_indices" in grid_data_1
+                ):
+                    frame_indices["grid_indices_cam1"] = grid_data_1["grid_indices"]
+                if (
+                    grid_data_2 is not None
+                    and isinstance(grid_data_2, dict)
+                    and "grid_indices" in grid_data_2
+                ):
+                    frame_indices["grid_indices_cam2"] = grid_data_2["grid_indices"]
 
-            if grid_data_1 is not None and isinstance(grid_data_1, np.ndarray) and grid_data_1.ndim == 1:
-                frame_indices['corner_ids_cam1'] = grid_data_1
-            if grid_data_2 is not None and isinstance(grid_data_2, np.ndarray) and grid_data_2.ndim == 1:
-                frame_indices['corner_ids_cam2'] = grid_data_2
+            if (
+                grid_data_1 is not None
+                and isinstance(grid_data_1, np.ndarray)
+                and grid_data_1.ndim == 1
+            ):
+                frame_indices["corner_ids_cam1"] = grid_data_1
+            if (
+                grid_data_2 is not None
+                and isinstance(grid_data_2, np.ndarray)
+                and grid_data_2.ndim == 1
+            ):
+                frame_indices["corner_ids_cam2"] = grid_data_2
 
             indices_data[frame_idx] = frame_indices
 
             # Save visualizations
-            img1, img2 = r['img1'], r['img2']
-            info1, info2 = r['info1'], r['info2']
-            found1, found2 = r['found1'], r['found2']
+            img1, img2 = r["img1"], r["img2"]
+            info1, info2 = r["info1"], r["info2"]
+            found1, found2 = r["found1"], r["found2"]
 
             if save_visualizations:
-                self._save_detection_visualization(img1, grid1, cam1_val, frame_idx, output_dir, filename)
-                self._save_detection_visualization(img2, grid2, cam2_val, frame_idx, output_dir, filename)
+                self._save_detection_visualization(
+                    img1, grid1, cam1_val, frame_idx, output_dir, filename
+                )
+                self._save_detection_visualization(
+                    img2, grid2, cam2_val, frame_idx, output_dir, filename
+                )
 
             try:
                 figures_dir = output_dir / "figures"
@@ -728,60 +802,76 @@ class BaseStereoCalibrator(ABC):
 
                 if info1 is not None and isinstance(grid_data_1, dict):
                     from .calibration_figures import make_detection_figure
+
                     make_detection_figure(
-                        img1, found1, grid_data_1, info1,
+                        img1,
+                        found1,
+                        grid_data_1,
+                        info1,
                         figures_dir / f"detection_cam{cam1_val}_{frame_idx:03d}.png",
                         title=f"Cam{cam1_val} {filename}",
                     )
                 if info2 is not None and isinstance(grid_data_2, dict):
                     from .calibration_figures import make_detection_figure
+
                     make_detection_figure(
-                        img2, found2, grid_data_2, info2,
+                        img2,
+                        found2,
+                        grid_data_2,
+                        info2,
                         figures_dir / f"detection_cam{cam2_val}_{frame_idx:03d}.png",
                         title=f"Cam{cam2_val} {filename}",
                     )
 
-                if info1 is not None and 'board_params' in info1:
+                if info1 is not None and "board_params" in info1:
                     from .calibration_figures import make_charuco_detection_figure
+
                     make_charuco_detection_figure(
-                        img1, grid1,
+                        img1,
+                        grid1,
                         grid_data_1 if isinstance(grid_data_1, np.ndarray) else None,
-                        info1['board_params'],
+                        info1["board_params"],
                         figures_dir / f"detection_cam{cam1_val}_{frame_idx:03d}.png",
                         title=f"Cam{cam1_val} {filename}",
                     )
-                if info2 is not None and 'board_params' in info2:
+                if info2 is not None and "board_params" in info2:
                     from .calibration_figures import make_charuco_detection_figure
+
                     make_charuco_detection_figure(
-                        img2, grid2,
+                        img2,
+                        grid2,
                         grid_data_2 if isinstance(grid_data_2, np.ndarray) else None,
-                        info2['board_params'],
+                        info2["board_params"],
                         figures_dir / f"detection_cam{cam2_val}_{frame_idx:03d}.png",
                         title=f"Cam{cam2_val} {filename}",
                     )
             except Exception as e:
-                logger.warning(f"Stereo detection figure failed for frame {frame_idx}: {e}")
+                logger.warning(
+                    f"Stereo detection figure failed for frame {frame_idx}: {e}"
+                )
 
             logger.info(f"Successfully processed pair {filename}")
 
         # Check if we have enough pairs
         if len(successful_pairs) < 3:
             return {
-                'success': False,
-                'error': f'Insufficient valid image pairs: {len(successful_pairs)} (need >= 3)'
+                "success": False,
+                "error": f"Insufficient valid image pairs: {len(successful_pairs)} (need >= 3)",
             }
 
         logger.info(f"Using {len(successful_pairs)} image pairs for calibration")
 
         # Report calibration stage
         if progress_callback:
-            progress_callback({
-                'progress': 70,
-                'stage': 'calibrating',
-                'processed_pairs': processed_count,
-                'valid_pairs': len(successful_pairs),
-                'total_pairs': num_frame_pairs,
-            })
+            progress_callback(
+                {
+                    "progress": 70,
+                    "stage": "calibrating",
+                    "processed_pairs": processed_count,
+                    "valid_pairs": len(successful_pairs),
+                    "total_pairs": num_frame_pairs,
+                }
+            )
 
         # Perform stereo calibration
         # At this point we have at least 3 valid pairs, so image_size is definitely set
@@ -791,26 +881,33 @@ class BaseStereoCalibrator(ABC):
                 objpoints, imgpoints1, imgpoints2, image_size
             )
         except cv2.error as e:
-            return {'success': False, 'error': f'OpenCV calibration failed: {e}'}
+            return {"success": False, "error": f"OpenCV calibration failed: {e}"}
         except Exception as e:
             logger.exception(f"Unexpected error during calibration: {e}")
-            return {'success': False, 'error': str(e)}
+            return {"success": False, "error": str(e)}
 
         # Report saving stage
         if progress_callback:
-            progress_callback({
-                'progress': 90,
-                'stage': 'saving',
-                'processed_pairs': processed_count,
-                'valid_pairs': len(successful_pairs),
-                'total_pairs': num_frame_pairs,
-            })
+            progress_callback(
+                {
+                    "progress": 90,
+                    "stage": "saving",
+                    "processed_pairs": processed_count,
+                    "valid_pairs": len(successful_pairs),
+                    "total_pairs": num_frame_pairs,
+                }
+            )
 
         # Save results
         # At this point image_size is guaranteed to be set since we have successful_pairs > 0
         assert image_size is not None, "image_size should be set after processing pairs"
         model_path = self._save_stereo_results(
-            cam1_val, cam2_val, calibration_result, successful_pairs, image_size, indices_data
+            cam1_val,
+            cam2_val,
+            calibration_result,
+            successful_pairs,
+            image_size,
+            indices_data,
         )
 
         # Clear any stale self-calibration from a previous stereo model
@@ -821,22 +918,24 @@ class BaseStereoCalibrator(ABC):
 
         # Report completion
         if progress_callback:
-            progress_callback({
-                'progress': 100,
-                'stage': 'complete',
-                'processed_pairs': processed_count,
-                'valid_pairs': len(successful_pairs),
-                'total_pairs': num_frame_pairs,
-            })
+            progress_callback(
+                {
+                    "progress": 100,
+                    "stage": "complete",
+                    "processed_pairs": processed_count,
+                    "valid_pairs": len(successful_pairs),
+                    "total_pairs": num_frame_pairs,
+                }
+            )
 
         return {
-            'success': True,
-            'stereo_rms_error': calibration_result['stereo_rms_error'],
-            'cam1_rms_error': calibration_result['cam1_rms_error'],
-            'cam2_rms_error': calibration_result['cam2_rms_error'],
-            'num_pairs_used': len(successful_pairs),
-            'model_path': str(model_path),
-            'relative_angle_deg': calibration_result['relative_angle_deg'],
+            "success": True,
+            "stereo_rms_error": calibration_result["stereo_rms_error"],
+            "cam1_rms_error": calibration_result["cam1_rms_error"],
+            "cam2_rms_error": calibration_result["cam2_rms_error"],
+            "num_pairs_used": len(successful_pairs),
+            "model_path": str(model_path),
+            "relative_angle_deg": calibration_result["relative_angle_deg"],
         }
 
     def _match_object_points(
@@ -889,7 +988,7 @@ class BaseStereoCalibrator(ABC):
         result = self.process_camera_pair(save_visualizations=True)
 
         logger.info("=" * 60)
-        if result['success']:
+        if result["success"]:
             logger.info("Stereo Calibration - Complete")
             logger.info(f"Stereo RMS error: {result['stereo_rms_error']:.5f}")
             logger.info(f"Camera 1 RMS error: {result['cam1_rms_error']:.5f}")

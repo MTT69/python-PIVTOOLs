@@ -70,8 +70,11 @@ def test_detections_round_trip_including_failed_view(tmp_path):
     }
     sizes = {1: (5312, 4600), 2: (5312, 4600)}
     save_inputs(
-        tmp_path, path_type="joint", board_type="dotboard",
-        detections=dets, image_size_by_cam=sizes,
+        tmp_path,
+        path_type="joint",
+        board_type="dotboard",
+        detections=dets,
+        image_size_by_cam=sizes,
     )
 
     rec = load_inputs(tmp_path)
@@ -98,16 +101,30 @@ def test_joint_coords_with_anchors_round_trip(tmp_path):
         "datum_camera": 1,
         "datum_view": 0,
         "datum_clicks": {
-            "origin": [10.0, 20.0], "x_axis": [110.0, 20.0],
-            "y_axis": [10.0, 120.0], "origin_mm": [5.0, -3.0],
+            "origin": [10.0, 20.0],
+            "x_axis": [110.0, 20.0],
+            "y_axis": [10.0, 120.0],
+            "origin_mm": [5.0, -3.0],
         },
         "anchors": [
-            {"camera": 2, "view": 0, "correspondences": [
-                {"pixel": [50.0, 60.0], "same_as": [1, 0], "ref_pixel": [200.0, 210.0]},
-            ]},
-            {"camera": 1, "view": 1, "correspondences": [
-                {"pixel": [7.0, 8.0], "same_as": "origin", "ref_pixel": None},
-            ]},
+            {
+                "camera": 2,
+                "view": 0,
+                "correspondences": [
+                    {
+                        "pixel": [50.0, 60.0],
+                        "same_as": [1, 0],
+                        "ref_pixel": [200.0, 210.0],
+                    },
+                ],
+            },
+            {
+                "camera": 1,
+                "view": 1,
+                "correspondences": [
+                    {"pixel": [7.0, 8.0], "same_as": "origin", "ref_pixel": None},
+                ],
+            },
         ],
         "camera_extends": {"2": [3.97, -0.03]},
         "cameras": [1, 2],
@@ -123,7 +140,9 @@ def test_merge_preserves_other_field(tmp_path):
     coords = {"datum_clicks": {"origin": [1.0, 2.0]}}
     save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords=coords)
     save_inputs(
-        tmp_path, path_type="mono", board_type="dotboard",
+        tmp_path,
+        path_type="mono",
+        board_type="dotboard",
         detections={1: [_good_detection(charuco=False)]},
     )
     rec = load_inputs(tmp_path)
@@ -147,7 +166,9 @@ def test_large_diagnostics_array_is_dropped_not_stored(tmp_path):
     kept = load_inputs(tmp_path).detections[1][0].diagnostics
     assert kept["method"] == "bfs" and kept["n_blobs_detected"] == 192
     assert "flat_field" not in kept
-    assert "error" not in kept  # None-valued diagnostics are dropped (not stored as null)
+    assert (
+        "error" not in kept
+    )  # None-valued diagnostics are dropped (not stored as null)
 
 
 def test_concurrent_writes_and_reads_never_corrupt(tmp_path):
@@ -156,18 +177,29 @@ def test_concurrent_writes_and_reads_never_corrupt(tmp_path):
     guarantee a reader gets either the old or the new file, never a half-written one."""
     import threading
 
-    dets = {1: [_good_detection(charuco=False) for _ in range(6)],
-            2: [_good_detection(n=200, charuco=False) for _ in range(6)]}
-    save_inputs(tmp_path, path_type="joint", board_type="dotboard", detections=dets,
-                image_size_by_cam={1: (5312, 4600), 2: (5312, 4600)})
+    dets = {
+        1: [_good_detection(charuco=False) for _ in range(6)],
+        2: [_good_detection(n=200, charuco=False) for _ in range(6)],
+    }
+    save_inputs(
+        tmp_path,
+        path_type="joint",
+        board_type="dotboard",
+        detections=dets,
+        image_size_by_cam={1: (5312, 4600), 2: (5312, 4600)},
+    )
 
     errors: list = []
 
     def writer():
         for i in range(15):
             try:
-                save_inputs(tmp_path, path_type="joint", board_type="dotboard",
-                            coords={"datum_clicks": {"origin": [float(i), float(i)]}})
+                save_inputs(
+                    tmp_path,
+                    path_type="joint",
+                    board_type="dotboard",
+                    coords={"datum_clicks": {"origin": [float(i), float(i)]}},
+                )
             except Exception as e:  # noqa: BLE001 - test asserts no error
                 errors.append(("write", e))
 
@@ -186,7 +218,9 @@ def test_concurrent_writes_and_reads_never_corrupt(tmp_path):
         t.join()
 
     assert not errors, errors
-    rec = load_inputs(tmp_path)  # final file is valid; detections survived the coord writes
+    rec = load_inputs(
+        tmp_path
+    )  # final file is valid; detections survived the coord writes
     assert rec.detections is not None and len(rec.detections[1]) == 6
     assert not list(tmp_path.glob("*.tmp"))  # no temp leftovers
 

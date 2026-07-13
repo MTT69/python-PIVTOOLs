@@ -62,31 +62,34 @@ from typing import Optional
 import numpy as np
 
 from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
-    compute_noise_psd_2d, frac_distance,
+    compute_noise_psd_2d,
+    frac_distance,
 )
 from pivtools_cli.piv.piv_backend.kspace_common import (
-    _fft_planes, _kgrids, _get_threadpool_controller,
+    _fft_planes,
+    _get_threadpool_controller,
+    _kgrids,
 )
 
 logger = logging.getLogger(__name__)
 
 # --- constants mirroring the C #defines / inline values ---------------------------------
-JOINT_MAX_ITER = 200         # stage-1 LM iteration cap
-MAIN_MAX_ITER = 250          # stage-2 LM iteration cap
-LM_XTOL = 1e-8               # step-size convergence (GSL XTOL)
-LM_FTOL = 1e-8               # cost-reduction convergence (GSL FTOL)
-K_MAX_DEFAULT = 0.35         # default k_max cap (avoids the old noise-estimation corner)
-PROFILE_THRESHOLD = 0.01     # k_max profile scan: 1% of clean DC
-PROFILE_KMIN = 0.05          # k_max floor
-SEED_KMIN_FACTOR = 1.5       # 1D seed regression k_min = 1.5/N
-MIN_VALID_PTS = 10           # minimum k-points inside the ellipse
-MAX_DISP_FRAC = 0.75         # |mu| gate as fraction of window size
-COST_PER_PT_ACCEPT = 1.0     # EMAXITER acceptance: cost/n_valid < this
+JOINT_MAX_ITER = 200  # stage-1 LM iteration cap
+MAIN_MAX_ITER = 250  # stage-2 LM iteration cap
+LM_XTOL = 1e-8  # step-size convergence (GSL XTOL)
+LM_FTOL = 1e-8  # cost-reduction convergence (GSL FTOL)
+K_MAX_DEFAULT = 0.35  # default k_max cap (avoids the old noise-estimation corner)
+PROFILE_THRESHOLD = 0.01  # k_max profile scan: 1% of clean DC
+PROFILE_KMIN = 0.05  # k_max floor
+SEED_KMIN_FACTOR = 1.5  # 1D seed regression k_min = 1.5/N
+MIN_VALID_PTS = 10  # minimum k-points inside the ellipse
+MAX_DISP_FRAC = 0.75  # |mu| gate as fraction of window size
+COST_PER_PT_ACCEPT = 1.0  # EMAXITER acceptance: cost/n_valid < this
 
 JOINT_P0 = np.array([1.0, 2.0, 2.0, 0.01])
 JOINT_LO = np.array([0.01, 0.1, 0.1, 0.0])
 JOINT_HI = np.array([10.0, 20.0, 20.0, 1.0])
-MAIN_LO = np.array([-np.inf, -np.inf, 0.0, 0.0, -np.inf])   # Sxx, Syy >= 0 (C's fmax)
+MAIN_LO = np.array([-np.inf, -np.inf, 0.0, 0.0, -np.inf])  # Sxx, Syy >= 0 (C's fmax)
 MAIN_HI = np.array([np.inf, np.inf, np.inf, np.inf, np.inf])
 
 STATUS_MASKED = -1
@@ -94,10 +97,10 @@ STATUS_SUCCESS = 0
 STATUS_NO_CONVERGE = 1
 STATUS_LOW_SNR = 2
 STATUS_BIG_DISP = 3
-STATUS_NEG_VAR = 5           # kept for contract parity (the C defined but never set it)
+STATUS_NEG_VAR = 5  # kept for contract parity (the C defined but never set it)
 
 _TWO_PI = 2.0 * np.pi
-_TWO_PI2 = 2.0 * np.pi ** 2
+_TWO_PI2 = 2.0 * np.pi**2
 
 # Stage-2 leaves Sxy unbounded (MAIN_LO/HI), so an LM trial step can drive Sxy^2 > Sxx*Syy,
 # making the covariance Sigma indefinite and quad = k^T Sigma k negative at high k. Then
@@ -105,7 +108,9 @@ _TWO_PI2 = 2.0 * np.pi ** 2
 # Jacobian (NaN) and spuriously fails flat/low-SNR windows. Clip the exponent: for feasible
 # steps (quad >= 0 -> arg <= 0) this never triggers, so converged fits are bit-identical; on
 # a bad step the residual/gradient stay finite and large, so LM rejects and backtracks cleanly.
-_EXP_ARG_MAX = 300.0  # exp(300) ~ 2e130: huge (forces rejection) yet far below float64 overflow
+_EXP_ARG_MAX = (
+    300.0  # exp(300) ~ 2e130: huge (forces rejection) yet far below float64 overflow
+)
 
 
 # ==========================================================================================
@@ -160,7 +165,9 @@ def _batched_lm(fn, x0, lo, hi, max_iter, xtol=LM_XTOL, ftol=LM_FTOL):
         xn = np.clip(xi + delta, lo, hi)
         rn = fn(xn, idx, jac=False)
         costn = np.einsum("nm,nm->n", rn, rn)
-        acc = np.isfinite(costn) & (costn <= cost[idx]) & np.all(np.isfinite(xn), axis=1)
+        acc = (
+            np.isfinite(costn) & (costn <= cost[idx]) & np.all(np.isfinite(xn), axis=1)
+        )
 
         small_step = np.all(np.abs(xn - xi) <= xtol * (xtol + np.abs(xn)), axis=1)
         small_drop = (cost[idx] - costn) <= ftol * np.maximum(cost[idx], 1e-300)
@@ -175,7 +182,7 @@ def _batched_lm(fn, x0, lo, hi, max_iter, xtol=LM_XTOL, ftol=LM_FTOL):
         niter[idx] += 1
         conv[idx[newly]] = True
         active[idx[newly]] = False
-        active[rej[lam[rej] > 1e12]] = False       # ENOPROG: stuck, give up unconverged
+        active[rej[lam[rej] > 1e12]] = False  # ENOPROG: stuck, give up unconverged
 
     return x, conv, cost, niter
 
@@ -189,7 +196,7 @@ def _stage1_resid_jac(x, Y, Pn, KX2, KY2, jac=False):
     sx = x[:, 1:2]
     sy = x[:, 2:3]
     N0 = x[:, 3:4]
-    q = _TWO_PI2 * (KX2[None] * sx ** 2 + KY2[None] * sy ** 2)     # (m, P)
+    q = _TWO_PI2 * (KX2[None] * sx**2 + KY2[None] * sy**2)  # (m, P)
     E = np.exp(-q)
     r = Y - (A * E + N0) * Pn[None]
     if not jac:
@@ -218,7 +225,7 @@ def _stage2_resid_jac(x, Tre, Tim, W, KXf, KYf, jac=False):
     KX2 = KXf * KXf
     KY2 = KYf * KYf
     KXKY = KXf * KYf
-    quad = Sxx * KX2[None] + 2.0 * Sxy * KXKY[None] + Syy * KY2[None]   # (m, P)
+    quad = Sxx * KX2[None] + 2.0 * Sxy * KXKY[None] + Syy * KY2[None]  # (m, P)
     # clip guards against non-PSD trial steps (quad<0); no-op for feasible steps (see _EXP_ARG_MAX)
     decay = np.exp(np.minimum(-_TWO_PI2 * quad, _EXP_ARG_MAX))
     phase = -_TWO_PI * (KXf[None] * mux + KYf[None] * muy)
@@ -229,13 +236,13 @@ def _stage2_resid_jac(x, Tre, Tim, W, KXf, KYf, jac=False):
         return r
     m, P = decay.shape
     J = np.empty((m, 2 * P, 5))
-    dpx = -_TWO_PI * KXf[None]                       # dphase/dmu_x
+    dpx = -_TWO_PI * KXf[None]  # dphase/dmu_x
     dpy = -_TWO_PI * KYf[None]
     J[:, :P, 0] = -W * decay * (-sinp) * dpx
     J[:, P:, 0] = -W * decay * cosp * dpx
     J[:, :P, 1] = -W * decay * (-sinp) * dpy
     J[:, P:, 1] = -W * decay * cosp * dpy
-    ddxx = decay * (-_TWO_PI2 * KX2[None])           # ddecay/dSxx
+    ddxx = decay * (-_TWO_PI2 * KX2[None])  # ddecay/dSxx
     ddyy = decay * (-_TWO_PI2 * KY2[None])
     ddxy = decay * (-_TWO_PI2 * 2.0 * KXKY[None])
     J[:, :P, 2] = -W * ddxx * cosp
@@ -271,12 +278,20 @@ def _peak_mu(R_AB, cy, cx):
         sub[m] = ((ln_l - ln_r) / np.where(m, denom, 1.0))[m]
         return sub
 
-    ix = np.clip(px, 1, w - 2)                    # safe gather; interior mask gates use
-    sub_x = _subpix(R_AB[rows, py, ix - 1], R_AB[rows, py, ix], R_AB[rows, py, ix + 1],
-                    (px > 0) & (px < w - 1))
+    ix = np.clip(px, 1, w - 2)  # safe gather; interior mask gates use
+    sub_x = _subpix(
+        R_AB[rows, py, ix - 1],
+        R_AB[rows, py, ix],
+        R_AB[rows, py, ix + 1],
+        (px > 0) & (px < w - 1),
+    )
     iy = np.clip(py, 1, h - 2)
-    sub_y = _subpix(R_AB[rows, iy - 1, px], R_AB[rows, iy, px], R_AB[rows, iy + 1, px],
-                    (py > 0) & (py < h - 1))
+    sub_y = _subpix(
+        R_AB[rows, iy - 1, px],
+        R_AB[rows, iy, px],
+        R_AB[rows, iy + 1, px],
+        (py > 0) & (py < h - 1),
+    )
     return (px + sub_x) - cx, (py + sub_y) - cy
 
 
@@ -287,15 +302,19 @@ def _seed_sigma_1d(fab_prof, fref_prof, k_axis, k_max):
     Returns Sigma_init (n,): max(-slope/2pi^2, 0.01), default 1.0 when < 3 points.
     """
     N = k_axis.size
-    ak = np.abs(k_axis)[None]                                   # (1, N)
+    ak = np.abs(k_axis)[None]  # (1, N)
     k_min = SEED_KMIN_FACTOR / N
-    in_rng = (ak > k_min) & (ak < k_max[:, None])               # (n, N)
+    in_rng = (ak > k_min) & (ak < k_max[:, None])  # (n, N)
     max_fab = np.max(np.where(in_rng, fab_prof, 0.0), axis=1)
     max_fab = np.where(max_fab < 1e-12, 1.0, max_fab)
     valid = in_rng & (fab_prof > 1e-12) & (fref_prof > 1e-12)
     with np.errstate(divide="ignore", invalid="ignore"):
-        logT = np.where(valid, np.log(np.where(valid, fab_prof, 1.0))
-                        - np.log(np.where(valid, fref_prof, 1.0)), 0.0)
+        logT = np.where(
+            valid,
+            np.log(np.where(valid, fab_prof, 1.0))
+            - np.log(np.where(valid, fref_prof, 1.0)),
+            0.0,
+        )
     wgt = np.where(valid, fab_prof / max_fab[:, None], 0.0)
     k2 = (k_axis * k_axis)[None]
     sum_wyk2 = np.sum(wgt * logT * k2, axis=1)
@@ -315,10 +334,10 @@ def _profile_kmax(prof, k_axis, F_dc_clean, k_max_limit):
     n, N = prof.shape
     center = N // 2
     thresh = (F_dc_clean * PROFILE_THRESHOLD)[:, None]
-    below = prof[:, center:] < thresh                            # scan i = center .. N-1
+    below = prof[:, center:] < thresh  # scan i = center .. N-1
     has = below.any(axis=1)
-    j = below.argmax(axis=1)                                     # first True offset
-    k_prev = k_axis[np.clip(center + j - 1, 0, N - 1)]           # k_axis[i-1]
+    j = below.argmax(axis=1)  # first True offset
+    k_prev = k_axis[np.clip(center + j - 1, 0, N - 1)]  # k_axis[i-1]
     k_max = np.where(has, np.where(j > 0, k_prev, PROFILE_KMIN), k_max_limit)
     return np.clip(k_max, PROFILE_KMIN, k_max_limit)
 
@@ -326,8 +345,9 @@ def _profile_kmax(prof, k_axis, F_dc_clean, k_max_limit):
 # ==========================================================================================
 # Chunk pipeline (steps 1-7): preparation shared by the batched fit and the oracle
 # ==========================================================================================
-def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
-                   use_soft_weighting, k_max_limit):
+def _prepare_chunk(
+    R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel, use_soft_weighting, k_max_limit
+):
     """Run C steps 1-6 for one constant-fractional-shift chunk. Returns a prep dict.
 
     Everything the stage-2 LM needs (T_norm, weights, seeds), plus per-window status
@@ -335,7 +355,7 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
     """
     n = R_AA.shape[0]
     corr_h, corr_w = KX.shape
-    P = corr_h * corr_w
+    corr_h * corr_w
     kx_axis = KX[0, :]
     ky_axis = KY[:, 0]
     KX2 = (KX * KX).ravel()
@@ -358,7 +378,7 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
     F_AB = _fft_planes(R_AB, corr_h, corr_w)
 
     # ---- step 2: reference spectrum + noise PSD ----
-    F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))                 # (n, h, w)
+    F_ref = np.sqrt(np.abs(F_AA) * np.abs(F_BB))  # (n, h, w)
     Pn2d = compute_noise_psd_2d(KX, KY, f_xy[0], f_xy[1], kernel=kernel)
     Pn = Pn2d.ravel()
 
@@ -380,8 +400,9 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
             return _stage1_resid_jac(x, Yv[idx], Pn, KX2, KY2, jac=jac)
 
         x0 = np.broadcast_to(JOINT_P0, (v_idx.size, 4)).copy()
-        xs1, conv1, cost1, it1 = _batched_lm(s1_fn, x0, JOINT_LO, JOINT_HI,
-                                             JOINT_MAX_ITER)
+        xs1, conv1, cost1, it1 = _batched_lm(
+            s1_fn, x0, JOINT_LO, JOINT_HI, JOINT_MAX_ITER
+        )
         s1_conv[v_idx] = conv1
         s1_iter[v_idx] = it1
         # C acceptance: SUCCESS or EMAXITER; ENOPROG (stuck early, unconverged) rejected
@@ -396,11 +417,11 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
 
     # ---- step 4: SNR diagnostics (informational, no gate — as in the C) ----
     F_dc_clean = F_ref[:, cy, cx]
-    noise_power = N0_abs ** 2 + 1e-12
-    snr = F_dc_clean ** 2 / noise_power
+    noise_power = N0_abs**2 + 1e-12
+    snr = F_dc_clean**2 / noise_power
 
     # ---- step 5: per-axis k_max from the profile threshold ----
-    prof_ref_x = F_ref[:, cy, :]                                 # |.| implicit: F_ref >= 0
+    prof_ref_x = F_ref[:, cy, :]  # |.| implicit: F_ref >= 0
     prof_ref_y = F_ref[:, :, cx]
     k_max_x = _profile_kmax(prof_ref_x, kx_axis, F_dc_clean, k_max_limit)
     k_max_y = _profile_kmax(prof_ref_y, ky_axis, F_dc_clean, k_max_limit)
@@ -423,16 +444,19 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
     T0_safe = np.where(t0_ok, T0, 1.0)
     Tn = (T * (np.conj(T0_safe) / (np.abs(T0_safe) ** 2))[:, None, None]).reshape(n, -1)
 
-    ell = (KX2[None] / (k_max_x ** 2)[:, None]
-           + KY2[None] / (k_max_y ** 2)[:, None]) <= 1.0         # (n, P)
+    ell = (
+        KX2[None] / (k_max_x**2)[:, None] + KY2[None] / (k_max_y**2)[:, None]
+    ) <= 1.0  # (n, P)
     n_valid = ell.sum(axis=1)
     nv_ok = n_valid >= MIN_VALID_PTS
     status[viable & ~nv_ok] = STATUS_NO_CONVERGE
     viable &= nv_ok
 
     if use_soft_weighting:
-        w_snr = np.where(ell, F_ref.reshape(n, -1), 0.0) / (np.sqrt(noise_power)
-                                                            + 1e-12)[:, None]
+        w_snr = (
+            np.where(ell, F_ref.reshape(n, -1), 0.0)
+            / (np.sqrt(noise_power) + 1e-12)[:, None]
+        )
         w_max = w_snr.max(axis=1)
         w_snr /= np.where(w_max > 1e-12, w_max, 1.0)[:, None]
         k0x2 = 1.0 / (_TWO_PI2 * np.maximum(Sxx0, 0.01) + 1e-12)  # (n,)
@@ -444,12 +468,25 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, f_xy, kernel,
     W = np.where(ell, W, 0.0)
 
     return dict(
-        n=n, corr_h=corr_h, corr_w=corr_w, KXf=KXf, KYf=KYf,
+        n=n,
+        corr_h=corr_h,
+        corr_w=corr_w,
+        KXf=KXf,
+        KYf=KYf,
         amps=np.stack([amp_A, amp_B, amp_AB], axis=1),
-        status=status, viable=viable, seed=seed,
-        Tre=np.real(Tn), Tim=np.imag(Tn), W=W, n_valid=n_valid,
-        snr=snr, N0_abs=N0_abs, k_max_x=k_max_x, k_max_y=k_max_y,
-        s1_conv=s1_conv, s1_iter=s1_iter,
+        status=status,
+        viable=viable,
+        seed=seed,
+        Tre=np.real(Tn),
+        Tim=np.imag(Tn),
+        W=W,
+        n_valid=n_valid,
+        snr=snr,
+        N0_abs=N0_abs,
+        k_max_x=k_max_x,
+        k_max_y=k_max_y,
+        s1_conv=s1_conv,
+        s1_iter=s1_iter,
     )
 
 
@@ -472,20 +509,23 @@ def _run_stage2(prep):
         def s2_fn(x, idx, jac=False):
             return _stage2_resid_jac(x, Tre[idx], Tim[idx], W[idx], KXf, KYf, jac=jac)
 
-        xs, conv, cost, it = _batched_lm(s2_fn, prep["seed"][v_idx], MAIN_LO, MAIN_HI,
-                                         MAIN_MAX_ITER)
+        xs, conv, cost, it = _batched_lm(
+            s2_fn, prep["seed"][v_idx], MAIN_LO, MAIN_HI, MAIN_MAX_ITER
+        )
         s2_conv[v_idx] = conv
         s2_iter[v_idx] = it
         s2_cost[v_idx] = cost / prep["n_valid"][v_idx]
         # C acceptance: SUCCESS, or EMAXITER with cost/n_valid < 1; ENOPROG rejected
-        fit_ok = conv | ((it >= MAIN_MAX_ITER)
-                         & (cost / prep["n_valid"][v_idx] < COST_PER_PT_ACCEPT))
+        fit_ok = conv | (
+            (it >= MAIN_MAX_ITER) & (cost / prep["n_valid"][v_idx] < COST_PER_PT_ACCEPT)
+        )
 
         mu_f = xs[:, 0:2]
-        Sxx_f = np.maximum(xs[:, 2], 0.0)          # projection keeps >= 0; belt+braces
+        Sxx_f = np.maximum(xs[:, 2], 0.0)  # projection keeps >= 0; belt+braces
         Syy_f = np.maximum(xs[:, 3], 0.0)
-        big = ((np.abs(mu_f[:, 0]) > MAX_DISP_FRAC * corr_w)
-               | (np.abs(mu_f[:, 1]) > MAX_DISP_FRAC * corr_h))
+        big = (np.abs(mu_f[:, 0]) > MAX_DISP_FRAC * corr_w) | (
+            np.abs(mu_f[:, 1]) > MAX_DISP_FRAC * corr_h
+        )
 
         st = np.full(v_idx.size, STATUS_NO_CONVERGE, dtype=np.int32)
         st[fit_ok] = STATUS_SUCCESS
@@ -531,15 +571,22 @@ def fit_windows_kspace_lm(
             f"(n_windows={n_windows}, corr_size={corr_size})"
         )
 
-    R_AA = np.ascontiguousarray(R_AA, dtype=np.float64).reshape(n_windows, corr_h, corr_w)
-    R_BB = np.ascontiguousarray(R_BB, dtype=np.float64).reshape(n_windows, corr_h, corr_w)
-    R_AB = np.ascontiguousarray(R_AB, dtype=np.float64).reshape(n_windows, corr_h, corr_w)
+    R_AA = np.ascontiguousarray(R_AA, dtype=np.float64).reshape(
+        n_windows, corr_h, corr_w
+    )
+    R_BB = np.ascontiguousarray(R_BB, dtype=np.float64).reshape(
+        n_windows, corr_h, corr_w
+    )
+    R_AB = np.ascontiguousarray(R_AB, dtype=np.float64).reshape(
+        n_windows, corr_h, corr_w
+    )
     mask = np.asarray(mask_flat, dtype=bool)
 
     KX, KY, _ = _kgrids(corr_h, corr_w)
     cy, cx = corr_h // 2, corr_w // 2
-    k_max_limit = float(k_max_cap) if (k_max_cap is not None and k_max_cap > 0) \
-        else K_MAX_DEFAULT
+    k_max_limit = (
+        float(k_max_cap) if (k_max_cap is not None and k_max_cap > 0) else K_MAX_DEFAULT
+    )
 
     if predictor_displacements is not None:
         pred = np.asarray(predictor_displacements, dtype=np.float64).reshape(-1, 2)
@@ -552,15 +599,19 @@ def fit_windows_kspace_lm(
     gauss_flat = np.zeros((n_windows, 16), dtype=np.float64)
     status_flat = np.full(n_windows, STATUS_MASKED, dtype=np.int32)
     initial_guess_flat = np.zeros((n_windows, 16), dtype=np.float64)
-    diag = {k: np.full(n_windows, np.nan) for k in
-            ("snr", "N0_abs", "k_max_x", "k_max_y", "s2_cost_per_pt")}
-    diag.update({k: np.zeros(n_windows, dtype=np.int32) for k in ("s1_iter", "s2_iter")})
+    diag = {
+        k: np.full(n_windows, np.nan)
+        for k in ("snr", "N0_abs", "k_max_x", "k_max_y", "s2_cost_per_pt")
+    }
+    diag.update(
+        {k: np.zeros(n_windows, dtype=np.int32) for k in ("s1_iter", "s2_iter")}
+    )
     diag.update({k: np.zeros(n_windows, dtype=bool) for k in ("s1_conv", "s2_conv")})
     diag["n_valid"] = np.zeros(n_windows, dtype=np.int32)
 
-    center_x = corr_w / 2.0 + 1.0                  # 1-based centres (C convention)
+    center_x = corr_w / 2.0 + 1.0  # 1-based centres (C convention)
     center_y = corr_h / 2.0 + 1.0
-    gauss_flat[:, 6:9] = np.nan                    # particle-size slots: NaN by contract
+    gauss_flat[:, 6:9] = np.nan  # particle-size slots: NaN by contract
     gauss_flat[:, 12] = center_x
     gauss_flat[:, 13] = center_y
     gauss_flat[:, 14] = center_x
@@ -591,8 +642,19 @@ def fit_windows_kspace_lm(
             idx = proc_sorted[start:end]
             f_xy = (float(fkey_sorted[start, 0]), float(fkey_sorted[start, 1]))
 
-            prep = _prepare_chunk(R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, cy, cx,
-                                  f_xy, interp_kernel, use_soft_weighting, k_max_limit)
+            prep = _prepare_chunk(
+                R_AA[idx],
+                R_BB[idx],
+                R_AB[idx],
+                KX,
+                KY,
+                cy,
+                cx,
+                f_xy,
+                interp_kernel,
+                use_soft_weighting,
+                k_max_limit,
+            )
             mu, Sigma, status, s2_conv, s2_iter, s2_cost = _run_stage2(prep)
 
             gauss_flat[idx, 0:3] = prep["amps"]

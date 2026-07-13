@@ -29,19 +29,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import numpy as np
 from dask.distributed import Client
 
-from pivtools_core.config import Config
-from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
 from pivtools_cli.piv.piv_backend.base import CrossCorrelator
-from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
 from pivtools_cli.piv.piv_backend.infilling import apply_infilling
+from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detection
+from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
+from pivtools_core.config import Config
 
 
-def _linear_pair_envelope(weight_a: np.ndarray, weight_b: np.ndarray,
-                          corr_size: tuple[int, int]) -> np.ndarray:
+def _linear_pair_envelope(
+    weight_a: np.ndarray, weight_b: np.ndarray, corr_size: tuple[int, int]
+) -> np.ndarray:
     """Linear pair-count envelope E(Δ) = (W_A ⋆ W_B)(Δ), normalized to E = 1 at zero lag.
 
     The averaged correlation planes are attenuated by the LINEAR cross-correlation of
@@ -62,28 +62,33 @@ def _linear_pair_envelope(weight_a: np.ndarray, weight_b: np.ndarray,
     wb = np.asarray(weight_b, dtype=np.float64)
     if wa.shape != wb.shape:
         raise ValueError(
-            f"window weights must share a shape, got {wa.shape} vs {wb.shape}")
+            f"window weights must share a shape, got {wa.shape} vs {wb.shape}"
+        )
     h, w = wa.shape
     ch, cw = corr_size
     if ch > h or cw > w:
-        raise ValueError(f"corr_size {tuple(corr_size)} exceeds envelope support {(h, w)}")
+        raise ValueError(
+            f"corr_size {tuple(corr_size)} exceeds envelope support {(h, w)}"
+        )
 
     fa = np.fft.fft2(wa, s=(2 * h, 2 * w))
     fb = np.fft.fft2(wb, s=(2 * h, 2 * w))
     full = np.fft.fftshift(np.fft.ifft2(fa * np.conj(fb)).real)  # zero lag at (h, w)
-    env = full[h - ch // 2:h - ch // 2 + ch, w - cw // 2:w - cw // 2 + cw]
+    env = full[h - ch // 2 : h - ch // 2 + ch, w - cw // 2 : w - cw // 2 + cw]
 
     centre = env[ch // 2, cw // 2]
     if abs(centre - env.max()) > 1e-9 * env.max():
         peak = np.unravel_index(np.argmax(env), env.shape)
         raise ValueError(
             f"envelope centre {centre:.12f} != max {env.max():.12f} at {peak} — "
-            f"centering is off")
+            f"centering is off"
+        )
     env = env / centre
     if np.any(env <= 0.0):
         raise ValueError(
             "pair-count envelope has non-positive entries inside the stored plane; "
-            "cannot divide (check window weights against corr_size)")
+            "cannot divide (check window weights against corr_size)"
+        )
     return env
 
 
@@ -123,16 +128,23 @@ class SinglePassAccumulator:
             runtype = config.ensemble_type[pass_idx]
 
             # Determine correlation size (output size after central extraction)
-            if runtype == 'single':
+            if runtype == "single":
                 fit_window = config.ensemble_sum_fitting_window
-                corr_size = tuple(fit_window) if fit_window else tuple(config.ensemble_sum_window)
+                corr_size = (
+                    tuple(fit_window)
+                    if fit_window
+                    else tuple(config.ensemble_sum_window)
+                )
             else:
                 corr_size = win_size
 
             # Compute grid size
-            from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
+            from pivtools_core.window_utils import (
+                compute_window_centers,
+                compute_window_centers_single_mode,
+            )
 
-            if runtype == 'single':
+            if runtype == "single":
                 result = compute_window_centers_single_mode(
                     image_shape=(H, W),
                     window_size=tuple(win_size),
@@ -152,26 +164,25 @@ class SinglePassAccumulator:
             n_win_x = result.n_win_x
             plane_size = n_win_y * n_win_x * corr_size[0] * corr_size[1]
 
-            self.passes_data.append({
-                # Running sums for mean computation
-                "sum_warp_A": np.zeros((H, W), dtype=np.float32),
-                "sum_warp_B": np.zeros((H, W), dtype=np.float32),
-
-                # Running correlation plane sums (THREE planes for stacked Gaussian)
-                "sum_corr_AA": np.zeros(plane_size, dtype=np.float32),
-                "sum_corr_BB": np.zeros(plane_size, dtype=np.float32),
-                "sum_corr_AB": np.zeros(plane_size, dtype=np.float32),
-
-                # Grid info
-                "n_win_x": n_win_x,
-                "n_win_y": n_win_y,
-                "corr_size": corr_size,
-                "win_size": win_size,
-
-                # First-pair warped images (for diagnostic saving)
-                "first_pair_A": None,
-                "first_pair_B": None,
-            })
+            self.passes_data.append(
+                {
+                    # Running sums for mean computation
+                    "sum_warp_A": np.zeros((H, W), dtype=np.float32),
+                    "sum_warp_B": np.zeros((H, W), dtype=np.float32),
+                    # Running correlation plane sums (THREE planes for stacked Gaussian)
+                    "sum_corr_AA": np.zeros(plane_size, dtype=np.float32),
+                    "sum_corr_BB": np.zeros(plane_size, dtype=np.float32),
+                    "sum_corr_AB": np.zeros(plane_size, dtype=np.float32),
+                    # Grid info
+                    "n_win_x": n_win_x,
+                    "n_win_y": n_win_y,
+                    "corr_size": corr_size,
+                    "win_size": win_size,
+                    # First-pair warped images (for diagnostic saving)
+                    "first_pair_A": None,
+                    "first_pair_B": None,
+                }
+            )
 
     @contextmanager
     def _profile_section(self, pass_idx, section):
@@ -264,7 +275,10 @@ class SinglePassAccumulator:
             pass_data["n_post"] = batch_result["n_post"]
 
         # Store first-pair warped images (only from first batch)
-        if batch_result.get("first_pair_A") is not None and pass_data["first_pair_A"] is None:
+        if (
+            batch_result.get("first_pair_A") is not None
+            and pass_data["first_pair_A"] is None
+        ):
             pass_data["first_pair_A"] = batch_result["first_pair_A"]
             pass_data["first_pair_B"] = batch_result["first_pair_B"]
             logging.debug(
@@ -309,7 +323,7 @@ class SinglePassAccumulator:
 
         # Check if single mode
         runtype = self.config.ensemble_type[pass_idx]
-        is_single_mode = (runtype == 'single')
+        is_single_mode = runtype == "single"
 
         total_windows = n_win_y * n_win_x
         H, W = A_mean.shape
@@ -337,6 +351,7 @@ class SinglePassAccumulator:
 
         # Create temporary correlator to get library and window weights
         from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
+
         correlator = make_correlator_backend(self.config, ensemble=True)
 
         # Get computation size (for FFT) and output size (for extraction)
@@ -356,7 +371,9 @@ class SinglePassAccumulator:
                 correlator.vector_masks[pass_idx].astype(np.float32)
             )
         else:
-            b_mask = np.ascontiguousarray(np.zeros((n_win_y, n_win_x), dtype=np.float32))
+            b_mask = np.ascontiguousarray(
+                np.zeros((n_win_y, n_win_x), dtype=np.float32)
+            )
 
         # Use bulkxcorr2d_accumulate_triple for all three background correlations
         # in one fused call.  This computes AB, AA, BB with shared window
@@ -371,8 +388,12 @@ class SinglePassAccumulator:
         # For standard mode passes, padding is (0,0,0,0) so this is a no-op.
         pad_top, pad_bottom, pad_left, pad_right = correlator.padding_per_pass[pass_idx]
 
-        win_ctrs_x_padded = (correlator.win_ctrs_x[pass_idx] + pad_left).astype(np.float32)
-        win_ctrs_y_padded = (correlator.win_ctrs_y[pass_idx] + pad_top).astype(np.float32)
+        win_ctrs_x_padded = (correlator.win_ctrs_x[pass_idx] + pad_left).astype(
+            np.float32
+        )
+        win_ctrs_y_padded = (correlator.win_ctrs_y[pass_idx] + pad_top).astype(
+            np.float32
+        )
 
         correlator.lib.bulkxcorr2d_accumulate_triple(
             A_mean_stack,
@@ -383,29 +404,37 @@ class SinglePassAccumulator:
             win_ctrs_x_padded,
             win_ctrs_y_padded,
             n_windows,
-            correlator.win_weights_A[pass_idx],   # AB weight A
-            correlator.win_weights_B[pass_idx],   # AB weight B
-            correlator.win_weights_B[pass_idx],   # auto weight A (symmetric)
-            correlator.win_weights_B[pass_idx],   # auto weight B (symmetric)
-            win_size_arr,   # FFT computation size
-            fit_size_arr,   # Output size (central extraction)
+            correlator.win_weights_A[pass_idx],  # AB weight A
+            correlator.win_weights_B[pass_idx],  # AB weight B
+            correlator.win_weights_B[pass_idx],  # auto weight A (symmetric)
+            correlator.win_weights_B[pass_idx],  # auto weight B (symmetric)
+            win_size_arr,  # FFT computation size
+            fit_size_arr,  # Output size (central extraction)
+            0,  # bMeanSubtract off — this correlates the mean images themselves
+            0,  # bPerPairNorm off — background term must stay unnormalized
             correl_AB_bg,
             correl_AA_bg,
             correl_BB_bg,
         )
-        logging.debug(f"Pass {pass_idx}: AA_bg after bulkxcorr2d_accumulate_triple: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}]")
-        logging.debug(f"Pass {pass_idx}: BB_bg after bulkxcorr2d_accumulate_triple: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}]")
+        logging.debug(
+            f"Pass {pass_idx}: AA_bg after bulkxcorr2d_accumulate_triple: [{correl_AA_bg.min():.3e}, {correl_AA_bg.max():.3e}]"
+        )
+        logging.debug(
+            f"Pass {pass_idx}: BB_bg after bulkxcorr2d_accumulate_triple: [{correl_BB_bg.min():.3e}, {correl_BB_bg.max():.3e}]"
+        )
 
-        logging.debug(f"Pass {pass_idx}: Computed background correlations from mean images")
+        logging.debug(
+            f"Pass {pass_idx}: Computed background correlations from mean images"
+        )
 
         return correl_AA_bg, correl_BB_bg, correl_AB_bg
 
     def finalize_pass(
-        self, pass_idx: int,
+        self,
+        pass_idx: int,
         client: Client,
         predictor_field: Optional[np.ndarray] = None,
         output_path: Optional[Path] = None,
-
     ):
         """
         Finalize a single pass with single-pass optimization.
@@ -431,7 +460,10 @@ class SinglePassAccumulator:
         PIVEnsemblePassResult
             Result for this pass
         """
-        from pivtools_core.window_utils import compute_window_centers, compute_window_centers_single_mode
+        from pivtools_core.window_utils import (
+            compute_window_centers,
+            compute_window_centers_single_mode,
+        )
 
         logging.info(f"Finalizing pass {pass_idx + 1} with single-pass optimization")
 
@@ -441,8 +473,8 @@ class SinglePassAccumulator:
         logging.info(f"Pass {pass_idx + 1}: Applying single-pass optimization")
 
         # Check background subtraction method
-        bg_method = getattr(self.config, 'ensemble_background_subtraction_method', 'correlation')
-        skip_bg_subtraction = getattr(self.config, 'ensemble_skip_background_subtraction', False)
+        bg_method = self.config.ensemble_background_subtraction_method
+        skip_bg_subtraction = self.config.ensemble_skip_background_subtraction
 
         with self._profile_section(pass_idx, "mean_computation"):
             # Step 1: Compute mean warped images (always needed for diagnostics/metadata)
@@ -456,10 +488,12 @@ class SinglePassAccumulator:
 
         # Step 3-4: Background subtraction depends on method
         with self._profile_section(pass_idx, "bg_subtraction"):
-            if bg_method == 'image':
+            if bg_method == "image":
                 # IMAGE method: mean was subtracted BEFORE correlation
                 # Correlation planes are already background-subtracted: R = <(A-Ā)⊗(B-B̄)>
-                logging.info(f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)")
+                logging.info(
+                    f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)"
+                )
                 R_AA_ensemble = R_AA_raw
                 R_BB_ensemble = R_BB_raw
                 R_AB_ensemble = R_AB_raw
@@ -467,9 +501,25 @@ class SinglePassAccumulator:
                 R_AA_bg = np.zeros_like(R_AA_raw)
                 R_BB_bg = np.zeros_like(R_BB_raw)
                 R_AB_bg = np.zeros_like(R_AB_raw)
+            elif bg_method == "window_mean":
+                # WINDOW_MEAN method: each window's weighted mean was subtracted
+                # per pair inside the C correlator — the pedestal never entered
+                # the sums, so no <A>⊗<B> term is subtracted here.
+                logging.info(
+                    f"Pass {pass_idx + 1}: Using 'window_mean' background method "
+                    f"(per-pair per-window mean subtracted in C)"
+                )
+                R_AA_ensemble = R_AA_raw
+                R_BB_ensemble = R_BB_raw
+                R_AB_ensemble = R_AB_raw
+                R_AA_bg = np.zeros_like(R_AA_raw)
+                R_BB_bg = np.zeros_like(R_BB_raw)
+                R_AB_bg = np.zeros_like(R_AB_raw)
             elif skip_bg_subtraction:
                 # Skip background subtraction (debug mode)
-                logging.warning(f"Pass {pass_idx + 1}: SKIPPING background subtraction (debug mode)")
+                logging.warning(
+                    f"Pass {pass_idx + 1}: SKIPPING background subtraction (debug mode)"
+                )
                 R_AA_ensemble = R_AA_raw
                 R_BB_ensemble = R_BB_raw
                 R_AB_ensemble = R_AB_raw
@@ -479,7 +529,9 @@ class SinglePassAccumulator:
             else:
                 # CORRELATION method: correlate raw images, subtract correlated means
                 # R_ensemble = <A⊗B> - <A>⊗<B>
-                R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(A_mean, B_mean, pass_idx)
+                R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(
+                    A_mean, B_mean, pass_idx
+                )
                 R_AA_ensemble = R_AA_raw - R_AA_bg
                 R_BB_ensemble = R_BB_raw - R_BB_bg
                 R_AB_ensemble = R_AB_raw - R_AB_bg
@@ -533,7 +585,7 @@ class SinglePassAccumulator:
             #            the full triangle envelope of the sum window: divide AA/BB only.
             # E(0) = 1, so the peak values used for normalization below are unchanged.
             envelope_runtype = self.config.ensemble_type[pass_idx]
-            if envelope_runtype == 'single':
+            if envelope_runtype == "single":
                 env_sum_window = tuple(self.config.ensemble_sum_window)
                 plateau_half = min(
                     (env_sum_window[0] - win_size[0]) // 2,
@@ -552,12 +604,16 @@ class SinglePassAccumulator:
                 #         f"margin over the interrogation window {tuple(win_size)}."
                 #     )
                 env_weight_b = CrossCorrelator._window_weight_fun(
-                    env_sum_window, 'bsingle', env_sum_window)
+                    env_sum_window, "bsingle", env_sum_window
+                )
                 env_auto = _linear_pair_envelope(env_weight_b, env_weight_b, corr_size)
-                env_ab = np.ones_like(env_auto)  # plateau: exactly 1 where the peak lives
+                env_ab = np.ones_like(
+                    env_auto
+                )  # plateau: exactly 1 where the peak lives
             else:
                 env_weight = CrossCorrelator._window_weight_fun(
-                    tuple(win_size), self.config.ensemble_window_type)
+                    tuple(win_size), self.config.ensemble_window_type
+                )
                 env_auto = _linear_pair_envelope(env_weight, env_weight, corr_size)
                 env_ab = env_auto
             env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
@@ -569,9 +625,8 @@ class SinglePassAccumulator:
             # BB_3d /= env_auto_f32
             # AB_3d /= env_ab_f32
             logging.info(
-                f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
-                f"autos divided, AB "
-                f"{'skipped — trapezoid plateau' if envelope_runtype == 'single' else 'divided'}; "
+                f"Pass {pass_idx + 1}: Envelope divide DISABLED ({envelope_runtype}: "
+                f"planes NOT divided; envelope computed and stored for reference only; "
                 f"min E = {env_auto.min():.3f})"
             )
 
@@ -594,7 +649,7 @@ class SinglePassAccumulator:
             # particle_window × sum_window. The normalization by sqrt(AA*BB) over-corrects AB.
             # We need to scale AB up by sqrt(sum_window_area / particle_window_area) to compensate.
             runtype = self.config.ensemble_type[pass_idx]
-            if runtype == 'single':
+            if runtype == "single":
                 sum_window = self.config.ensemble_sum_window
                 particle_window = win_size
                 sum_area = sum_window[0] * sum_window[1]
@@ -636,8 +691,10 @@ class SinglePassAccumulator:
 
         # Flatten mask for fitting
         if self.vector_masks and pass_idx < len(self.vector_masks):
-            mask_flat = self.vector_masks[pass_idx].ravel(order='C').astype(bool)
-            logging.info(f"mask shape: {self.vector_masks[pass_idx].shape}, flat shape: {mask_flat.shape}")
+            mask_flat = self.vector_masks[pass_idx].ravel(order="C").astype(bool)
+            logging.info(
+                f"mask shape: {self.vector_masks[pass_idx].shape}, flat shape: {mask_flat.shape}"
+            )
             # Validate mask size matches data grid
             if mask_flat.size != total_windows:
                 raise ValueError(
@@ -653,7 +710,9 @@ class SinglePassAccumulator:
         # Reading the property here also validates fit_method (a stale
         # 'gaussian' config raises loudly rather than silently falling back).
         fit_method = self.config.ensemble_fit_method
-        logging.info(f"Pass {pass_idx + 1}: Starting k-space transfer function fitting...")
+        logging.info(
+            f"Pass {pass_idx + 1}: Starting k-space transfer function fitting..."
+        )
 
         # Build per-window predictor displacements for the noise PSD (joint floor)
         predictor_displacements = None
@@ -664,11 +723,15 @@ class SinglePassAccumulator:
                 predictor_displacements = smoothed_pred.reshape(-1, 2)
 
         # Determine kernel type from config (k-space only)
-        interp_kernel = 'lanczos3' if self.config.ensemble_image_warp_interpolation == 'lanczos' else 'bicubic'
+        interp_kernel = (
+            "lanczos3"
+            if self.config.ensemble_image_warp_interpolation == "lanczos"
+            else "bicubic"
+        )
 
         with self._profile_section(pass_idx, "scatter"):
-            n_workers = len(client.scheduler_info()['workers'])
-            workers = list(client.scheduler_info()["workers"].keys())
+            n_workers = len(client.scheduler_info()["workers"])
+            list(client.scheduler_info()["workers"].keys())
             windows_per_worker = (total_windows + n_workers - 1) // n_workers
             R_AA_futures = []
             R_BB_futures = []
@@ -677,7 +740,9 @@ class SinglePassAccumulator:
             pred_disp_futures = []
             for worker_idx in range(n_workers):
                 # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
-                start_idx = worker_idx * windows_per_worker * corr_size[0] * corr_size[1]
+                start_idx = (
+                    worker_idx * windows_per_worker * corr_size[0] * corr_size[1]
+                )
                 end_idx = min(
                     (worker_idx + 1) * windows_per_worker * corr_size[0] * corr_size[1],
                     R_AA_ensemble.size,
@@ -688,65 +753,147 @@ class SinglePassAccumulator:
                     total_windows,
                 )
 
-                R_AA_futures.append(client.scatter(
-                    R_AA_ensemble[start_idx:end_idx],
-                    broadcast=False,
-                ))
-                R_BB_futures.append(client.scatter(
-                    R_BB_ensemble[start_idx:end_idx],
-                    broadcast=False,
-                ))
-                R_AB_futures.append(client.scatter(
-                    R_AB_ensemble[start_idx:end_idx],
-                    broadcast=False,
-                ))
-                mask_flat_futures.append(client.scatter(
-                    mask_flat[start_idx_win:end_idx_win],
-                    broadcast=False,
-                ))
+                R_AA_futures.append(
+                    client.scatter(
+                        R_AA_ensemble[start_idx:end_idx],
+                        broadcast=False,
+                    )
+                )
+                R_BB_futures.append(
+                    client.scatter(
+                        R_BB_ensemble[start_idx:end_idx],
+                        broadcast=False,
+                    )
+                )
+                R_AB_futures.append(
+                    client.scatter(
+                        R_AB_ensemble[start_idx:end_idx],
+                        broadcast=False,
+                    )
+                )
+                mask_flat_futures.append(
+                    client.scatter(
+                        mask_flat[start_idx_win:end_idx_win],
+                        broadcast=False,
+                    )
+                )
 
                 if predictor_displacements is not None:
-                    pred_disp_futures.append(client.scatter(
-                        predictor_displacements[start_idx_win:end_idx_win],
-                        broadcast=False,
-                    ))
+                    pred_disp_futures.append(
+                        client.scatter(
+                            predictor_displacements[start_idx_win:end_idx_win],
+                            broadcast=False,
+                        )
+                    )
                 else:
                     pred_disp_futures.append(None)
 
-        # Batched-LM k-space fit (GSL replica minus beta): two-stage nonlinear fit —
-        # joint LM noise floor, complex-domain 5-param main fit with soft SNR-adaptive
-        # weighting and per-axis profile k_max. No shape/floor/weight options: the
-        # validated recipe is fixed. The closed-form predecessor
-        # (kspace_linear_fitting) is dormant in-tree for revert.
+        # K-space fit, dispatched across Dask workers. fit_method selects:
+        #   'kspace'        — batched-LM GSL replica minus beta (two-stage
+        #                     nonlinear: joint LM noise floor + complex-domain
+        #                     5-param main fit). lm_soft_weighting / lm_k_max_cap
+        #                     config knobs apply to this fitter only.
+        #   'kspace_linear' — closed-form linear fitter with the old production
+        #                     recipe fixed (joint floor, refc trust-region
+        #                     weighting, Gaussian shape).
+        # Both return the same 16-element gauss_flat contract.
+        save_fit_diagnostics = (
+            fit_method == "kspace" and self.config.ensemble_save_diagnostics
+        )
         with self._profile_section(pass_idx, "fitting"):
-            from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
-                fit_windows_kspace_lm,
-            )
-            futures = [
-                client.submit(
+            if fit_method == "kspace_linear":
+                from pivtools_cli.piv.piv_backend.kspace_linear_fitting import (
+                    fit_windows_kspace_linear,
+                )
+
+                if self.config.ensemble_save_diagnostics:
+                    logging.info(
+                        f"Pass {pass_idx + 1}: fit diagnostics are LM-only — "
+                        f"none saved for fit_method 'kspace_linear'"
+                    )
+                futures = [
+                    client.submit(
+                        fit_windows_kspace_linear,
+                        R_AA_futures[i],
+                        R_BB_futures[i],
+                        R_AB_futures[i],
+                        mask_flat_futures[i],
+                        corr_size,
+                        self.config,
+                        pass_idx,
+                        True,  # use_soft_weighting (accepted, unused)
+                        self.config.debug,  # diagnostics when debug=True
+                        pred_disp_futures[i],  # per-window predictor displacements
+                        interp_kernel,  # 'bicubic' or 'lanczos3'
+                        None,  # k_max_cap (accepted, unused)
+                        floor_mode="joint",
+                        weight_mode="refc",
+                        shape_mode="gauss",
+                    )
+                    for i in range(len(R_AA_futures))
+                ]
+            else:
+                from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
                     fit_windows_kspace_lm,
-                    R_AA_futures[i],
-                    R_BB_futures[i],
-                    R_AB_futures[i],
-                    mask_flat_futures[i],
-                    corr_size,
-                    self.config,
-                    pass_idx,
-                    True,                 # use_soft_weighting (GSL soft w_snr*w_soft)
-                    self.config.debug,    # diagnostics when debug=True
-                    pred_disp_futures[i],  # per-window predictor displacements
-                    interp_kernel,        # 'bicubic' or 'lanczos3'
-                    None,                 # k_max_cap (None -> 0.35 default)
-                ) for i in range(len(R_AA_futures))
-            ]
+                )
+
+                futures = [
+                    client.submit(
+                        fit_windows_kspace_lm,
+                        R_AA_futures[i],
+                        R_BB_futures[i],
+                        R_AB_futures[i],
+                        mask_flat_futures[i],
+                        corr_size,
+                        self.config,
+                        pass_idx,
+                        self.config.ensemble_lm_soft_weighting,
+                        self.config.debug,  # diagnostics when debug=True
+                        pred_disp_futures[i],  # per-window predictor displacements
+                        interp_kernel,  # 'bicubic' or 'lanczos3'
+                        self.config.ensemble_lm_k_max_cap,  # None -> 0.35 default
+                        save_fit_diagnostics,  # return per-window diag dict
+                    )
+                    for i in range(len(R_AA_futures))
+                ]
 
             results = client.gather(futures)
         gauss_flat = np.concatenate([r[0] for r in results])
         status_flat = np.concatenate([r[1] for r in results])
         initial_guess_flat = np.concatenate([r[2] for r in results])
 
+        # Persist the LM fitter's per-window diagnostics next to the planes
+        if save_fit_diagnostics:
+            import os
+
+            from scipy.io import savemat
+
+            diag_chunks = [r[3] for r in results]
+            fit_diag = {
+                key: np.concatenate([d[key] for d in diag_chunks]).reshape(
+                    n_win_y, n_win_x
+                )
+                for key in diag_chunks[0]
+            }
+            fit_diag["status"] = status_flat.reshape(n_win_y, n_win_x)
+            fit_diag["pass_idx"] = pass_idx
+            diag_outdir = Path(output_path) if output_path else Path(os.getcwd())
+            diag_outdir.mkdir(parents=True, exist_ok=True)
+            savemat(
+                diag_outdir / f"fit_diagnostics_pass_{pass_idx + 1}.mat",
+                fit_diag,
+                do_compression=True,
+            )
+            logging.info(
+                f"Pass {pass_idx + 1}: Saved LM fit diagnostics to "
+                f"{diag_outdir}/fit_diagnostics_pass_{pass_idx + 1}.mat"
+            )
+
         # Release large arrays after fitting
-        if not (hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes):
+        if not (
+            hasattr(self.config, "ensemble_store_planes")
+            and self.config.ensemble_store_planes
+        ):
             del R_AA_ensemble, R_BB_ensemble, R_AB_ensemble
             gc.collect()
 
@@ -754,12 +901,11 @@ class SinglePassAccumulator:
         statuses = status_flat.reshape(n_win_y, n_win_x)
         initial_guesses = initial_guess_flat.reshape(n_win_y, n_win_x, -1)
 
-
         # Step 7: Extract velocities from fitted parameters
         with self._profile_section(pass_idx, "velocity_extraction"):
             # Determine correlation size for grid
             runtype = self.config.ensemble_type[pass_idx]
-            if runtype == 'single':
+            if runtype == "single":
                 grid_result = compute_window_centers_single_mode(
                     image_shape=self.config.image_shape,
                     window_size=tuple(win_size),
@@ -813,8 +959,10 @@ class SinglePassAccumulator:
 
             # Check for invalid displacements (inf, nan, or > 3/4 window)
             invalid_disp = (
-                ~np.isfinite(ux_mat) | ~np.isfinite(uy_mat) |
-                (np.abs(ux_mat) > max_disp_x) | (np.abs(uy_mat) > max_disp_y)
+                ~np.isfinite(ux_mat)
+                | ~np.isfinite(uy_mat)
+                | (np.abs(ux_mat) > max_disp_x)
+                | (np.abs(uy_mat) > max_disp_y)
             )
             n_invalid = invalid_disp.sum()
             if n_invalid > 0:
@@ -831,7 +979,10 @@ class SinglePassAccumulator:
                 # Use the SMOOTHED predictor that was actually used for image warping
                 # This is stored in passes_data[pass_idx] during accumulate_batch
                 pass_data = self.passes_data[pass_idx]
-                if "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+                if (
+                    "smoothed_predictor" in pass_data
+                    and pass_data["smoothed_predictor"] is not None
+                ):
                     smoothed_pred = pass_data["smoothed_predictor"]
                     logging.info(
                         f"Pass {pass_idx + 1}: Using smoothed predictor field from image warping"
@@ -854,7 +1005,7 @@ class SinglePassAccumulator:
         # =========================================================
         with self._profile_section(pass_idx, "parameter_extraction"):
             # Clamp to reasonable ranges before float32 cast to prevent overflow
-            MAX_AMP = 1e10   # Max reasonable amplitude
+            MAX_AMP = 1e10  # Max reasonable amplitude
             MAX_SIGMA = 1e6  # Max reasonable variance
 
             def safe_extract(arr, max_val, fill_invalid=0.0):
@@ -877,7 +1028,7 @@ class SinglePassAccumulator:
             peakheight_raw = amp_AB / geom_mean
 
             runtype = self.config.ensemble_type[pass_idx]
-            if runtype == 'single':
+            if runtype == "single":
                 particle_window = self.config.ensemble_window_sizes[pass_idx]
                 sum_window = self.config.ensemble_sum_window
                 particle_area = particle_window[0] * particle_window[1]
@@ -946,21 +1097,25 @@ class SinglePassAccumulator:
 
                 # Set nan_reason to indicate masked vectors
                 nan_reason[vector_mask] = -1  # -1 = masked vector (not correlated)
-                logging.info(f"Pass {pass_idx + 1}: {vector_mask.sum()} vectors masked (set to zero)")
+                logging.info(
+                    f"Pass {pass_idx + 1}: {vector_mask.sum()} vectors masked (set to zero)"
+                )
 
         # =========================================================
         # STEP 7b: Outlier Detection and Infilling
         # =========================================================
         # Determine if this is final pass
-        is_final_pass = (pass_idx == self.config.ensemble_num_passes - 1)
+        is_final_pass = pass_idx == self.config.ensemble_num_passes - 1
 
         with self._profile_section(pass_idx, "outlier_detection"):
             # --- Combined Outlier Detection ---
             # Start with fitting failures (statuses != 0 indicates failed fit)
             # Exclude already-masked vectors from outlier detection
-            outlier_mask = (statuses != 0)
+            outlier_mask = statuses != 0
             if vector_mask is not None:
-                outlier_mask = outlier_mask & ~vector_mask  # Don't double-count masked regions
+                outlier_mask = (
+                    outlier_mask & ~vector_mask
+                )  # Don't double-count masked regions
 
             # Apply additional outlier detection on valid fits if enabled
             if self.config.ensemble_outlier_detection_enabled:
@@ -972,12 +1127,10 @@ class SinglePassAccumulator:
                         valid_for_detection = valid_for_detection & ~vector_mask
                     if valid_for_detection.any():
                         detected_outliers = apply_outlier_detection(
-                            ux_mat, uy_mat,
-                            outlier_methods,
-                            peak_mag=peakheight
+                            ux_mat, uy_mat, outlier_methods, peak_mag=peakheight
                         )
                         # Only mark as outliers within valid detection region
-                        outlier_mask |= (detected_outliers & valid_for_detection)
+                        outlier_mask |= detected_outliers & valid_for_detection
 
             logging.info(
                 f"Pass {pass_idx + 1}: Outlier detection found {outlier_mask.sum()} outliers "
@@ -1009,9 +1162,11 @@ class SinglePassAccumulator:
             if is_final_pass:
                 # Final pass: use final_pass config (may be disabled)
                 infill_cfg = self.config.ensemble_infilling_final_pass
-                if not infill_cfg.get('enabled', True):
+                if not infill_cfg.get("enabled", True):
                     logging.info(f"Pass {pass_idx + 1}: Final pass infilling disabled")
-                    infill_mask = np.zeros_like(outlier_mask, dtype=bool)  # Skip infilling
+                    infill_mask = np.zeros_like(
+                        outlier_mask, dtype=bool
+                    )  # Skip infilling
             else:
                 # Mid-pass: always infill (required for predictor)
                 infill_cfg = self.config.ensemble_infilling_mid_pass
@@ -1023,27 +1178,43 @@ class SinglePassAccumulator:
                 )
 
                 # Infill displacement fields
-                ux_mat, uy_mat = apply_infilling(ux_mat, uy_mat, infill_mask, infill_cfg)
+                ux_mat, uy_mat = apply_infilling(
+                    ux_mat, uy_mat, infill_mask, infill_cfg
+                )
 
                 # Infill stress fields
-                UU_stress, VV_stress = apply_infilling(UU_stress, VV_stress, infill_mask, infill_cfg)
+                UU_stress, VV_stress = apply_infilling(
+                    UU_stress, VV_stress, infill_mask, infill_cfg
+                )
                 # UV_stress needs special handling (paired with zero array)
                 UV_temp = np.zeros_like(UV_stress)
-                UV_stress, _ = apply_infilling(UV_stress, UV_temp, infill_mask, infill_cfg)
+                UV_stress, _ = apply_infilling(
+                    UV_stress, UV_temp, infill_mask, infill_cfg
+                )
 
                 # Infill sigma fields (A autocorrelation)
-                sig_A_x, sig_A_y = apply_infilling(sig_A_x, sig_A_y, infill_mask, infill_cfg)
+                sig_A_x, sig_A_y = apply_infilling(
+                    sig_A_x, sig_A_y, infill_mask, infill_cfg
+                )
                 sig_A_xy_temp = np.zeros_like(sig_A_xy)
-                sig_A_xy, _ = apply_infilling(sig_A_xy, sig_A_xy_temp, infill_mask, infill_cfg)
+                sig_A_xy, _ = apply_infilling(
+                    sig_A_xy, sig_A_xy_temp, infill_mask, infill_cfg
+                )
 
                 # Infill sigma fields (AB cross-correlation)
-                sig_AB_x, sig_AB_y = apply_infilling(sig_AB_x, sig_AB_y, infill_mask, infill_cfg)
+                sig_AB_x, sig_AB_y = apply_infilling(
+                    sig_AB_x, sig_AB_y, infill_mask, infill_cfg
+                )
                 sig_AB_xy_temp = np.zeros_like(sig_AB_xy)
-                sig_AB_xy, _ = apply_infilling(sig_AB_xy, sig_AB_xy_temp, infill_mask, infill_cfg)
+                sig_AB_xy, _ = apply_infilling(
+                    sig_AB_xy, sig_AB_xy_temp, infill_mask, infill_cfg
+                )
 
                 # Infill peakheight (paired with zero array)
                 peakheight_temp = np.zeros_like(peakheight)
-                peakheight, _ = apply_infilling(peakheight, peakheight_temp, infill_mask, infill_cfg)
+                peakheight, _ = apply_infilling(
+                    peakheight, peakheight_temp, infill_mask, infill_cfg
+                )
 
         # =========================================================
         # STEP 7c: Stress-specific outlier detection (final pass only)
@@ -1055,27 +1226,29 @@ class SinglePassAccumulator:
             if is_final_pass and self.config.ensemble_outlier_detection_enabled:
                 # Filter config methods to those applicable to stress fields
                 # (exclude velocity-specific methods like peak_mag and div_vort)
-                STRESS_APPLICABLE_METHODS = {'median_2d', 'sigma'}
+                STRESS_APPLICABLE_METHODS = {"median_2d", "sigma"}
                 outlier_methods = self.config.ensemble_outlier_detection_methods
                 stress_methods = [
-                    m for m in outlier_methods
-                    if m.get('type', '').lower() in STRESS_APPLICABLE_METHODS
+                    m
+                    for m in outlier_methods
+                    if m.get("type", "").lower() in STRESS_APPLICABLE_METHODS
                 ]
 
                 stress_outlier_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
                 if stress_methods:
                     stress_outlier_mask = apply_outlier_detection(
-                        UU_stress, VV_stress,
+                        UU_stress,
+                        VV_stress,
                         stress_methods,
                     )
 
                 # Realizability: Cauchy-Schwarz |UV|² ≤ UU·VV
-                with np.errstate(invalid='ignore'):
+                with np.errstate(invalid="ignore"):
                     realizability_violation = (
                         np.isfinite(UV_stress)
                         & np.isfinite(UU_stress)
                         & np.isfinite(VV_stress)
-                        & (UV_stress ** 2 > UU_stress * VV_stress)
+                        & (UV_stress**2 > UU_stress * VV_stress)
                     )
                 stress_outlier_mask |= realizability_violation
 
@@ -1098,7 +1271,7 @@ class SinglePassAccumulator:
                     nan_reason[stress_outlier_mask & (nan_reason == 0)] = 11
 
                     # Infill stress fields only (velocity is already good)
-                    if infill_cfg.get('enabled', True):
+                    if infill_cfg.get("enabled", True):
                         UU_stress, VV_stress = apply_infilling(
                             UU_stress, VV_stress, stress_outlier_mask, infill_cfg
                         )
@@ -1120,7 +1293,11 @@ class SinglePassAccumulator:
             pred_y = None
             padded_pred_x = None
             padded_pred_y = None
-            if pass_idx > 0 and "smoothed_predictor" in pass_data and pass_data["smoothed_predictor"] is not None:
+            if (
+                pass_idx > 0
+                and "smoothed_predictor" in pass_data
+                and pass_data["smoothed_predictor"] is not None
+            ):
                 smoothed_pred = pass_data["smoothed_predictor"]
                 pred_y = smoothed_pred[:, :, 0].copy()  # Y component
                 pred_x = smoothed_pred[:, :, 1].copy()  # X component
@@ -1200,11 +1377,16 @@ class SinglePassAccumulator:
         self.passes_results.append(pass_result)
 
         # Save correlation planes if store_planes is enabled
-        if hasattr(self.config, 'ensemble_store_planes') and self.config.ensemble_store_planes:
+        if (
+            hasattr(self.config, "ensemble_store_planes")
+            and self.config.ensemble_store_planes
+        ):
             try:
-                from pathlib import Path
-                from scipy.io import savemat
                 import os
+                from pathlib import Path
+
+                from scipy.io import savemat
+
                 if output_path is not None:
                     outdir = Path(output_path)
                 else:
@@ -1213,7 +1395,10 @@ class SinglePassAccumulator:
 
                 # Create correlator to get window weights
                 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-                correlator_for_weights = make_correlator_backend(self.config, ensemble=True)
+
+                correlator_for_weights = make_correlator_backend(
+                    self.config, ensemble=True
+                )
 
                 # Save correlation planes in 4D format (n_win_y, n_win_x, corr_h, corr_w)
                 # Note: All planes (AA, BB, AB and backgrounds) are saved in NORMALIZED form
@@ -1224,57 +1409,79 @@ class SinglePassAccumulator:
                 AA_bg_3d = R_AA_bg.reshape(total_windows, corr_size[0], corr_size[1])
                 BB_bg_3d = R_BB_bg.reshape(total_windows, corr_size[0], corr_size[1])
                 AB_bg_3d = R_AB_bg.reshape(total_windows, corr_size[0], corr_size[1])
-                AA_bg_norm = (AA_bg_3d / norm_factors_3d).reshape(n_win_y, n_win_x, corr_size[0], corr_size[1])
-                BB_bg_norm = (BB_bg_3d / norm_factors_3d).reshape(n_win_y, n_win_x, corr_size[0], corr_size[1])
-                AB_bg_norm = (AB_bg_3d / norm_factors_3d).reshape(n_win_y, n_win_x, corr_size[0], corr_size[1])
+                AA_bg_norm = (AA_bg_3d / norm_factors_3d).reshape(
+                    n_win_y, n_win_x, corr_size[0], corr_size[1]
+                )
+                BB_bg_norm = (BB_bg_3d / norm_factors_3d).reshape(
+                    n_win_y, n_win_x, corr_size[0], corr_size[1]
+                )
+                AB_bg_norm = (AB_bg_3d / norm_factors_3d).reshape(
+                    n_win_y, n_win_x, corr_size[0], corr_size[1]
+                )
 
                 planes_dict = {
-                    'AA': R_AA_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
-                    'BB': R_BB_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
-                    'AB': R_AB_ensemble.reshape(n_win_y, n_win_x, corr_size[0], corr_size[1]),
+                    "AA": R_AA_ensemble.reshape(
+                        n_win_y, n_win_x, corr_size[0], corr_size[1]
+                    ),
+                    "BB": R_BB_ensemble.reshape(
+                        n_win_y, n_win_x, corr_size[0], corr_size[1]
+                    ),
+                    "AB": R_AB_ensemble.reshape(
+                        n_win_y, n_win_x, corr_size[0], corr_size[1]
+                    ),
                     # Background planes from correlating mean images: <A>⋆<A>, <B>⋆<B>, <A>⋆<B> (normalized)
-                    'AA_bg': AA_bg_norm,
-                    'BB_bg': BB_bg_norm,
-                    'AB_bg': AB_bg_norm,
-                    'norm_factors': norm_factors.reshape(n_win_y, n_win_x),  # Geometric mean used for normalization
-                    'gauss_results': gauss_results,  # All fitted parameters
-                    'initial_guesses': initial_guesses,  # Initial guess parameters for fitting
-                    'corr_size': corr_size,
-                    'n_win_y': n_win_y,
-                    'n_win_x': n_win_x,
-                    'pass_idx': pass_idx,
+                    "AA_bg": AA_bg_norm,
+                    "BB_bg": BB_bg_norm,
+                    "AB_bg": AB_bg_norm,
+                    "norm_factors": norm_factors.reshape(
+                        n_win_y, n_win_x
+                    ),  # Geometric mean used for normalization
+                    "gauss_results": gauss_results,  # All fitted parameters
+                    "initial_guesses": initial_guesses,  # Initial guess parameters for fitting
+                    "corr_size": corr_size,
+                    "n_win_y": n_win_y,
+                    "n_win_x": n_win_x,
+                    "pass_idx": pass_idx,
                     # Window weights used in cross-correlation
-                    'win_weight_A': correlator_for_weights.win_weights_A[pass_idx],
-                    'win_weight_B': correlator_for_weights.win_weights_B[pass_idx],
-                    # Pair-count envelopes ALREADY DIVIDED OUT of AA/BB/AB above
-                    # (env_ab is ones for single mode — AB is plateau-protected).
-                    # Presence of these keys tells downstream tools not to re-divide.
-                    'env_auto': env_auto,
-                    'env_ab': env_ab,
+                    "win_weight_A": correlator_for_weights.win_weights_A[pass_idx],
+                    "win_weight_B": correlator_for_weights.win_weights_B[pass_idx],
+                    # Pair-count envelopes stored for REFERENCE ONLY — the divide is
+                    # currently DISABLED, so AA/BB/AB above still carry the envelope.
+                    # Downstream tools must check 'env_divided' before deciding whether
+                    # to divide; the presence of env_auto/env_ab alone means nothing.
+                    "env_auto": env_auto,
+                    "env_ab": env_ab,
+                    "env_divided": False,
                 }
 
                 savemat(
                     outdir / f"planes_pass_{pass_idx + 1}.mat",
                     planes_dict,
-                    do_compression=True
+                    do_compression=True,
                 )
-                logging.info(f"Pass {pass_idx + 1}: Saved correlation planes to {outdir}/planes_pass_{pass_idx + 1}.mat")
+                logging.info(
+                    f"Pass {pass_idx + 1}: Saved correlation planes to {outdir}/planes_pass_{pass_idx + 1}.mat"
+                )
 
                 # Save first-pair warped images to separate MAT file
                 if pass_data.get("first_pair_A") is not None:
                     warped_dict = {
-                        'A_warped': pass_data["first_pair_A"],
-                        'B_warped': pass_data["first_pair_B"],
-                        'pass_idx': pass_idx,
+                        "A_warped": pass_data["first_pair_A"],
+                        "B_warped": pass_data["first_pair_B"],
+                        "pass_idx": pass_idx,
                     }
                     savemat(
                         outdir / f"warped_pass_{pass_idx + 1}.mat",
                         warped_dict,
-                        do_compression=True
+                        do_compression=True,
                     )
-                    logging.info(f"Pass {pass_idx + 1}: Saved first-pair warped images to {outdir}/warped_pass_{pass_idx + 1}.mat")
+                    logging.info(
+                        f"Pass {pass_idx + 1}: Saved first-pair warped images to {outdir}/warped_pass_{pass_idx + 1}.mat"
+                    )
             except Exception as e:
-                logging.warning(f"Pass {pass_idx + 1}: Failed to save correlation planes: {e}")
+                logging.warning(
+                    f"Pass {pass_idx + 1}: Failed to save correlation planes: {e}"
+                )
 
         logging.info(f"Pass {pass_idx + 1}: Finalization complete")
 
@@ -1322,12 +1529,14 @@ class SinglePassAccumulator:
 
         # Get memory usage before clearing
         mem_before = (
-            pass_data["sum_warp_A"].nbytes +
-            pass_data["sum_warp_B"].nbytes +
-            pass_data["sum_corr_AA"].nbytes +
-            pass_data["sum_corr_BB"].nbytes +
-            pass_data["sum_corr_AB"].nbytes
-        ) / (1024 ** 2)  # Convert to MB
+            pass_data["sum_warp_A"].nbytes
+            + pass_data["sum_warp_B"].nbytes
+            + pass_data["sum_corr_AA"].nbytes
+            + pass_data["sum_corr_BB"].nbytes
+            + pass_data["sum_corr_AB"].nbytes
+        ) / (
+            1024**2
+        )  # Convert to MB
 
         # Clear large arrays (keep metadata for grid info)
         pass_data["sum_warp_A"] = None

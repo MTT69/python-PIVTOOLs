@@ -20,14 +20,13 @@ Commands:
 
 import argparse
 import os
-import shutil
 import sys
 from pathlib import Path
-
 
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
 
 def get_active_paths_from_args(args, config):
     """
@@ -38,15 +37,16 @@ def get_active_paths_from_args(args, config):
 
     Returns list of path indices.
     """
-    if hasattr(args, 'active_paths') and args.active_paths:
+    if hasattr(args, "active_paths") and args.active_paths:
         # Parse comma-separated indices
-        return [int(i.strip()) for i in args.active_paths.split(',')]
+        return [int(i.strip()) for i in args.active_paths.split(",")]
     return config.active_paths
 
 
 # =============================================================================
 # TRANSFORM COMMAND
 # =============================================================================
+
 
 def transform_command(args):
     """Apply geometric transforms to PIV vector fields."""
@@ -65,7 +65,9 @@ def transform_command(args):
         # Use transforms from config
         camera_transforms = config.transforms_cameras or {}
         if not camera_transforms:
-            print("Error: No transforms configured. Use --operations or set transforms.cameras in config.yaml")
+            print(
+                "Error: No transforms configured. Use --operations or set transforms.cameras in config.yaml"
+            )
             sys.exit(1)
 
     type_name = args.type_name or config.transforms_type_name or "instantaneous"
@@ -88,9 +90,13 @@ def transform_command(args):
 
     # Update config if CLI specified source_endpoint
     if args.source_endpoint or args.merged:
-        config.data.setdefault("transforms", {})["source_endpoint"] = source_endpoint or "regular"
+        config.data.setdefault("transforms", {})["source_endpoint"] = (
+            source_endpoint or "regular"
+        )
         config.save()
-        print(f"Updated config: transforms.source_endpoint = {source_endpoint or 'regular'}")
+        print(
+            f"Updated config: transforms.source_endpoint = {source_endpoint or 'regular'}"
+        )
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -127,7 +133,7 @@ def transform_command(args):
                 for cam, res in result.get("camera_results", {}).items():
                     print(f"  Camera {cam}: {res.get('transformed_files', 0)} files")
             else:
-                print(f"  FAILED")
+                print("  FAILED")
         except Exception as e:
             print(f"  FAILED - {e}")
             results.append({"success": False, "error": str(e), "path_idx": path_idx})
@@ -146,6 +152,7 @@ def transform_command(args):
 # =============================================================================
 # MERGE COMMAND
 # =============================================================================
+
 
 def merge_command(args):
     """Merge multi-camera vector fields using Hanning blend."""
@@ -216,11 +223,14 @@ def merge_command(args):
 # STATISTICS COMMAND
 # =============================================================================
 
+
 def statistics_command(args):
     """Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity, etc.)."""
     from pivtools_core.config import get_config
     from pivtools_core.paths import get_data_paths
-    from pivtools_gui.vector_statistics.instantaneous_statistics import VectorStatisticsProcessor
+    from pivtools_gui.vector_statistics.instantaneous_statistics import (
+        VectorStatisticsProcessor,
+    )
 
     config = get_config()
 
@@ -255,13 +265,17 @@ def statistics_command(args):
         config.data.setdefault("statistics", {})["workflow"] = "stereo"
         config.data["statistics"]["source_endpoint"] = "stereo"
         config.save()
-        print("Updated config: statistics.workflow = stereo, statistics.source_endpoint = stereo")
+        print(
+            "Updated config: statistics.workflow = stereo, statistics.source_endpoint = stereo"
+        )
     elif use_merged:
         # Update config to persist the workflow
         config.data.setdefault("statistics", {})["workflow"] = "after_merge"
         config.data["statistics"]["source_endpoint"] = "merged"
         config.save()
-        print("Updated config: statistics.workflow = after_merge, statistics.source_endpoint = merged")
+        print(
+            "Updated config: statistics.workflow = after_merge, statistics.source_endpoint = merged"
+        )
     else:
         # Fall back to config workflow
         use_merged = config.statistics_workflow == "after_merge"
@@ -282,7 +296,11 @@ def statistics_command(args):
 
     # Get required config values
     num_frame_pairs = config.num_frame_pairs
-    vector_format = config.vector_format[0] if isinstance(config.vector_format, list) else config.vector_format
+    vector_format = (
+        config.vector_format[0]
+        if isinstance(config.vector_format, list)
+        else config.vector_format
+    )
     gamma_radius = config.statistics_gamma_radius
 
     results = []
@@ -295,7 +313,14 @@ def statistics_command(args):
         if use_stereo:
             # Stereo: single combined 3D result
             stereo_pairs = config.stereo_pairs
-            cam_pair = stereo_pairs[0] if stereo_pairs else (config.camera_numbers[0], config.camera_numbers[1] if len(config.camera_numbers) > 1 else 2)
+            cam_pair = (
+                stereo_pairs[0]
+                if stereo_pairs
+                else (
+                    config.camera_numbers[0],
+                    config.camera_numbers[1] if len(config.camera_numbers) > 1 else 2,
+                )
+            )
             targets = [("stereo", cam_pair)]
         elif use_merged:
             targets = [("merged", None)]
@@ -313,7 +338,7 @@ def statistics_command(args):
                         cam=cam_pair[0],
                         type_name=type_name,
                         use_stereo=True,
-                        stereo_camera_pair=cam_pair
+                        stereo_camera_pair=cam_pair,
                     )
                     data_dir = paths["data_dir"]
                     label = f"Stereo Cam{cam_pair[0]}_Cam{cam_pair[1]}"
@@ -331,7 +356,13 @@ def statistics_command(args):
                         config=config,
                     )
                 elif target_type == "merged":
-                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / "Merged" / type_name
+                    data_dir = (
+                        base_dir
+                        / "calibrated_piv"
+                        / str(num_frame_pairs)
+                        / "Merged"
+                        / type_name
+                    )
                     label = "Merged"
                     processor = VectorStatisticsProcessor(
                         data_dir=data_dir,
@@ -346,7 +377,13 @@ def statistics_command(args):
                     )
                 else:  # camera
                     cam = target_value
-                    data_dir = base_dir / "calibrated_piv" / str(num_frame_pairs) / f"Cam{cam}" / type_name
+                    data_dir = (
+                        base_dir
+                        / "calibrated_piv"
+                        / str(num_frame_pairs)
+                        / f"Cam{cam}"
+                        / type_name
+                    )
                     label = f"Camera {cam}"
                     processor = VectorStatisticsProcessor(
                         data_dir=data_dir,
@@ -370,7 +407,14 @@ def statistics_command(args):
                     print(f"  {label}: FAILED - {result.get('error', 'Unknown')}")
             except Exception as e:
                 print(f"  {label}: FAILED - {e}")
-                results.append({"success": False, "error": str(e), "path_idx": path_idx, "target": label})
+                results.append(
+                    {
+                        "success": False,
+                        "error": str(e),
+                        "path_idx": path_idx,
+                        "target": label,
+                    }
+                )
 
     # Summary
     print("\n" + "=" * 60)
@@ -385,6 +429,7 @@ def statistics_command(args):
 # =============================================================================
 # VIDEO COMMAND
 # =============================================================================
+
 
 def video_command(args):
     """Create visualization video from PIV data."""
@@ -417,7 +462,11 @@ def video_command(args):
     # Parse color limits
     lower_limit = args.lower if args.lower is not None else config.video_lower_limit
     upper_limit = args.upper if args.upper is not None else config.video_upper_limit
-    cmap = args.cmap if args.cmap else (config.video_cmap if config.video_cmap != "default" else None)
+    cmap = (
+        args.cmap
+        if args.cmap
+        else (config.video_cmap if config.video_cmap != "default" else None)
+    )
 
     active_paths = get_active_paths_from_args(args, config)
     if not active_paths:
@@ -468,7 +517,9 @@ def video_command(args):
 
             if result.get("success"):
                 print(f"  Created: {result.get('out_path', '')}")
-                print(f"  Frames: {result.get('frames', 0)}, Time: {result.get('elapsed_sec', 0):.1f}s")
+                print(
+                    f"  Frames: {result.get('frames', 0)}, Time: {result.get('elapsed_sec', 0):.1f}s"
+                )
             else:
                 print(f"  FAILED - {result.get('error', 'Unknown')}")
         except Exception as e:
@@ -489,6 +540,7 @@ def video_command(args):
 # INIT COMMAND
 # =============================================================================
 
+
 def init_command(args):
     """Initialize a new PIVTOOLs workspace with default config.yaml"""
     cwd = Path.cwd()
@@ -501,26 +553,13 @@ def init_command(args):
             print("Use --force to overwrite")
             return
         else:
-            print(f"Overwriting existing config.yaml")
+            print("Overwriting existing config.yaml")
 
-    # Get the default config from package
-    try:
-        import pivtools_core
-        default_config = Path(pivtools_core.__file__).parent / "config.yaml"
-
-        if not default_config.exists():
-            # Fallback: create a basic config
-            create_default_config(config_path)
-        else:
-            shutil.copy2(default_config, config_path)
-            print(f"Created config.yaml at {config_path}")
-
-    except ImportError:
-        # Fallback if package not properly installed
-        create_default_config(config_path)
+    create_default_config(config_path)
 
     print("PIVTOOLs workspace initialized!")
     print(f"Edit {config_path} to configure your PIV analysis")
+
 
 def create_default_config(config_path):
     """Create a default config.yaml file"""
@@ -666,13 +705,17 @@ instantaneous_piv:
   image_warp_interpolation: cubic
   save_mode: minimal
   save_compression: false
+  dump_correlation_planes: false
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   background_subtraction_method: correlation
+  per_pair_normalization: false
+  predictor_rounding: false
+  lm_soft_weighting: true
+  lm_k_max_cap: null
   gradient_correction: false
-  mask_center_pixel: true
   window_size:
   - - 128
     - 128
@@ -781,26 +824,28 @@ transforms:
 
 """
 
-    with open(config_path, 'w') as f:
+    # Explicit UTF-8: the template holds superscripts (e.g. r⁴) that Windows'
+    # default cp1252 codec cannot encode.
+    with open(config_path, "w", encoding="utf-8") as f:
         f.write(default_config.strip())
     print(f"Created default config.yaml at {config_path}")
 
+
 def instantaneous_command(args):
     """Run instantaneous PIV processing."""
-    import os
     from pivtools_core import instantaneous
 
     if args.active_paths:
-        os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+        os.environ["PIV_ACTIVE_PATHS"] = args.active_paths
     # instantaneous/ensemble delegate to main(), which reads config.camera_numbers,
     # so the camera override is passed via env var (statistics/transform own their
     # loop and build a local list instead). Use `is not None` so an explicit bad
     # value like 0 reaches the property and fails loud; pop a stale value when the
     # flag is absent so a missing flag always means "all cameras".
     if args.camera is not None:
-        os.environ['PIV_CAMERA'] = str(args.camera)
+        os.environ["PIV_CAMERA"] = str(args.camera)
     else:
-        os.environ.pop('PIV_CAMERA', None)
+        os.environ.pop("PIV_CAMERA", None)
 
     print("=" * 60)
     print("Instantaneous PIV Processing")
@@ -817,26 +862,26 @@ def instantaneous_command(args):
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
 
 def ensemble_command(args):
     """Run ensemble PIV processing."""
-    import os
     from pivtools_core import ensemble
 
     if args.active_paths:
-        os.environ['PIV_ACTIVE_PATHS'] = args.active_paths
+        os.environ["PIV_ACTIVE_PATHS"] = args.active_paths
     # instantaneous/ensemble delegate to main(), which reads config.camera_numbers,
     # so the camera override is passed via env var (statistics/transform own their
     # loop and build a local list instead). Use `is not None` so an explicit bad
     # value like 0 reaches the property and fails loud; pop a stale value when the
     # flag is absent so a missing flag always means "all cameras".
     if args.camera is not None:
-        os.environ['PIV_CAMERA'] = str(args.camera)
+        os.environ["PIV_CAMERA"] = str(args.camera)
     else:
-        os.environ.pop('PIV_CAMERA', None)
+        os.environ.pop("PIV_CAMERA", None)
 
     print("=" * 60)
     print("Ensemble PIV Processing")
@@ -853,209 +898,253 @@ def ensemble_command(args):
     except Exception as e:
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
+
 def main():
     parser = argparse.ArgumentParser(
-        description="PIVTOOLs - Particle Image Velocimetry Tools",
-        prog="pivtools-cli"
+        description="PIVTOOLs - Particle Image Velocimetry Tools", prog="pivtools-cli"
     )
     import logging
+
     logging.info("Starting PIVTOOLs CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # init command
     init_parser = subparsers.add_parser(
-        "init",
-        help="Initialize a new PIVTOOLs workspace with default config.yaml"
+        "init", help="Initialize a new PIVTOOLs workspace with default config.yaml"
     )
     init_parser.add_argument(
-        "--force", "-f",
-        action="store_true",
-        help="Overwrite existing config.yaml"
+        "--force", "-f", action="store_true", help="Overwrite existing config.yaml"
     )
     init_parser.set_defaults(func=init_command)
 
     # instantaneous command
     instantaneous_parser = subparsers.add_parser(
-        "instantaneous",
-        help="Run instantaneous PIV processing"
+        "instantaneous", help="Run instantaneous PIV processing"
     )
     instantaneous_parser.add_argument(
-        "--active-paths", "-p", default=None,
-        help="Comma-separated path indices to process (e.g., '0,1,2')"
+        "--active-paths",
+        "-p",
+        default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')",
     )
     instantaneous_parser.add_argument(
-        "--camera", "-c", type=int, default=None,
-        help="Camera number to process (default: all from config)"
+        "--camera",
+        "-c",
+        type=int,
+        default=None,
+        help="Camera number to process (default: all from config)",
     )
     instantaneous_parser.set_defaults(func=instantaneous_command)
 
     # ensemble command
     ensemble_parser = subparsers.add_parser(
-        "ensemble",
-        help="Run ensemble PIV processing"
+        "ensemble", help="Run ensemble PIV processing"
     )
     ensemble_parser.add_argument(
-        "--active-paths", "-p", default=None,
-        help="Comma-separated path indices to process (e.g., '0,1,2')"
+        "--active-paths",
+        "-p",
+        default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')",
     )
     ensemble_parser.add_argument(
-        "--camera", "-c", type=int, default=None,
-        help="Camera number to process (default: all from config)"
+        "--camera",
+        "-c",
+        type=int,
+        default=None,
+        help="Camera number to process (default: all from config)",
     )
     ensemble_parser.set_defaults(func=ensemble_command)
 
     # transform command
     transform_parser = subparsers.add_parser(
-        "transform",
-        help="Apply geometric transforms to PIV vector fields"
+        "transform", help="Apply geometric transforms to PIV vector fields"
     )
     transform_parser.add_argument(
-        "--camera", "-c", type=int, default=None,
-        help="Camera number (default: all from config)"
+        "--camera",
+        "-c",
+        type=int,
+        default=None,
+        help="Camera number (default: all from config)",
     )
     transform_parser.add_argument(
-        "--type-name", "-t", default=None,
+        "--type-name",
+        "-t",
+        default=None,
         choices=["instantaneous", "ensemble"],
-        help="Data type (default: from config or instantaneous)"
+        help="Data type (default: from config or instantaneous)",
     )
     transform_parser.add_argument(
-        "--operations", "-o", default=None,
-        help="Comma-separated transforms: flip_ud,flip_lr,rotate_90_cw,rotate_90_ccw,rotate_180"
+        "--operations",
+        "-o",
+        default=None,
+        help="Comma-separated transforms: flip_ud,flip_lr,rotate_90_cw,rotate_90_ccw,rotate_180",
     )
     transform_parser.add_argument(
-        "--merged", "-m", action="store_true",
-        help="Transform merged data instead of per-camera (deprecated: use --source-endpoint merged)"
+        "--merged",
+        "-m",
+        action="store_true",
+        help="Transform merged data instead of per-camera (deprecated: use --source-endpoint merged)",
     )
     transform_parser.add_argument(
-        "--source-endpoint", "-s", default=None,
+        "--source-endpoint",
+        "-s",
+        default=None,
         choices=["regular", "merged", "stereo"],
-        help="Data source: regular (per-camera), merged, or stereo"
+        help="Data source: regular (per-camera), merged, or stereo",
     )
     transform_parser.add_argument(
-        "--active-paths", "-p", default=None,
-        help="Comma-separated path indices to process (e.g., '0,1,2')"
+        "--active-paths",
+        "-p",
+        default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')",
     )
     transform_parser.set_defaults(func=transform_command)
 
     # merge command
     merge_parser = subparsers.add_parser(
-        "merge",
-        help="Merge multi-camera vector fields using Hanning blend"
+        "merge", help="Merge multi-camera vector fields using Hanning blend"
     )
     merge_parser.add_argument(
-        "--cameras", "-c", default=None,
-        help="Comma-separated camera numbers to merge (default: from config)"
+        "--cameras",
+        "-c",
+        default=None,
+        help="Comma-separated camera numbers to merge (default: from config)",
     )
     merge_parser.add_argument(
-        "--type-name", "-t", default=None,
+        "--type-name",
+        "-t",
+        default=None,
         choices=["instantaneous", "ensemble"],
-        help="Data type (default: from config or instantaneous)"
+        help="Data type (default: from config or instantaneous)",
     )
     merge_parser.add_argument(
-        "--active-paths", "-p", default=None,
-        help="Comma-separated path indices to process (e.g., '0,1,2')"
+        "--active-paths",
+        "-p",
+        default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')",
     )
     merge_parser.set_defaults(func=merge_command)
 
     # statistics command
     statistics_parser = subparsers.add_parser(
         "statistics",
-        help="Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity)"
+        help="Compute PIV statistics (mean, Reynolds stresses, TKE, vorticity)",
     )
     statistics_parser.add_argument(
-        "--camera", "-c", type=int, default=None,
-        help="Camera number to process (default: all from config)"
+        "--camera",
+        "-c",
+        type=int,
+        default=None,
+        help="Camera number to process (default: all from config)",
     )
     statistics_parser.add_argument(
-        "--type-name", "-t", default=None,
+        "--type-name",
+        "-t",
+        default=None,
         choices=["instantaneous", "ensemble"],
-        help="Data type (default: instantaneous)"
+        help="Data type (default: instantaneous)",
     )
     statistics_parser.add_argument(
-        "--merged", "-m", action="store_true",
-        help="Process merged data instead of per-camera"
+        "--merged",
+        "-m",
+        action="store_true",
+        help="Process merged data instead of per-camera",
     )
     statistics_parser.add_argument(
-        "--active-paths", "-p", default=None,
-        help="Comma-separated path indices to process (e.g., '0,1,2')"
+        "--active-paths",
+        "-p",
+        default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')",
     )
     statistics_parser.add_argument(
-        "--stereo", action="store_true",
-        help="Process stereo PIV data (deprecated: use --source-endpoint stereo)"
+        "--stereo",
+        action="store_true",
+        help="Process stereo PIV data (deprecated: use --source-endpoint stereo)",
     )
     statistics_parser.add_argument(
-        "--source-endpoint", "-s", default=None,
+        "--source-endpoint",
+        "-s",
+        default=None,
         choices=["regular", "merged", "stereo"],
-        help="Data source: regular (per-camera), merged, or stereo"
+        help="Data source: regular (per-camera), merged, or stereo",
     )
     statistics_parser.add_argument(
-        "--workflow", "-w", default=None,
+        "--workflow",
+        "-w",
+        default=None,
         choices=["per_camera", "after_merge", "both", "stereo"],
-        help="Workflow: per_camera, after_merge, both, or stereo"
+        help="Workflow: per_camera, after_merge, both, or stereo",
     )
     statistics_parser.set_defaults(func=statistics_command)
 
     # video command
     video_parser = subparsers.add_parser(
-        "video",
-        help="Create visualization video from PIV data"
+        "video", help="Create visualization video from PIV data"
     )
     video_parser.add_argument(
-        "--camera", "-c", type=int, default=None,
-        help="Camera number (default: from config)"
+        "--camera",
+        "-c",
+        type=int,
+        default=None,
+        help="Camera number (default: from config)",
     )
     video_parser.add_argument(
-        "--variable", "-v", default=None,
-        help="Variable to visualize: ux, uy, uz, mag, vorticity, divergence, u_prime, etc."
+        "--variable",
+        "-v",
+        default=None,
+        help="Variable to visualize: ux, uy, uz, mag, vorticity, divergence, u_prime, etc.",
     )
     video_parser.add_argument(
-        "--run", "-r", type=int, default=None,
-        help="Run number (default: 1)"
+        "--run", "-r", type=int, default=None, help="Run number (default: 1)"
     )
     video_parser.add_argument(
-        "--data-source", "-d", default=None,
+        "--data-source",
+        "-d",
+        default=None,
         choices=["calibrated", "uncalibrated", "merged", "stereo", "inst_stats"],
-        help="Data source (default: calibrated)"
+        help="Data source (default: calibrated)",
     )
     video_parser.add_argument(
-        "--fps", type=int, default=None,
-        help="Frame rate (default: 30)"
+        "--fps", type=int, default=None, help="Frame rate (default: 30)"
     )
     video_parser.add_argument(
-        "--crf", type=int, default=None,
-        help="Video quality 0-51, lower=better (default: 15)"
+        "--crf",
+        type=int,
+        default=None,
+        help="Video quality 0-51, lower=better (default: 15)",
     )
     video_parser.add_argument(
-        "--resolution", default=None,
-        help="Output resolution: WIDTHxHEIGHT or '4k' (default: 1920x1080)"
+        "--resolution",
+        default=None,
+        help="Output resolution: WIDTHxHEIGHT or '4k' (default: 1920x1080)",
     )
     video_parser.add_argument(
-        "--cmap", default=None,
-        help="Colormap name (default: auto)"
+        "--cmap", default=None, help="Colormap name (default: auto)"
     )
     video_parser.add_argument(
-        "--lower", type=float, default=None,
-        help="Lower color limit (default: auto)"
+        "--lower", type=float, default=None, help="Lower color limit (default: auto)"
     )
     video_parser.add_argument(
-        "--upper", type=float, default=None,
-        help="Upper color limit (default: auto)"
+        "--upper", type=float, default=None, help="Upper color limit (default: auto)"
     )
     video_parser.add_argument(
-        "--test", action="store_true",
-        help="Test mode: only process 50 frames"
+        "--test", action="store_true", help="Test mode: only process 50 frames"
     )
     video_parser.add_argument(
-        "--active-paths", "-p", default=None,
-        help="Comma-separated path indices to process (e.g., '0,1,2')"
+        "--active-paths",
+        "-p",
+        default=None,
+        help="Comma-separated path indices to process (e.g., '0,1,2')",
     )
     video_parser.set_defaults(func=video_command)
 
     # calibration (unified pinhole calibration) subcommands
     from pivtools_cli.calibration_cli import register_calibration_subparsers
+
     register_calibration_subparsers(subparsers)
 
     args = parser.parse_args()
@@ -1065,6 +1154,7 @@ def main():
         return
 
     args.func(args)
+
 
 if __name__ == "__main__":
     main()

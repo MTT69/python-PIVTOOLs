@@ -91,13 +91,17 @@ def warp_board(
     if H is None:
         raise RuntimeError("findHomography returned None")
     return cv2.warpPerspective(
-        frontal_img, H, out_size,
+        frontal_img,
+        H,
+        out_size,
         flags=cv2.INTER_LINEAR,
         borderValue=200,
     )
 
 
-def save_ground_truth(out_path: Path, camera_matrix: np.ndarray, poses: list, **extra_arrays):
+def save_ground_truth(
+    out_path: Path, camera_matrix: np.ndarray, poses: list, **extra_arrays
+):
     """Save ground-truth camera parameters and poses to a .npz file."""
     rvecs = np.array([p[0] for p in poses])
     tvecs = np.array([p[1] for p in poses])

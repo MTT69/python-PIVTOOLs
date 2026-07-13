@@ -10,20 +10,20 @@ model-agnostic.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
-import pytest
 
-from pivtools_gui.calibration.camera_model import (
-    CameraModel, DistortionModel, PolynomialModel, fit_polynomial, _poly_basis,
-)
-from pivtools_gui.calibration.detection.base import DetectionResult
-from pivtools_gui.calibration.pipeline import Calibrator
 from pivtools_gui.calibration import apply as c2apply
 from pivtools_gui.calibration import record as REC
 from pivtools_gui.calibration import world_frame as WF
-
+from pivtools_gui.calibration.camera_model import (
+    CameraModel,
+    DistortionModel,
+    PolynomialModel,
+    _poly_basis,
+    fit_polynomial,
+)
+from pivtools_gui.calibration.detection.base import DetectionResult
+from pivtools_gui.calibration.pipeline import Calibrator
 
 # ---------------------------------------------------------------------------
 # Synthetic planar dot grid + projection through a known camera
@@ -37,21 +37,22 @@ def _planar_board():
     cols, rows = np.meshgrid(np.arange(DOT_COLS), np.arange(DOT_ROWS))
     cols = cols.ravel()
     rows = rows.ravel()
-    world = np.column_stack([cols * SPACING_MM, rows * SPACING_MM,
-                             np.zeros(cols.size)]).astype(np.float64)
+    world = np.column_stack(
+        [cols * SPACING_MM, rows * SPACING_MM, np.zeros(cols.size)]
+    ).astype(np.float64)
     grid = np.column_stack([cols, rows]).astype(np.int64)
     return world, grid
 
 
 def _project(world, *, rvec, tvec, k, dist, size):
     import cv2
+
     px, _ = cv2.projectPoints(world.reshape(-1, 1, 3), rvec, tvec, k, dist)
     return px.reshape(-1, 2)
 
 
 def _synthetic_detection(tilt_deg=14.0):
     """A tilted planar dotboard detection: image pixels + board-local mm + grid."""
-    import cv2
     world, grid = _planar_board()
     w, h = 1600, 1200
     k = np.array([[2200.0, 0, w / 2], [0, 2200.0, h / 2], [0, 0, 1]], np.float64)
@@ -64,8 +65,12 @@ def _synthetic_detection(tilt_deg=14.0):
     tvec = np.array([-cx_mm, -cy_mm, 600.0], np.float64)
     px = _project(world, rvec=rvec, tvec=tvec, k=k, dist=dist, size=(w, h))
     det = DetectionResult(
-        success=True, board_type="dotboard", image_points=px,
-        board_local_points=world, grid_indices=grid, spacing_mm=SPACING_MM,
+        success=True,
+        board_type="dotboard",
+        image_points=px,
+        board_local_points=world,
+        grid_indices=grid,
+        spacing_mm=SPACING_MM,
     )
     return det, (w, h)
 
@@ -86,6 +91,7 @@ class _FixedDetector:
 # Fit + evaluation
 # ---------------------------------------------------------------------------
 
+
 def test_fit_polynomial_recovers_exact_cubic():
     """A degree-3 target is recovered to machine precision (the model is exact)."""
     rng = np.random.RandomState(0)
@@ -96,7 +102,9 @@ def test_fit_polynomial_recovers_exact_cubic():
     basis = _poly_basis(s, t)
     cx = rng.uniform(-30, 30, 10)
     cy = rng.uniform(-30, 30, 10)
-    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):  # macOS Accelerate matmul false-positive
+    with np.errstate(
+        over="ignore", invalid="ignore", divide="ignore"
+    ):  # macOS Accelerate matmul false-positive
         world = np.column_stack([basis @ cx, basis @ cy, np.zeros(len(px))])
     m = fit_polynomial(px, world, (w, h))
     assert np.allclose(m.coeffs_x, cx, atol=1e-9)
@@ -132,14 +140,23 @@ def test_back_project_signature_parity():
 # Record dispatch
 # ---------------------------------------------------------------------------
 
+
 def test_save_load_model_type_dispatch(tmp_path):
     """A polynomial MonoRecord round-trips and loads back as a PolynomialModel."""
     det, size = _synthetic_detection()
     m = fit_polynomial(det.image_points, det.board_local_points, size)
-    wf = REC.WorldFrame(mode="clicks", origin_grid=np.array([0.0, 0.0]),
-                        col_sign=1, row_sign=-1, origin_mm=np.array([10.0, 5.0]))
+    wf = REC.WorldFrame(
+        mode="clicks",
+        origin_grid=np.array([0.0, 0.0]),
+        col_sign=1,
+        row_sign=-1,
+        origin_mm=np.array([10.0, 5.0]),
+    )
     rec_in = REC.MonoRecord(
-        camera=1, board_type="dotboard", camera_model=m, world_frame=wf,
+        camera=1,
+        board_type="dotboard",
+        camera_model=m,
+        world_frame=wf,
         per_view_rms=[float(np.hypot(m.rms_x_mm, m.rms_y_mm))],
         board_meta={"spacing_mm": SPACING_MM, "n_views": 1},
     )
@@ -161,11 +178,20 @@ def test_pinhole_record_still_loads(tmp_path):
     """Back-compat: a pinhole record (no model_type) still loads as a CameraModel."""
     cm = CameraModel(
         K=np.array([[2000.0, 0, 800], [0, 2000.0, 600], [0, 0, 1]]),
-        dist=np.zeros(5), R=np.eye(3), t=np.array([[0.0], [0.0], [500.0]]),
-        image_size=(1600, 1200), distortion_model=DistortionModel.STANDARD, rms=0.2,
+        dist=np.zeros(5),
+        R=np.eye(3),
+        t=np.array([[0.0], [0.0], [500.0]]),
+        image_size=(1600, 1200),
+        distortion_model=DistortionModel.STANDARD,
+        rms=0.2,
     )
-    rec_in = REC.MonoRecord(camera=1, board_type="dotboard", camera_model=cm,
-                            per_view_rms=[0.2], board_meta={"spacing_mm": SPACING_MM})
+    rec_in = REC.MonoRecord(
+        camera=1,
+        board_type="dotboard",
+        camera_model=cm,
+        per_view_rms=[0.2],
+        board_meta={"spacing_mm": SPACING_MM},
+    )
     rec_out = REC.load_mono(REC.save_mono(rec_in, tmp_path))
     assert isinstance(rec_out.camera_model, CameraModel)
     assert np.allclose(rec_out.camera_model.K, cm.K)
@@ -175,15 +201,18 @@ def test_pinhole_record_still_loads(tmp_path):
 # Pipeline branch + origin_mm
 # ---------------------------------------------------------------------------
 
+
 def test_run_mono_polynomial_pipeline():
     """Calibrator(model_type='polynomial') fits a single-plane model honouring origin_mm."""
     det, size = _synthetic_detection()
     images = [np.zeros((size[1], size[0]), np.uint8)]  # only datum is read
-    calr = Calibrator(detector=_FixedDetector(det), board_type="dotboard",
-                      model_type="polynomial")
+    calr = Calibrator(
+        detector=_FixedDetector(det), board_type="dotboard", model_type="polynomial"
+    )
     # No clicks -> default frame (origin at the min grid corner), origin_mm offset (10, 5).
-    record = calr.run_mono(images, camera=1, datum_index=0, spacing_mm=SPACING_MM,
-                           origin_mm=(10.0, 5.0))
+    record = calr.run_mono(
+        images, camera=1, datum_index=0, spacing_mm=SPACING_MM, origin_mm=(10.0, 5.0)
+    )
     assert isinstance(record.camera_model, PolynomialModel)
     # The fit target is apply_world_frame(grid, spacing, wf) — back_project must match it.
     world = WF.apply_world_frame(det.grid_indices, SPACING_MM, record.world_frame)
@@ -191,8 +220,12 @@ def test_run_mono_polynomial_pipeline():
     assert np.allclose(back[:, :2], world[:, :2], atol=0.05)
     # The origin dot (min grid corner) must read the user-specified (10, 5) mm.
     og = record.world_frame.origin_grid
-    oi = int(np.argmin(np.abs(det.grid_indices[:, 0] - og[0])
-                       + np.abs(det.grid_indices[:, 1] - og[1])))
+    oi = int(
+        np.argmin(
+            np.abs(det.grid_indices[:, 0] - og[0])
+            + np.abs(det.grid_indices[:, 1] - og[1])
+        )
+    )
     assert np.allclose(back[oi, :2], [10.0, 5.0], atol=0.05)
 
 

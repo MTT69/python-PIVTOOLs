@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 # Model bridge + dewarp world bounds
 # ---------------------------------------------------------------------------
 
+
 def pinhole_from_model(model: CameraModel) -> PinholeCamera:
     """Adapt a calibration ``CameraModel`` to the algorithm core's ``PinholeCamera``.
 
@@ -84,8 +85,10 @@ def _camera_world_bounds(model: CameraModel) -> Tuple[float, float, float, float
     if world.size == 0:
         raise ValueError("all edge projections returned NaN — check the camera model")
     return (
-        float(world[:, 0].min()), float(world[:, 0].max()),
-        float(world[:, 1].min()), float(world[:, 1].max()),
+        float(world[:, 0].min()),
+        float(world[:, 0].max()),
+        float(world[:, 1].min()),
+        float(world[:, 1].max()),
     )
 
 
@@ -114,16 +117,19 @@ def stereo_world_bounds(
 # Particle-image loader (recorded PIV frames from a base_path dataset)
 # ---------------------------------------------------------------------------
 
+
 def _to_pair_gray(pair: np.ndarray) -> np.ndarray:
     """Coerce a read_pair result to a ``(2, H, W)`` grayscale stack."""
-    if pair.ndim == 2:                       # single frame -> duplicate
+    if pair.ndim == 2:  # single frame -> duplicate
         return np.stack([pair, pair])
-    if pair.ndim == 4:                       # colour (2, H, W, C) -> gray
-        return np.stack([
-            cv2.cvtColor(pair[0], cv2.COLOR_BGR2GRAY),
-            cv2.cvtColor(pair[1], cv2.COLOR_BGR2GRAY),
-        ])
-    return pair                              # already (2, H, W)
+    if pair.ndim == 4:  # colour (2, H, W, C) -> gray
+        return np.stack(
+            [
+                cv2.cvtColor(pair[0], cv2.COLOR_BGR2GRAY),
+                cv2.cvtColor(pair[1], cv2.COLOR_BGR2GRAY),
+            ]
+        )
+    return pair  # already (2, H, W)
 
 
 def load_particle_pairs(
@@ -179,7 +185,9 @@ def load_particle_pairs(
     stack2 = np.stack(pairs2)
     logger.info(
         "self-cal: loaded %d particle pairs from %s / %s",
-        stack1.shape[0], cam1_path, cam2_path,
+        stack1.shape[0],
+        cam1_path,
+        cam2_path,
     )
 
     if apply_filters:
@@ -209,6 +217,7 @@ def load_particle_pairs(
 # ---------------------------------------------------------------------------
 # Run + record-block packing
 # ---------------------------------------------------------------------------
+
 
 def run(
     record: StereoRecord,
@@ -241,15 +250,18 @@ def run(
 
     cam1 = pinhole_from_model(record.model1)
     cam2 = pinhole_from_model(record.model2)
-    bounds = world_bounds if world_bounds is not None else stereo_world_bounds(
-        record.model1, record.model2
+    bounds = (
+        world_bounds
+        if world_bounds is not None
+        else stereo_world_bounds(record.model1, record.model2)
     )
-    logger.info(
-        "self-cal FOV intersection: x=[%.1f,%.1f] y=[%.1f,%.1f] mm", *bounds
-    )
+    logger.info("self-cal FOV intersection: x=[%.1f,%.1f] y=[%.1f,%.1f] mm", *bounds)
 
     result = run_self_calibration(
-        cam1, cam2, images_cam1, images_cam2,
+        cam1,
+        cam2,
+        images_cam1,
+        images_cam2,
         world_bounds=bounds,
         window_size=window_size,
         overlap=overlap,
@@ -264,10 +276,16 @@ def run(
 
             mm_per_pixel = estimate_pixel_scale(cam1, cam2, bounds)
             c2figs.write_self_cal_figures(
-                result, cam1, cam2, images_cam1, images_cam2,
-                world_bounds=bounds, mm_per_pixel=mm_per_pixel,
+                result,
+                cam1,
+                cam2,
+                images_cam1,
+                images_cam2,
+                world_bounds=bounds,
+                mm_per_pixel=mm_per_pixel,
                 figure_dir=Path(figure_dir),
-                cam1_num=int(record.cam1), cam2_num=int(record.cam2),
+                cam1_num=int(record.cam1),
+                cam2_num=int(record.cam2),
             )
         except Exception as e:  # figures are diagnostic — never fail the run on them
             logger.warning("self-cal: failed to write figures: %s", e)
@@ -300,7 +318,8 @@ def rebake_record(
         if not (hasattr(model, "R") and hasattr(model, "t")):
             raise ValueError(
                 f"self-cal rebake requires pinhole models; {label} is "
-                f"{type(model).__name__} (no extrinsics to rebake)")
+                f"{type(model).__name__} (no extrinsics to rebake)"
+            )
 
     R_corr, t_corr = plane_to_world_correction(z_offset, tilt_x, tilt_y)
     R1, t1 = rebake_pose(record.model1.R, record.model1.t, R_corr, t_corr)

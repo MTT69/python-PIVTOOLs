@@ -4,13 +4,12 @@ from typing import Optional
 
 import numpy as np
 
-from pivtools_core.config import Config
-
 from pivtools_cli.preprocessing.filters import requires_batch
 from pivtools_cli.processing.dask_pipeline import (
     apply_all_filters_slim,
     get_filter_specs,
 )
+from pivtools_core.config import Config
 
 
 def get_batch_size_for_filters(config: Config) -> int:
@@ -76,11 +75,14 @@ def apply_filters_to_batch(
 
     filter_specs = get_filter_specs(config)
 
-    batch = apply_all_filters_slim(batch, filter_specs=filter_specs, pixel_mask=pixel_mask)
+    batch = apply_all_filters_slim(
+        batch, filter_specs=filter_specs, pixel_mask=pixel_mask
+    )
 
     if save_diagnostics and batch_idx == 0 and output_dir is not None:
         filter_stages["final"] = batch.copy()
         from pivtools_cli.preprocessing.diagnostics import save_filter_diagnostics
+
         save_filter_diagnostics(
             original_batch=filter_stages.get("00_original"),
             filtered_stages=filter_stages,

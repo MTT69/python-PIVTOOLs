@@ -34,7 +34,6 @@ from scipy.io import loadmat, savemat
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.vector_loading import is_run_valid
 
-
 # =============================================================================
 # Constants
 # =============================================================================
@@ -50,6 +49,7 @@ LOADMAT_OPTIONS = {"struct_as_record": False, "squeeze_me": True}
 
 class TransformResult(TypedDict, total=False):
     """Return type for single-frame transform operations."""
+
     success: bool
     has_original: bool
     pending_transformations: List[str]
@@ -58,6 +58,7 @@ class TransformResult(TypedDict, total=False):
 
 class TransformAllResult(TypedDict, total=False):
     """Return type for batch transform operations."""
+
     success: bool
     total_frames: int
     total_cameras: int
@@ -148,8 +149,17 @@ def coords_to_structured_array(coords: np.ndarray) -> np.ndarray:
 
 # Standard PIV result fields that may exist in a piv_result struct
 PIV_RESULT_FIELDS = [
-    "ux", "uy", "b_mask", "nan_mask", "win_ctrs_x", "win_ctrs_y",
-    "peak_mag", "peak_choice", "n_windows", "predictor_field", "window_size",
+    "ux",
+    "uy",
+    "b_mask",
+    "nan_mask",
+    "win_ctrs_x",
+    "win_ctrs_y",
+    "peak_mag",
+    "peak_choice",
+    "n_windows",
+    "predictor_field",
+    "window_size",
 ]
 
 
@@ -202,7 +212,9 @@ def piv_result_to_structured_array(piv_result: np.ndarray) -> np.ndarray:
             for field in existing_fields:
                 if hasattr(run, field):
                     val = getattr(run, field)
-                    piv_struct[field][i] = np.asarray(val) if val is not None else np.array([])
+                    piv_struct[field][i] = (
+                        np.asarray(val) if val is not None else np.array([])
+                    )
                 else:
                     piv_struct[field][i] = np.array([])
     else:
@@ -210,7 +222,9 @@ def piv_result_to_structured_array(piv_result: np.ndarray) -> np.ndarray:
         for field in existing_fields:
             if hasattr(piv_result, field):
                 val = getattr(piv_result, field)
-                piv_struct[field][0] = np.asarray(val) if val is not None else np.array([])
+                piv_struct[field][0] = (
+                    np.asarray(val) if val is not None else np.array([])
+                )
             else:
                 piv_struct[field][0] = np.array([])
 
@@ -238,7 +252,12 @@ def mat_dict_to_saveable(mat: dict) -> dict:
         if key.startswith("__"):
             continue
 
-        if key in ("piv_result", "piv_result_original", "ensemble_result", "ensemble_result_original"):
+        if key in (
+            "piv_result",
+            "piv_result_original",
+            "ensemble_result",
+            "ensemble_result_original",
+        ):
             # Convert PIV/ensemble result structs
             result[key] = piv_result_to_structured_array(value)
         elif key in ("coordinates", "coordinates_original"):
@@ -293,7 +312,7 @@ VALID_TRANSFORMATIONS = [
     "invert_ux",
     "invert_uy",
     "scale_velocity",  # Parametric: requires :factor suffix
-    "scale_coords",    # Parametric: requires :factor suffix
+    "scale_coords",  # Parametric: requires :factor suffix
 ]
 
 # Parametric transforms that require a numeric factor
@@ -392,7 +411,7 @@ def apply_transformation_to_piv_result(pr: Any, transformation: str) -> None:
             if hasattr(pr, attr):
                 arr = np.asarray(getattr(pr, attr))
                 if arr.ndim >= 2 and arr.size > 0:
-                    setattr(pr, attr, arr * (param ** 2))
+                    setattr(pr, attr, arr * (param**2))
         return
 
     elif base_name == "scale_coords":
@@ -728,7 +747,9 @@ def process_frame_worker(
                 pr = piv_result[run_idx]
                 # Only apply to non-empty runs - use centralized validation
                 try:
-                    if is_run_valid(pr, fields=("ux",), require_2d=False, reject_all_nan=True):
+                    if is_run_valid(
+                        pr, fields=("ux",), require_2d=False, reject_all_nan=True
+                    ):
                         for trans in transformations:
                             apply_transformation_to_piv_result(pr, trans)
                             if coords is not None:
@@ -898,7 +919,10 @@ def validate_transformations(
             invalid.append(f"{t} ({str(e)})")
 
     if invalid:
-        return False, f"Invalid transformations: {invalid}. Valid: {VALID_TRANSFORMATIONS}"
+        return (
+            False,
+            f"Invalid transformations: {invalid}. Valid: {VALID_TRANSFORMATIONS}",
+        )
 
     return True, None
 

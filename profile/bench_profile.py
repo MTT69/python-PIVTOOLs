@@ -33,12 +33,15 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import bench_common as bc
 import numpy as np
 
-import bench_common as bc
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU
 from pivtools_cli.piv.save_results import save_piv_result_distributed
-from pivtools_cli.processing.dask_pipeline import apply_all_filters_slim, get_filter_specs
+from pivtools_cli.processing.dask_pipeline import (
+    apply_all_filters_slim,
+    get_filter_specs,
+)
 from pivtools_core.image_handling.load_images import load_images
 
 # Sub-sections nested *inside* a parent section — excluded from pass totals to avoid
@@ -94,7 +97,8 @@ def evict_cache(files: list[Path]) -> bool:
     try:
         subprocess.run(
             ["vmtouch", "-e", *[str(f) for f in files]],
-            capture_output=True, check=True,
+            capture_output=True,
+            check=True,
         )
         return True
     except (subprocess.CalledProcessError, OSError):
@@ -122,7 +126,9 @@ def _pass_total(pass_sections: dict[str, float]) -> float:
     return sum(v for k, v in pass_sections.items() if k not in _NESTED_SECTIONS)
 
 
-def _apply_filters_chunked(images: np.ndarray, config, filter_specs: list) -> np.ndarray:
+def _apply_filters_chunked(
+    images: np.ndarray, config, filter_specs: list
+) -> np.ndarray:
     """Apply the production filter stage to a read batch (option B — faithful to
     production). Chunks by ``config.batch_size`` and filters each chunk
     independently, so temporal filters (``time``/``pod``) see the same window of
@@ -131,10 +137,14 @@ def _apply_filters_chunked(images: np.ndarray, config, filter_specs: list) -> np
     bs = config.batch_size
     out = np.empty_like(images)
     for start in range(0, images.shape[0], bs):
-        chunk = images[start:start + bs]
-        out[start:start + bs] = apply_all_filters_slim(
-            chunk, filter_specs=filter_specs, pixel_mask=None,
-            save_intermediate_base=None, num_frame_pairs=None, block_id=None,
+        chunk = images[start : start + bs]
+        out[start : start + bs] = apply_all_filters_slim(
+            chunk,
+            filter_specs=filter_specs,
+            pixel_mask=None,
+            save_intermediate_base=None,
+            num_frame_pairs=None,
+            block_id=None,
         )
     return out
 
@@ -197,7 +207,9 @@ def profile_instantaneous(
     images, read_s = _read_batch(camera, config, dataset)
     n = images.shape[0]
     if n == 0:
-        raise RuntimeError(f"No image pairs read from {dataset} (check image_format/start_index)")
+        raise RuntimeError(
+            f"No image pairs read from {dataset} (check image_format/start_index)"
+        )
 
     # Production applies the filter stage between read and correlate; mirror it so
     # the budget includes filtering and the correlator sees *filtered* images
@@ -230,13 +242,17 @@ def profile_instantaneous(
                 # the result is identical each pass; we re-run it only to time it.
                 if do_filter:
                     tf = time.perf_counter()
-                    images_for_corr = _apply_filters_chunked(images, config, filter_specs)
+                    images_for_corr = _apply_filters_chunked(
+                        images, config, filter_specs
+                    )
                     filter_per_iter.append((time.perf_counter() - tf) / n)
                 else:
                     filter_per_iter.append(0.0)
 
                 piv_results = correlator.correlate_batch(images_for_corr, config)
-                profile = correlator.get_profile_summary()  # {pass: {section: sec}} batch totals
+                profile = (
+                    correlator.get_profile_summary()
+                )  # {pass: {section: sec}} batch totals
 
                 for pass_idx in range(n_passes):
                     for section, elapsed in profile.get(pass_idx, {}).items():
@@ -245,8 +261,12 @@ def profile_instantaneous(
                 t0 = time.perf_counter()
                 for i, piv_result in enumerate(piv_results):
                     save_piv_result_distributed(
-                        piv_result, save_tmp, i + 1, runs_to_save,
-                        vector_fmt=vector_fmt, save_mode=save_mode,
+                        piv_result,
+                        save_tmp,
+                        i + 1,
+                        runs_to_save,
+                        vector_fmt=vector_fmt,
+                        save_mode=save_mode,
                         do_compression=save_compression,
                     )
                 save_per_iter.append((time.perf_counter() - t0) / n)
@@ -268,13 +288,15 @@ def profile_instantaneous(
             s["mean_ms"] for sec, s in sections.items() if sec not in _NESTED_SECTIONS
         )
         compute_total_ms += pass_compute
-        passes.append({
-            "pass_idx": pass_idx,
-            "window": config.window_sizes[pass_idx],
-            "overlap": config.overlap[pass_idx],
-            "sections_ms": sections,
-            "pass_compute_ms": pass_compute,
-        })
+        passes.append(
+            {
+                "pass_idx": pass_idx,
+                "window": config.window_sizes[pass_idx],
+                "overlap": config.overlap[pass_idx],
+                "sections_ms": sections,
+                "pass_compute_ms": pass_compute,
+            }
+        )
 
     # Build the FFT-vs-peak-fit split from the per-pass sections the correlator
     # captured (xcorr_fft/peak_fit). Present only on instrumented builds with timing
@@ -288,10 +310,14 @@ def profile_instantaneous(
             fit_ms = p["sections_ms"]["peak_fit"]["mean_ms"]
             tot_fft += fft_ms
             tot_fit += fit_ms
-            per_pass_split.append({
-                "pass_idx": p["pass_idx"], "window": p["window"],
-                "xcorr_fft_ms": fft_ms, "peak_fit_ms": fit_ms,
-            })
+            per_pass_split.append(
+                {
+                    "pass_idx": p["pass_idx"],
+                    "window": p["window"],
+                    "xcorr_fft_ms": fft_ms,
+                    "peak_fit_ms": fit_ms,
+                }
+            )
         fft_fit = tot_fft + tot_fit
         kernel_split = {
             "xcorr_fft_ms": tot_fft,

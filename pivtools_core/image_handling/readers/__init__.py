@@ -41,13 +41,11 @@ def list_supported_formats() -> List[str]:
     return list(_READERS.keys())
 
 
-# Import LaVision readers after functions are defined to avoid circular imports
-from .lavision_reader import read_lavision_pair, read_lavision_ims_pair
-from .im7_reader import get_im7_frame_count
-from .set_reader import get_set_entry_count
-
 # Import CINE reader for Phantom high-speed cameras
 from .cine_reader import read_cine_pair
+
+# Import LaVision readers after functions are defined to avoid circular imports
+from .lavision_reader import read_lavision_ims_pair, read_lavision_pair
 
 # Register only lowercase variants for robustness
 register_reader([".tiff", ".tif"], read_tiff)

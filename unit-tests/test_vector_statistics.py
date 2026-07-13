@@ -13,7 +13,6 @@ Usage:
 """
 
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +30,7 @@ from pivtools_gui.vector_statistics.instantaneous_statistics import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_coords(shape, dx=1.0, dy=1.0):
     """Create coordinate grids for synthetic fields."""
@@ -123,6 +123,7 @@ def _run_statistics_processor(data_dir, n_frames, requested_stats, base_dir=None
 # Gamma function tests
 # ---------------------------------------------------------------------------
 
+
 class TestGammaFunctions:
     """Test gamma1/gamma2 with solid-body rotation field."""
 
@@ -145,18 +146,20 @@ class TestGammaFunctions:
         G1 = gamma1(X, Y, u, v, d=8)
         cy, cx = G1.shape[0] // 2, G1.shape[1] // 2
         # Check center region (3x3)
-        center = G1[cy-1:cy+2, cx-1:cx+2]
-        assert np.all(np.abs(center) > 0.85), \
-            f"gamma1 at center should be ~1.0, got {center}"
+        center = G1[cy - 1 : cy + 2, cx - 1 : cx + 2]
+        assert np.all(
+            np.abs(center) > 0.85
+        ), f"gamma1 at center should be ~1.0, got {center}"
 
     def test_solid_body_rotation_gamma2(self, rotation_field):
         """gamma2 ~ 1.0 at the center (removes convective velocity)."""
         X, Y, u, v = rotation_field
         G2 = gamma2(X, Y, u, v, d=8)
         cy, cx = G2.shape[0] // 2, G2.shape[1] // 2
-        center = G2[cy-1:cy+2, cx-1:cx+2]
-        assert np.all(np.abs(center) > 0.85), \
-            f"gamma2 at center should be ~1.0, got {center}"
+        center = G2[cy - 1 : cy + 2, cx - 1 : cx + 2]
+        assert np.all(
+            np.abs(center) > 0.85
+        ), f"gamma2 at center should be ~1.0, got {center}"
 
     def test_gamma_away_from_vortex(self, rotation_field):
         """gamma1 ~ 0 far from the rotation center."""
@@ -166,17 +169,19 @@ class TestGammaFunctions:
         ny, nx = G1.shape
         d = 5
         # Sample a point far from center but within the valid region
-        corner_val = G1[d+2, d+2]
+        corner_val = G1[d + 2, d + 2]
         # Far from vortex center, gamma1 should be small
         # (not exactly 0 for solid body rotation everywhere, but smaller)
-        center_val = abs(G1[ny//2, nx//2])
-        assert abs(corner_val) < center_val, \
-            f"Corner gamma1 ({corner_val:.3f}) should be < center ({center_val:.3f})"
+        center_val = abs(G1[ny // 2, nx // 2])
+        assert (
+            abs(corner_val) < center_val
+        ), f"Corner gamma1 ({corner_val:.3f}) should be < center ({center_val:.3f})"
 
 
 # ---------------------------------------------------------------------------
 # Formula verification via production processor
 # ---------------------------------------------------------------------------
+
 
 class TestFormulaVerification:
     """Test statistics formulas by running the production processor."""
@@ -192,7 +197,8 @@ class TestFormulaVerification:
         _write_mat_files(data_dir, ux_frames, uy_frames, X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, n_frames,
+            data_dir,
+            n_frames,
             ["mean_velocity", "mean_stresses", "mean_tke"],
             base_dir=tmp_path,
         )
@@ -216,7 +222,8 @@ class TestFormulaVerification:
         _write_mat_files(data_dir, ux[None, ...], uy[None, ...], X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, 1,
+            data_dir,
+            1,
             ["mean_velocity", "mean_vorticity", "mean_divergence"],
             base_dir=tmp_path,
         )
@@ -244,7 +251,8 @@ class TestFormulaVerification:
         _write_mat_files(data_dir, ux[None, ...], uy[None, ...], X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, 1,
+            data_dir,
+            1,
             ["mean_vorticity", "mean_divergence"],
             base_dir=tmp_path,
         )
@@ -268,7 +276,8 @@ class TestFormulaVerification:
         _write_mat_files(data_dir, ux[None, ...], uy[None, ...], X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, 1,
+            data_dir,
+            1,
             ["mean_vorticity", "mean_divergence"],
             base_dir=tmp_path,
         )
@@ -295,7 +304,8 @@ class TestFormulaVerification:
         _write_mat_files(data_dir, ux_frames, uy_frames, X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, n_frames,
+            data_dir,
+            n_frames,
             ["mean_velocity", "mean_stresses", "mean_tke"],
             base_dir=tmp_path,
         )
@@ -315,10 +325,12 @@ class TestFormulaVerification:
         rng = np.random.default_rng(123)
 
         # Generate correlated Gaussian samples
-        cov = np.array([
-            [sigma_u**2, rho * sigma_u * sigma_v],
-            [rho * sigma_u * sigma_v, sigma_v**2],
-        ])
+        cov = np.array(
+            [
+                [sigma_u**2, rho * sigma_u * sigma_v],
+                [rho * sigma_u * sigma_v, sigma_v**2],
+            ]
+        )
         L = np.linalg.cholesky(cov)
         z = rng.standard_normal((n_frames, 2))
         uv_samples = z @ L.T  # (N, 2)
@@ -330,7 +342,8 @@ class TestFormulaVerification:
         _write_mat_files(data_dir, ux_frames, uy_frames, X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, n_frames,
+            data_dir,
+            n_frames,
             ["mean_velocity", "mean_stresses", "mean_tke"],
             base_dir=tmp_path,
         )
@@ -341,7 +354,9 @@ class TestFormulaVerification:
         np.testing.assert_allclose(piv.uu.mean(), sigma_u**2, rtol=0.05)
         np.testing.assert_allclose(piv.vv.mean(), sigma_v**2, rtol=0.05)
         np.testing.assert_allclose(
-            piv.uv.mean(), rho * sigma_u * sigma_v, rtol=0.10,
+            piv.uv.mean(),
+            rho * sigma_u * sigma_v,
+            rtol=0.10,
         )
         expected_tke = 0.5 * (sigma_u**2 + sigma_v**2)
         np.testing.assert_allclose(piv.tke.mean(), expected_tke, rtol=0.05)
@@ -365,7 +380,8 @@ class TestNaNHandling:
         _write_mat_files(data_dir, ux_frames, uy_frames, X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, n_frames,
+            data_dir,
+            n_frames,
             ["mean_velocity", "mean_stresses"],
             base_dir=tmp_path,
         )
@@ -395,10 +411,12 @@ class TestDiagnosticFigures:
         X, Y = _make_coords((ny, nx))
 
         rng = np.random.default_rng(77)
-        cov = np.array([
-            [sigma_u**2, rho * sigma_u * sigma_v],
-            [rho * sigma_u * sigma_v, sigma_v**2],
-        ])
+        cov = np.array(
+            [
+                [sigma_u**2, rho * sigma_u * sigma_v],
+                [rho * sigma_u * sigma_v, sigma_v**2],
+            ]
+        )
         L = np.linalg.cholesky(cov)
         z = rng.standard_normal((n_frames, 2))
         uv = z @ L.T
@@ -410,7 +428,8 @@ class TestDiagnosticFigures:
         _write_mat_files(data_dir, ux_frames, uy_frames, X, Y)
 
         piv = _run_statistics_processor(
-            data_dir, n_frames,
+            data_dir,
+            n_frames,
             ["mean_velocity", "mean_stresses", "mean_tke", "mean_vorticity"],
             base_dir=tmp_path,
         )
@@ -425,7 +444,11 @@ class TestDiagnosticFigures:
         axes[0, 1].set_title(f"Mean uy (expected {mean_v})")
         plt.colorbar(im1, ax=axes[0, 1])
 
-        vort = np.asarray(piv.vorticity) if hasattr(piv, "vorticity") and piv.vorticity.size > 0 else np.zeros_like(X)
+        vort = (
+            np.asarray(piv.vorticity)
+            if hasattr(piv, "vorticity") and piv.vorticity.size > 0
+            else np.zeros_like(X)
+        )
         im2 = axes[0, 2].pcolormesh(X, Y, vort, cmap="RdBu_r")
         axes[0, 2].set_title("Vorticity (expected ~0)")
         plt.colorbar(im2, ax=axes[0, 2])

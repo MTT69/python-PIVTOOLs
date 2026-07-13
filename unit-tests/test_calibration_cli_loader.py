@@ -37,11 +37,17 @@ def test_load_one_standard_png_roundtrips(tmp_path):
     """Behaviour-preserving: a standard image still loads to the identical array."""
     img = (np.arange(48 * 64, dtype=np.uint8) % 251).reshape(48, 64)
     cv2.imwrite(str(tmp_path / "calib00001.png"), img)
-    out = cli._load_one(tmp_path, "calib%05d.png", 1, camera=1, image_type="standard",
-                        use_camera_subfolders=False, zero_based=False)
+    out = cli._load_one(
+        tmp_path,
+        "calib%05d.png",
+        1,
+        camera=1,
+        image_type="standard",
+        use_camera_subfolders=False,
+        zero_based=False,
+    )
     assert out.shape == (48, 64)
     assert np.array_equal(out, img)
-
 
 
 # The real im7 read is proven by running the CLI on actual LaVision data (the D5 dataset
@@ -83,12 +89,17 @@ def _write_pack20_im7(path, frames: np.ndarray) -> None:
     n_f, h, w = frames.shape
     header = struct.pack(
         "<hhhh iiii hhh",
-        0,      # version
-        20,     # pack_type = LZ4
-        -3,     # buffer_format = float32
-        0,      # is_sparse
-        w, h, 1, n_f,
-        0, 1, 0,
+        0,  # version
+        20,  # pack_type = LZ4
+        -3,  # buffer_format = float32
+        0,  # is_sparse
+        w,
+        h,
+        1,
+        n_f,
+        0,
+        1,
+        0,
     )
     header += b"\x00" * (HEADER_SIZE - len(header))
     comp = _lz4_literals_block(frames.astype("<f4").tobytes())
@@ -132,8 +143,8 @@ def test_pack20_truncated_file_fails_visibly(tmp_path):
 
 import pytest
 
-from pivtools_core.image_handling.readers.im7_reader import get_im7_frame_count
 from pivtools_core.image_handling.load_images import _detect_im7_frames_per_camera
+from pivtools_core.image_handling.readers.im7_reader import get_im7_frame_count
 
 
 def test_get_im7_frame_count(tmp_path):
@@ -142,12 +153,15 @@ def test_get_im7_frame_count(tmp_path):
     assert get_im7_frame_count(p) == 6
 
 
-@pytest.mark.parametrize("n_frames,n_cams,expected", [
-    (6, 3, 2),   # 3 cameras, A/B double-frame (the reported dataset)
-    (8, 4, 2),   # 4 cameras, A/B double-frame
-    (4, 4, 1),   # 4 cameras, single-frame
-    (2, 1, 2),   # single camera, A/B pre-paired
-])
+@pytest.mark.parametrize(
+    "n_frames,n_cams,expected",
+    [
+        (6, 3, 2),  # 3 cameras, A/B double-frame (the reported dataset)
+        (8, 4, 2),  # 4 cameras, A/B double-frame
+        (4, 4, 1),  # 4 cameras, single-frame
+        (2, 1, 2),  # single camera, A/B pre-paired
+    ],
+)
 def test_detect_frames_per_camera_divisible(tmp_path, n_frames, n_cams, expected):
     p = tmp_path / "B00001.im7"
     _write_pack20_im7(p, np.zeros((n_frames, 4, 5), dtype=np.float32))
@@ -158,7 +172,9 @@ def test_detect_frames_per_camera_indivisible_raises(tmp_path):
     """6 frames with 4 configured cameras: clear error, not a silent best-guess."""
     p = tmp_path / "B00001.im7"
     _write_pack20_im7(p, np.zeros((6, 4, 5), dtype=np.float32))
-    with pytest.raises(ValueError, match=r"6 frames, not divisible by 4 cameras.*Expected 3 cameras"):
+    with pytest.raises(
+        ValueError, match=r"6 frames, not divisible by 4 cameras.*Expected 3 cameras"
+    ):
         _detect_im7_frames_per_camera(p, 4)
 
 
@@ -169,32 +185,50 @@ def test_detect_frames_per_camera_indivisible_raises(tmp_path):
 #   3-byte preamble | int8 deltas | 0x81 nibble-run (0x8 terminates) | 0x80 abs16.
 # ---------------------------------------------------------------------------
 
+
 def _write_packtype1_im7(path, size_x, size_y, payload: bytes) -> None:
     """Minimal pack_type-1 .im7: 256-byte WORD header + a raw RLE token stream."""
     header = struct.pack(
         "<hhhh iiii hhh",
-        0,      # version
-        1,      # pack_type = RLE
-        -4,     # buffer_format = WORD (uint16)
-        0,      # is_sparse
-        size_x, size_y, 1, 1,   # size_x, size_y, size_z=1, size_f=1
-        0, 1, 0,
+        0,  # version
+        1,  # pack_type = RLE
+        -4,  # buffer_format = WORD (uint16)
+        0,  # is_sparse
+        size_x,
+        size_y,
+        1,
+        1,  # size_x, size_y, size_z=1, size_f=1
+        0,
+        1,
+        0,
     )
     header += b"\x00" * (HEADER_SIZE - len(header))
     with open(path, "wb") as f:
         f.write(header)
-        f.write(payload)   # EOF after payload terminates the attribute scan cleanly
+        f.write(payload)  # EOF after payload terminates the attribute scan cleanly
 
 
 def test_packtype1_rle_decodes_all_token_kinds(tmp_path):
     from pivtools_core.image_handling.readers.im7_reader import read_im7_camera
+
     # Running value starts at 0; tokens exercise every branch:
     #  0x64(+100) 0x01(+1) | 0x81 nibble-run [+2,+3,-1] term 0x8 | 0x80 abs=500 | 0xfe(-2)
-    payload = bytes([0x01, 0x01, 0x00,            # preamble
-                     0x64, 0x01,                  # int8 deltas -> 100, 101
-                     0x81, 0x23, 0xf8,            # nibble run +2,+3,-1 then 0x8 term -> 103,106,105
-                     0x80, 0xf4, 0x01,            # abs16 LE 0x01f4 = 500
-                     0xfe])                       # int8 -2 -> 498
+    payload = bytes(
+        [
+            0x01,
+            0x01,
+            0x00,  # preamble
+            0x64,
+            0x01,  # int8 deltas -> 100, 101
+            0x81,
+            0x23,
+            0xF8,  # nibble run +2,+3,-1 then 0x8 term -> 103,106,105
+            0x80,
+            0xF4,
+            0x01,  # abs16 LE 0x01f4 = 500
+            0xFE,
+        ]
+    )  # int8 -2 -> 498
     expected = [100, 101, 103, 106, 105, 500, 498]
     p = tmp_path / "B00001.im7"
     _write_packtype1_im7(p, size_x=len(expected), size_y=1, payload=payload)
@@ -207,9 +241,12 @@ def test_packtype1_rle_decodes_all_token_kinds(tmp_path):
 def test_packtype1_byte_delta_roundtrip(tmp_path):
     """A pure int8-delta row (no nibble/abs tokens) round-trips."""
     from pivtools_core.image_handling.readers.im7_reader import read_im7_camera
-    vals = [50, 60, 59, 61, 70, 69, 68, 90]   # consecutive deltas all within int8 range
+
+    vals = [50, 60, 59, 61, 70, 69, 68, 90]  # consecutive deltas all within int8 range
     deltas = [vals[0]] + [vals[i] - vals[i - 1] for i in range(1, len(vals))]
-    assert all(-127 <= d <= 127 for d in deltas)  # else byte mode would need a 0x80 escape
+    assert all(
+        -127 <= d <= 127 for d in deltas
+    )  # else byte mode would need a 0x80 escape
     payload = bytes([0x01, 0x01, 0x00] + [d & 0xFF for d in deltas])
     p = tmp_path / "B00001.im7"
     _write_packtype1_im7(p, size_x=len(vals), size_y=1, payload=payload)

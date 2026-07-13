@@ -46,12 +46,14 @@ def get_merge_constraints():
             "supported for planar 2D PIV data."
         )
 
-    return jsonify({
-        "allowed_source_endpoints": cfg.get_allowed_endpoints("merging"),
-        "is_stereo_setup": is_stereo,
-        "stereo_blocked": is_stereo,
-        "stereo_reason": stereo_reason,
-    })
+    return jsonify(
+        {
+            "allowed_source_endpoints": cfg.get_allowed_endpoints("merging"),
+            "is_stereo_setup": is_stereo,
+            "stereo_blocked": is_stereo,
+            "stereo_reason": stereo_reason,
+        }
+    )
 
 
 @merging_bp.route("/merge_vectors/merge_one", methods=["POST"])
@@ -84,7 +86,14 @@ def merge_one_frame():
         # Validate continuous range (adjacent cameras only)
         for i in range(1, len(cameras)):
             if cameras[i] != cameras[i - 1] + 1:
-                return jsonify({"error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)"}), 400
+                return (
+                    jsonify(
+                        {
+                            "error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)"
+                        }
+                    ),
+                    400,
+                )
     else:
         cameras = [camera_number(c) for c in cfg.camera_numbers]
 
@@ -127,12 +136,14 @@ def merge_one_frame():
         # coordinates.mat would otherwise silently mismatch the merged grid).
         merger.save_coordinates(merged_runs, total_runs)
 
-        return jsonify({
-            "status": "success",
-            "frame": frame_idx,
-            "runs_merged": len(valid_runs),
-            "message": f"Successfully merged frame {frame_idx}",
-        })
+        return jsonify(
+            {
+                "status": "success",
+                "frame": frame_idx,
+                "runs_merged": len(valid_runs),
+                "message": f"Successfully merged frame {frame_idx}",
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error merging frame {frame_idx}: {e}", exc_info=True)
@@ -157,13 +168,18 @@ def merge_all_frames():
 
     # Check stereo constraint first
     if cfg.is_stereo_setup:
-        return jsonify({
-            "error": (
-                "Cannot merge stereo 3D vector data. Vector merging is only "
-                "supported for planar 2D PIV data."
+        return (
+            jsonify(
+                {
+                    "error": (
+                        "Cannot merge stereo 3D vector data. Vector merging is only "
+                        "supported for planar 2D PIV data."
+                    ),
+                    "is_stereo_blocked": True,
+                }
             ),
-            "is_stereo_blocked": True,
-        }), 400
+            400,
+        )
 
     # Get parameters from request or config
     base_path_idx = int(data.get("base_path_idx", cfg.merging_base_path_idx))
@@ -176,7 +192,14 @@ def merge_all_frames():
         # Validate continuous range (adjacent cameras only)
         for i in range(1, len(cameras)):
             if cameras[i] != cameras[i - 1] + 1:
-                return jsonify({"error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)"}), 400
+                return (
+                    jsonify(
+                        {
+                            "error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)"
+                        }
+                    ),
+                    400,
+                )
     else:
         cameras = [camera_number(c) for c in cfg.camera_numbers]
 
@@ -242,12 +265,14 @@ def merge_all_frames():
         thread.daemon = True
         thread.start()
 
-        return jsonify({
-            "job_id": job_id,
-            "status": "starting",
-            "message": f"Vector merging job started for cameras {cameras}",
-            "total_frames": cfg.num_frame_pairs,
-        })
+        return jsonify(
+            {
+                "job_id": job_id,
+                "status": "starting",
+                "message": f"Vector merging job started for cameras {cameras}",
+                "total_frames": cfg.num_frame_pairs,
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error starting merge job: {e}", exc_info=True)
@@ -291,14 +316,19 @@ def merge_validate():
 
     # Check stereo constraint first
     if cfg.is_stereo_setup:
-        return jsonify({
-            "valid": False,
-            "error": (
-                "Cannot merge stereo 3D vector data. Vector merging is only "
-                "supported for planar 2D PIV data."
+        return (
+            jsonify(
+                {
+                    "valid": False,
+                    "error": (
+                        "Cannot merge stereo 3D vector data. Vector merging is only "
+                        "supported for planar 2D PIV data."
+                    ),
+                    "is_stereo_blocked": True,
+                }
             ),
-            "is_stereo_blocked": True,
-        }), 400
+            400,
+        )
 
     # All config from config.yaml
     base_path_idx = cfg.merging_base_path_idx
@@ -311,10 +341,15 @@ def merge_validate():
         # Validate continuous range (adjacent cameras only)
         for i in range(1, len(cameras)):
             if cameras[i] != cameras[i - 1] + 1:
-                return jsonify({
-                    "valid": False,
-                    "error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)",
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "valid": False,
+                            "error": "Cameras must be a continuous range (e.g., 1,2,3 not 1,3)",
+                        }
+                    ),
+                    400,
+                )
     else:
         cameras = [camera_number(c) for c in cfg.camera_numbers]
 
@@ -334,12 +369,14 @@ def merge_validate():
                 cameras_found.append(camera)
 
         if len(cameras_found) < 2:
-            return jsonify({
-                "valid": False,
-                "cameras_found": cameras_found,
-                "cameras_requested": cameras,
-                "error": f"Need at least 2 cameras with data, found {len(cameras_found)}",
-            })
+            return jsonify(
+                {
+                    "valid": False,
+                    "cameras_found": cameras_found,
+                    "cameras_requested": cameras,
+                    "error": f"Need at least 2 cameras with data, found {len(cameras_found)}",
+                }
+            )
 
         # Create merger to find valid runs
         merger = VectorMerger(
@@ -349,19 +386,26 @@ def merge_validate():
         )
         valid_runs, total_runs = merger.find_valid_runs()
 
-        return jsonify({
-            "valid": len(valid_runs) > 0,
-            "cameras_found": cameras_found,
-            "cameras_requested": cameras,
-            "valid_runs": valid_runs,
-            "total_runs": total_runs,
-            "num_frame_pairs": cfg.num_frame_pairs,
-            "output_dir": str(merger.output_dir),
-        })
+        return jsonify(
+            {
+                "valid": len(valid_runs) > 0,
+                "cameras_found": cameras_found,
+                "cameras_requested": cameras,
+                "valid_runs": valid_runs,
+                "total_runs": total_runs,
+                "num_frame_pairs": cfg.num_frame_pairs,
+                "output_dir": str(merger.output_dir),
+            }
+        )
 
     except Exception as e:
         logger.error(f"Validation error: {e}", exc_info=True)
-        return jsonify({
-            "valid": False,
-            "error": str(e),
-        }), 500
+        return (
+            jsonify(
+                {
+                    "valid": False,
+                    "error": str(e),
+                }
+            ),
+            500,
+        )

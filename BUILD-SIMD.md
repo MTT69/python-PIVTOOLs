@@ -24,21 +24,21 @@ The build prints what it resolved, e.g.:
 
 | Platform | Compiler | Default ISA | Lanes | Arch flag |
 |---|---|---|---|---|
-| macOS arm64 | Homebrew gcc-15 | `neon4` | 4 (one NEON reg) | `-mcpu=native` |
-| Linux x86_64 | `gcc` (or `$CC`) | `vext8` | 8 (AVX2 via vector_size) | `-mavx2 -mfma` |
-| Linux HPC (AVX-512) | `gcc` | set `PIVTOOLS_FFT_ISA=avx512` | 16 (one zmm) | `-march=native` |
-| Windows | MSVC `cl` | `avx2` | 8 (AVX2 intrinsics) | `/arch:AVX2` |
+| macOS arm64 | Homebrew LLVM clang (`brew install llvm libomp`) | `neon4` | 4 (one NEON reg) | `-mcpu=native` |
+| Linux x86_64 | `clang` (or `$CC`) | `vext8` | 8 (AVX2 via vector_size) | `-mavx2 -mfma` |
+| Linux HPC (AVX-512) | `clang` | set `PIVTOOLS_FFT_ISA=avx512` | 16 (one zmm) | `-march=native` |
+| Windows | clang-cl (VS LLVM tools) | `avx2` | 8 (AVX2 intrinsics) | `/arch:AVX2` |
 
 The vector_size renders (neon4 / vext8 / avx512) are ISA-agnostic in source — the
 **arch flag** (not the width) decides NEON vs AVX lowering, so on arm64 *every*
-width uses `-mcpu=native`. Windows cannot use GCC `vector_size`, so it takes the
-`avx2` intrinsic render (`__m256`).
+width uses `-mcpu=native`. Windows cannot use the `vector_size` extension under
+the cl-compatible front end, so it takes the `avx2` intrinsic render (`__m256`).
 
 ## Env knobs (the porting / benchmarking levers)
 
 | Variable | Effect |
 |---|---|
-| `PIVTOOLS_FFT_ISA` | Force the width: `neon4`, `vext8`, `avx512` (GCC) or `avx2` (MSVC). Use to A/B widths on one box. |
+| `PIVTOOLS_FFT_ISA` | Force the width: `neon4`, `vext8`, `avx512` (clang/gcc) or `avx2` (Windows). Use to A/B widths on one box. |
 | `PIVTOOLS_FFT_MARCH` | Replace the arch flag verbatim, e.g. `-march=icelake-server`, `-march=skylake-avx512`. |
 | `PIVTOOLS_FFT_LTO=1` | Enable link-time optimisation (off by default; fragile on some toolchains). |
 
@@ -81,7 +81,8 @@ python -c "import ctypes; l=ctypes.CDLL('pivtools_cli/lib/libbulkxcorr2d.so'); \
 
 # Standalone correctness gate (batched engine vs scalar oracle + brute force):
 cd pivtools_cli/lib
-gcc-15 -O3 -fopenmp -ffp-contract=fast -mcpu=native -DPIVTOOLS_FFT_ISA_NEON4 \
+"$(brew --prefix llvm)/bin/clang" -O3 -fopenmp -ffp-contract=fast -mcpu=native \
+       -DPIVTOOLS_FFT_ISA_NEON4 \
        -I. codelet_fft.c test_codelet_gate.c -lm -o /tmp/gate && /tmp/gate   # -> GATE PASS
 ```
 
@@ -91,9 +92,22 @@ gcc-15 -O3 -fopenmp -ffp-contract=fast -mcpu=native -DPIVTOOLS_FFT_ISA_NEON4 \
 
 ## Notes
 
-- `codelets_gen.h` is generated at build time (gitignored). GCC builds emit the
-  full vector_size family (scalar+v4+v8+v16) so the width can be switched via
-  `PIVTOOLS_FFT_ISA` without regenerating; MSVC emits scalar+avx2.
+- `codelets_gen.h` is generated at build time (gitignored). clang/gcc builds
+  emit the full vector_size family (scalar+v4+v8+v16) so the width can be
+  switched via `PIVTOOLS_FFT_ISA` without regenerating; Windows emits
+  scalar+avx2.
+- Binary wheels (PyPI) are built portable, not `native`: x86 wheels pin
+  AVX2+FMA (`PIVTOOLS_WARP_MARCH="-mavx2 -mfma"`) and macOS arm64 wheels pin
+  `-mcpu=apple-m1`. The x86 floor is enforced at load time by
+  `pivtools_cpu_supported()` (peak_locate_lm.c) — CPUs older than Haswell
+  (2013) get a clear error telling them to install from sdist. The macOS wheel
+  floor (`macosx_15_0`) is set by the Homebrew libomp bottle that delocate
+  bundles, not by the toolchain.
+- Linux wheels are `manylinux_2_28` (glibc >= 2.28, i.e. 2018+ distros:
+  RHEL/Alma 8+, Ubuntu 20.04+, Debian 10+). This is forced by the toolchain —
+  the older manylinux2014 image has no usable clang. On older distros (CentOS
+  7, Ubuntu 18.04, dated HPC login nodes) pip falls back to the sdist, which
+  compiles locally and needs clang + OpenMP.
 - No library links FFTW or GSL any more: `libkspace` and `libmarquadt` were
   removed (2026-06-23) and ensemble fitting moved to pure NumPy, so the BSD-3
   wheel claim is now honest.

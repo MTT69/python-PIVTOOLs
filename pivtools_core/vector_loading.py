@@ -10,7 +10,6 @@ import scipy.io
 
 from pivtools_core.config import Config
 
-
 # =============================================================================
 # Run Validation API
 # =============================================================================
@@ -118,9 +117,7 @@ def find_valid_runs(
         # Single run
         if is_run_valid(data, fields, require_2d, reject_all_nan):
             valid_runs.append(offset)  # 0 for 0-based, 1 for 1-based
-        return RunValidationResult(
-            valid_runs=valid_runs, total_runs=1, single_run=True
-        )
+        return RunValidationResult(valid_runs=valid_runs, total_runs=1, single_run=True)
 
 
 def get_first_valid_run(
@@ -252,9 +249,9 @@ def find_non_empty_run(
     # Check if multi-run: must be ndarray with dtype=object (array of mat_struct objects)
     # scipy.io with struct_as_record=False returns mat_struct objects accessed via getattr()
     is_multi_run = (
-        isinstance(piv_result, np.ndarray) and
-        piv_result.dtype == object and
-        piv_result.size > 0
+        isinstance(piv_result, np.ndarray)
+        and piv_result.dtype == object
+        and piv_result.size > 0
     )
 
     if is_multi_run:
@@ -309,7 +306,7 @@ def _stack_velocity_components(pr, ux: np.ndarray, uy: np.ndarray) -> np.ndarray
     )
 
     # Check for uz (stereo data)
-    uz_raw = getattr(pr, 'uz', None)
+    uz_raw = getattr(pr, "uz", None)
     if uz_raw is not None:
         uz = np.asarray(uz_raw)
         if uz.size > 0 and uz.shape == ux.shape:
@@ -363,10 +360,10 @@ def read_mat_contents(
                     # Empty run - create placeholder with consistent shape if possible
                     stacked = np.array([[], [], []])  # Will be reshaped later
                 all_runs.append(stacked)
-            
+
             try:
                 return np.array(all_runs)  # (R, 3_or_4, H, W)
-            except ValueError as e:
+            except ValueError:
                 # Fallback to object array if shapes are inconsistent
                 # Use manual assignment to avoid numpy broadcasting errors with mixed shapes
                 out = np.empty(len(all_runs), dtype=object)
@@ -380,7 +377,9 @@ def read_mat_contents(
             for idx in range(total_runs):
                 pr = piv_result[idx]
                 # Use lenient validation here (no ndim/NaN check) for backward compatibility
-                if is_run_valid(pr, fields=("ux", "uy"), require_2d=False, reject_all_nan=False):
+                if is_run_valid(
+                    pr, fields=("ux", "uy"), require_2d=False, reject_all_nan=False
+                ):
                     run_index = idx
                     break
             else:
@@ -528,7 +527,15 @@ def load_coords_from_directory(
 
 
 # Variables to exclude from plotting (metadata, not 2D plottable)
-EXCLUDED_VARS = {"win_ctrs_x", "win_ctrs_y", "window_size", "n_windows", "predictor_field", "padded_pred_x", "padded_pred_y"}
+EXCLUDED_VARS = {
+    "win_ctrs_x",
+    "win_ctrs_y",
+    "window_size",
+    "n_windows",
+    "predictor_field",
+    "padded_pred_x",
+    "padded_pred_y",
+}
 
 
 def get_plottable_vars(
@@ -561,7 +568,9 @@ def get_plottable_vars(
     if isinstance(data, np.ndarray) and data.dtype == object and data.size > 0:
         struct = None
         for el in data.flat:
-            if is_run_valid(el, fields=fields_to_check, require_2d=False, reject_all_nan=False):
+            if is_run_valid(
+                el, fields=fields_to_check, require_2d=False, reject_all_nan=False
+            ):
                 struct = el
                 break
         if struct is None and data.size > 0:
@@ -586,7 +595,11 @@ def get_plottable_vars_from_struct(struct: Any) -> List[str]:
         return []
 
     # Get all attribute names
-    all_vars = [n for n in dir(struct) if not n.startswith("_") and not callable(getattr(struct, n, None))]
+    all_vars = [
+        n
+        for n in dir(struct)
+        if not n.startswith("_") and not callable(getattr(struct, n, None))
+    ]
 
     plottable = []
     for var_name in all_vars:
@@ -632,7 +645,9 @@ def save_mask_to_mat(file_path: str, mask: np.ndarray, polygons):
     """
     Save the given mask array to a .mat file.
     """
-    scipy.io.savemat(file_path, {"mask": mask, "polygons": polygons}, do_compression=True)
+    scipy.io.savemat(
+        file_path, {"mask": mask, "polygons": polygons}, do_compression=True
+    )
 
 
 def read_mask_from_mat(file_path: str):
@@ -652,22 +667,22 @@ def read_mask_from_mat(file_path: str):
 
     # Squeeze the mask manually if needed
     mask = np.squeeze(mask)
-    
+
     # polygons_raw is a numpy object array (MATLAB cell array)
     # Flatten it to iterate (it might be [[obj1], [obj2]] or [[obj]])
     polygons_flat = polygons_raw.flatten()
-    
+
     polygons = []
     for poly in polygons_flat:
         # poly is a structured array (record) with named fields accessible via indexing
         # Extract scalar values from 0-d arrays
-        idx_raw = poly['index'] if isinstance(poly, np.void) else poly['index'][0, 0]
-        name_raw = poly['name'] if isinstance(poly, np.void) else poly['name'][0, 0]
-        pts_raw = poly['points'] if isinstance(poly, np.void) else poly['points'][0, 0]
-        
-        idx = int(idx_raw.item() if hasattr(idx_raw, 'item') else idx_raw)
-        name = str(name_raw.item() if hasattr(name_raw, 'item') else name_raw)
-        
+        idx_raw = poly["index"] if isinstance(poly, np.void) else poly["index"][0, 0]
+        name_raw = poly["name"] if isinstance(poly, np.void) else poly["name"][0, 0]
+        pts_raw = poly["points"] if isinstance(poly, np.void) else poly["points"][0, 0]
+
+        idx = int(idx_raw.item() if hasattr(idx_raw, "item") else idx_raw)
+        name = str(name_raw.item() if hasattr(name_raw, "item") else name_raw)
+
         # pts might be a 2D array, convert to list of lists
         points = pts_raw.tolist() if isinstance(pts_raw, np.ndarray) else list(pts_raw)
         polygons.append({"index": idx, "name": name, "points": points})

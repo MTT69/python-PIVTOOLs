@@ -13,7 +13,6 @@ whole module skips cleanly when it is not built.
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -25,6 +24,7 @@ from pivtools_gui.calibration.camera_model import CameraModel
 # Skip the whole module if the C correlation extension is unavailable.
 try:
     from pivtools_gui.stereo_reconstruction.self_calibration import _load_xcorr_library
+
     _load_xcorr_library()
 except Exception as e:  # pragma: no cover - environment dependent
     pytest.skip(f"libbulkxcorr2d C extension unavailable: {e}", allow_module_level=True)
@@ -34,9 +34,9 @@ except Exception as e:  # pragma: no cover - environment dependent
 # Known sheet + synthetic geometry (mirrors test_self_calibration_recovery.py)
 # ---------------------------------------------------------------------------
 
-TRUE_Z_OFFSET = 0.3       # mm
-TRUE_TILT_X = 0.002       # rad
-TRUE_TILT_Y = -0.001      # rad
+TRUE_Z_OFFSET = 0.3  # mm
+TRUE_TILT_X = 0.002  # rad
+TRUE_TILT_Y = -0.001  # rad
 STEREO_ANGLE_DEG = 30.0
 N_IMAGE_PAIRS = 20
 N_PARTICLES = 2000
@@ -54,9 +54,13 @@ def _stereo_models():
     """A symmetric calibration CameraModel pair looking at the origin."""
     w, h = IMAGE_SIZE
     theta = math.radians(STEREO_ANGLE_DEG / 2.0)
-    K = np.array([[FOCAL_LENGTH_PX, 0.0, w / 2.0],
-                  [0.0, FOCAL_LENGTH_PX, h / 2.0],
-                  [0.0, 0.0, 1.0]])
+    K = np.array(
+        [
+            [FOCAL_LENGTH_PX, 0.0, w / 2.0],
+            [0.0, FOCAL_LENGTH_PX, h / 2.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
     z_cam = BASELINE_MM / (2.0 * math.tan(theta))
     pos1 = np.array([BASELINE_MM / 2.0, 0.0, z_cam])
     pos2 = np.array([-BASELINE_MM / 2.0, 0.0, z_cam])
@@ -91,18 +95,25 @@ def _render(particles, model):
             continue
         dx, dy = px - ix, py - iy
         kernel = PARTICLE_INTENSITY * np.exp(
-            -((kxx - dx) ** 2 + (kyy - dy) ** 2) / (2 * PARTICLE_SIGMA ** 2)
+            -((kxx - dx) ** 2 + (kyy - dy) ** 2) / (2 * PARTICLE_SIGMA**2)
         )
-        image[iy - half:iy + half + 1, ix - half:ix + half + 1] += kernel
+        image[iy - half : iy + half + 1, ix - half : ix + half + 1] += kernel
     noise = np.random.normal(0, 5, image.shape).astype(np.float32)
     return np.clip(image + noise, 0, 255).astype(np.uint8)
 
 
 def _stereo_record(m1, m2) -> REC.StereoRecord:
     return REC.StereoRecord(
-        cam1=1, cam2=2, board_type="dotboard", model1=m1, model2=m2,
-        R_stereo=m2.R @ m1.R.T, T_stereo=m2.t - (m2.R @ m1.R.T) @ m1.t,
-        world_frame=REC.WorldFrame(), per_view_rms1=[0.1], per_view_rms2=[0.1],
+        cam1=1,
+        cam2=2,
+        board_type="dotboard",
+        model1=m1,
+        model2=m2,
+        R_stereo=m2.R @ m1.R.T,
+        T_stereo=m2.t - (m2.R @ m1.R.T) @ m1.t,
+        world_frame=REC.WorldFrame(),
+        per_view_rms1=[0.1],
+        per_view_rms2=[0.1],
         board_meta={"spacing_mm": 14.0},
     )
 
@@ -121,8 +132,11 @@ def recovery():
         imgs2.append(_render(particles, m2))
     record = _stereo_record(m1, m2)
     result = SC.run(
-        record, imgs1, imgs2,
-        window_size=WINDOW_SIZE, overlap=OVERLAP,
+        record,
+        imgs1,
+        imgs2,
+        window_size=WINDOW_SIZE,
+        overlap=OVERLAP,
         world_bounds=WORLD_BOUNDS,
     )
     return record, result, imgs1, imgs2
@@ -144,7 +158,10 @@ def test_recovered_sheet_bakes_into_record(tmp_path, recovery):
     record, result, *_ = recovery
     SC.rebake_record(record, result.z_offset, result.tilt_x, result.tilt_y)
     record.self_cal = SC.baked_block(
-        result, n_images=N_IMAGE_PAIRS, window_size=WINDOW_SIZE, overlap=OVERLAP,
+        result,
+        n_images=N_IMAGE_PAIRS,
+        window_size=WINDOW_SIZE,
+        overlap=OVERLAP,
     )
     out = REC.load_stereo(REC.save_stereo(record, tmp_path))
     # applied sheet zeroed (it lives in the poses); recovered sheet in fitted_*

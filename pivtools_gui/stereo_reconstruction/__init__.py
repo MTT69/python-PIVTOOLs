@@ -25,16 +25,16 @@ estimate_pixel_scale
     Estimate native pixel scale (mm/px) from camera pair
 """
 
-from .stereo_calibration_base import BaseStereoCalibrator
-from .stereo_dotboard_calibration_production import StereoDotboardCalibrator
-from .stereo_charuco_calibration_production import StereoCharucoCalibrator
 from .self_calibration import (
     PinholeCamera,
     SelfCalibrationResult,
-    run_self_calibration,
     compute_dewarp_maps,
     estimate_pixel_scale,
+    run_self_calibration,
 )
+from .stereo_calibration_base import BaseStereoCalibrator
+from .stereo_charuco_calibration_production import StereoCharucoCalibrator
+from .stereo_dotboard_calibration_production import StereoDotboardCalibrator
 
 __all__ = [
     "BaseStereoCalibrator",

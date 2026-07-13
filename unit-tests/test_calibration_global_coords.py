@@ -13,8 +13,13 @@ def _model(D: float = 100.0) -> CameraModel:
     f, cx, cy = 1000.0, 512.0, 512.0
     K = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]], dtype=float)
     return CameraModel(
-        K=K, dist=np.zeros(5), R=np.eye(3), t=np.array([[0.0], [0.0], [D]]),
-        image_size=(1024, 1024), distortion_model=DistortionModel.STANDARD, rms=0.1,
+        K=K,
+        dist=np.zeros(5),
+        R=np.eye(3),
+        t=np.array([[0.0], [0.0], [D]]),
+        image_size=(1024, 1024),
+        distortion_model=DistortionModel.STANDARD,
+        rms=0.1,
     )
 
 
@@ -44,7 +49,14 @@ def test_broken_chain_link_is_skipped():
     """A pair whose cam_a is not yet placed is skipped (no crash, cam_b absent)."""
     recs = {1: _rec(1), 2: _rec(2), 3: _rec(3)}
     # pair references cam 2 (not placed from datum 1) as the source -> skipped
-    pairs = [{"camera_a": 2, "camera_b": 3, "pixel_on_a": [512, 512], "pixel_on_b": [512, 512]}]
+    pairs = [
+        {
+            "camera_a": 2,
+            "camera_b": 3,
+            "pixel_on_a": [512, 512],
+            "pixel_on_b": [512, 512],
+        }
+    ]
     shifts = compute_camera_shifts(recs, 1, [512.0, 512.0], [0.0, 0.0], pairs)
     assert set(shifts) == {1}
 
@@ -54,7 +66,12 @@ def test_out_of_order_multi_hop_chain():
     recs = {1: _rec(1), 3: _rec(3), 4: _rec(4)}
     P = [512.0, 512.0]
     pairs = [
-        {"camera_a": 3, "camera_b": 4, "pixel_on_a": P, "pixel_on_b": P},  # before its parent
+        {
+            "camera_a": 3,
+            "camera_b": 4,
+            "pixel_on_a": P,
+            "pixel_on_b": P,
+        },  # before its parent
         {"camera_a": 1, "camera_b": 3, "pixel_on_a": P, "pixel_on_b": P},
     ]
     shifts = compute_camera_shifts(recs, 1, P, [0.0, 0.0], pairs)

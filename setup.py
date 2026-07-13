@@ -127,6 +127,13 @@ class BuildCLibraries(build):
             self.extra_link = [
                 "-lm",
                 "-fopenmp",
+                # No crti/crtn startup stubs: pure-C libs with no constructors
+                # don't need .init/.fini, and patchelf (auditwheel wheel
+                # repair, 0.17.2 AND 0.18.0) corrupts this lib when they
+                # exist — it relocates the leading .init section to grow the
+                # headers but leaves DT_INIT pointing at the old address,
+                # so dlopen SIGSEGVs at "calling init". No DT_INIT, no bug.
+                "-nostartfiles",
             ]
 
             lib_ext = ".so"
@@ -394,15 +401,18 @@ class BuildCLibraries(build):
 
         # --- Stage the OpenMP runtime for clang-cl ---
         # clang-cl's /openmp links libomp dynamically, so libomp.dll must sit
-        # beside the built DLLs (it ships via the *.dll package_data glob). The
-        # Python lib loaders call os.add_dll_directory(lib_dir) so the dependent
-        # DLL is found at load time. MSVC's /openmp:experimental needs no such
-        # redistributable.
+        # beside the built DLLs (it ships via the lib/*.dll package_data glob).
+        # The loaders CDLL the built DLLs by absolute path; Python >=3.8 default
+        # winmode searches the loaded DLL's own directory for dependents, so a
+        # libomp.dll beside them is found without os.add_dll_directory. MSVC's
+        # /openmp:experimental needs no such redistributable.
         if self.use_clang_cl:
             libomp = pathlib.Path(self.compiler).resolve().parent / "libomp.dll"
             if libomp.is_file():
                 shutil.copy2(libomp, self.build_dir / "libomp.dll")
-                print(f"Staged OpenMP runtime: {libomp} -> {self.build_dir / 'libomp.dll'}")
+                print(
+                    f"Staged OpenMP runtime: {libomp} -> {self.build_dir / 'libomp.dll'}"
+                )
             else:
                 raise RuntimeError(
                     f"clang-cl /openmp build but libomp.dll not found at {libomp}.\n"
@@ -447,7 +457,12 @@ class BuildCLibraries(build):
         if vsinstall:
             cand = (
                 pathlib.Path(vsinstall)
-                / "VC" / "Tools" / "Llvm" / "x64" / "bin" / "clang-cl.exe"
+                / "VC"
+                / "Tools"
+                / "Llvm"
+                / "x64"
+                / "bin"
+                / "clang-cl.exe"
             )
             if cand.is_file():
                 return str(cand)

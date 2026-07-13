@@ -60,7 +60,9 @@ class DetectionResult:
     diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.image_points = np.asarray(self.image_points, dtype=np.float64).reshape(-1, 2)
+        self.image_points = np.asarray(self.image_points, dtype=np.float64).reshape(
+            -1, 2
+        )
         self.board_local_points = np.asarray(
             self.board_local_points, dtype=np.float64
         ).reshape(-1, 3)
@@ -69,7 +71,9 @@ class DetectionResult:
         if self.point_ids is not None:
             self.point_ids = np.asarray(self.point_ids).reshape(-1)
         if self.synthetic_mask is not None:
-            self.synthetic_mask = np.asarray(self.synthetic_mask, dtype=bool).reshape(-1)
+            self.synthetic_mask = np.asarray(self.synthetic_mask, dtype=bool).reshape(
+                -1
+            )
 
     @property
     def n(self) -> int:

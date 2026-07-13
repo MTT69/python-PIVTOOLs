@@ -104,14 +104,15 @@ def local_jacobians(
     already does.
     """
     flat = np.asarray(coords_px, dtype=np.float64).reshape(-1, 2)
-    hx = np.array([h, 0.0]); hy = np.array([0.0, h])
+    hx = np.array([h, 0.0])
+    hy = np.array([0.0, h])
 
     def bp(p):
         return model.back_project_to_plane(p, z_world, tilt_x, tilt_y)[:, :2]
 
-    jx = (bp(flat + hx) - bp(flat - hx)) / (2.0 * h)   # d world / d pixel_x  (N,2)
-    jy = (bp(flat + hy) - bp(flat - hy)) / (2.0 * h)   # d world / d pixel_y  (N,2)
-    return np.stack([jx, jy], axis=-1)                 # (N,2,2)
+    jx = (bp(flat + hx) - bp(flat - hx)) / (2.0 * h)  # d world / d pixel_x  (N,2)
+    jy = (bp(flat + hy) - bp(flat - hy)) / (2.0 * h)  # d world / d pixel_y  (N,2)
+    return np.stack([jx, jy], axis=-1)  # (N,2,2)
 
 
 def calibrate_stress_tensor(
@@ -143,14 +144,14 @@ def calibrate_stress_tensor(
     uu = UU.reshape(-1)
     vv = np.asarray(VV, dtype=np.float64).reshape(-1)
     uv = np.asarray(UV, dtype=np.float64).reshape(-1)
-    J = local_jacobians(model, coords_px, z_world, tilt_x, tilt_y)   # (N,2,2)
+    J = local_jacobians(model, coords_px, z_world, tilt_x, tilt_y)  # (N,2,2)
     n = uu.shape[0]
     R = np.empty((n, 2, 2), dtype=np.float64)
     R[:, 0, 0] = uu
     R[:, 1, 1] = vv
     R[:, 0, 1] = uv
     R[:, 1, 0] = uv
-    Rw = J @ R @ np.transpose(J, (0, 2, 1))             # (N,2,2)
+    Rw = J @ R @ np.transpose(J, (0, 2, 1))  # (N,2,2)
     scale = 1.0 / (dt * dt * 1.0e6)
     return (
         (Rw[:, 0, 0] * scale).reshape(shape),

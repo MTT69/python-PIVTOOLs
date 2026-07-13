@@ -6,6 +6,6 @@ or axis signs — that is ``world_frame``'s job. This separation is what lets on
 mechanism (click origin/+X/+Y) serve every board type.
 """
 
-from .base import DetectionResult, BoardDetector  # noqa: F401
+from .base import BoardDetector, DetectionResult  # noqa: F401
 
 __all__ = ["DetectionResult", "BoardDetector"]

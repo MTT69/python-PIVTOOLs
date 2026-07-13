@@ -18,10 +18,12 @@ from .base import DetectionResult
 
 @dataclass
 class CharucoParams:
-    squares_h: int = 10           # number of squares horizontally
-    squares_v: int = 7            # number of squares vertically
+    squares_h: int = 10  # number of squares horizontally
+    squares_v: int = 7  # number of squares vertically
     square_size_m: float = 0.030  # metres (ChArUco native unit)
-    marker_ratio: float = 0.5     # marker_size / square_size (matches the config/CLI fallback)
+    marker_ratio: float = (
+        0.5  # marker_size / square_size (matches the config/CLI fallback)
+    )
     aruco_dict: str = "DICT_4X4_1000"
     min_corners: int = 6
 
@@ -56,7 +58,9 @@ def _to_gray_u8(image: np.ndarray) -> np.ndarray:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     if img.dtype != np.uint8:
         mx = float(img.max()) if img.size else 1.0
-        img = (img.astype(np.float64) / (mx if mx > 0 else 1.0) * 255.0).astype(np.uint8)
+        img = (img.astype(np.float64) / (mx if mx > 0 else 1.0) * 255.0).astype(
+            np.uint8
+        )
     return img
 
 
@@ -70,9 +74,12 @@ class CharucoBoardDetector:
         self.board, self.adict = build_board(params)
         self.detector = cv2.aruco.CharucoDetector(self.board)
         # All chessboard corners in board frame, metres -> mm. Indexed by corner id.
-        self._corners_mm = np.asarray(
-            self.board.getChessboardCorners(), dtype=np.float64
-        ).reshape(-1, 3) * 1000.0
+        self._corners_mm = (
+            np.asarray(self.board.getChessboardCorners(), dtype=np.float64).reshape(
+                -1, 3
+            )
+            * 1000.0
+        )
 
     def _grid_index_for_id(self, cid: int) -> tuple:
         cols = self.params.interior_cols
@@ -84,8 +91,10 @@ class CharucoBoardDetector:
 
         if ch_ids is None or len(ch_ids) < self.params.min_corners:
             return DetectionResult(
-                success=False, board_type=self.board_type,
-                image_points=np.empty((0, 2)), board_local_points=np.empty((0, 3)),
+                success=False,
+                board_type=self.board_type,
+                image_points=np.empty((0, 2)),
+                board_local_points=np.empty((0, 3)),
                 diagnostics={"n_corners": 0 if ch_ids is None else int(len(ch_ids))},
             )
 

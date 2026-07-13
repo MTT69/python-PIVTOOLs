@@ -4,6 +4,7 @@ PIVTOOLs - Particle Image Velocimetry Tools
 
 try:
     from importlib.metadata import version
+
     __version__ = version("pivtools")
 except Exception:
-    __version__ = "0.5.1"
+    __version__ = "0.0.0+unknown"  # not installed (running from source checkout)

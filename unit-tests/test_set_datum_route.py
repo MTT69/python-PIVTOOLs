@@ -42,7 +42,11 @@ def _write_coords(path, runs, with_z=False):
 def _read_coords(path, run):
     mat = scipy.io.loadmat(str(path), struct_as_record=False, squeeze_me=True)
     coords = mat["coordinates"]
-    el = coords[run - 1] if (isinstance(coords, np.ndarray) and coords.dtype == object) else coords
+    el = (
+        coords[run - 1]
+        if (isinstance(coords, np.ndarray) and coords.dtype == object)
+        else coords
+    )
     return el
 
 
@@ -60,7 +64,14 @@ def env(tmp_path, monkeypatch):
 
 
 def _inst_coords_path(base, cam=1, type_name="instantaneous"):
-    return base / "calibrated_piv" / str(_NUM_FRAME_PAIRS) / f"Cam{cam}" / type_name / "coordinates.mat"
+    return (
+        base
+        / "calibrated_piv"
+        / str(_NUM_FRAME_PAIRS)
+        / f"Cam{cam}"
+        / type_name
+        / "coordinates.mat"
+    )
 
 
 def test_offset_adds_to_all_runs_and_is_additive(env):
@@ -68,8 +79,15 @@ def test_offset_adds_to_all_runs_and_is_additive(env):
     coords_path = _inst_coords_path(base)
     _write_coords(coords_path, [_grid(), _grid(100.0, 50.0)])
 
-    body = {"base_path_idx": 0, "camera": 1, "run": 1, "type_name": "instantaneous",
-            "x_offset": 5.0, "y_offset": -2.0, "merged": 0}
+    body = {
+        "base_path_idx": 0,
+        "camera": 1,
+        "run": 1,
+        "type_name": "instantaneous",
+        "x_offset": 5.0,
+        "y_offset": -2.0,
+        "merged": 0,
+    }
     r = client.post("/calibration/set_datum", json=body)
     assert r.status_code == 200 and r.get_json()["num_runs_updated"] == 2
 
@@ -93,9 +111,17 @@ def test_datum_subtracts_then_offset_adds(env):
     gx, gy = _grid()
     _write_coords(coords_path, [(gx, gy)])
 
-    r = client.post("/calibration/set_datum", json={
-        "base_path_idx": 0, "camera": 1, "x": 2.0, "y": 1.0,
-        "x_offset": 0.5, "y_offset": 0.0})
+    r = client.post(
+        "/calibration/set_datum",
+        json={
+            "base_path_idx": 0,
+            "camera": 1,
+            "x": 2.0,
+            "y": 1.0,
+            "x_offset": 0.5,
+            "y_offset": 0.0,
+        },
+    )
     assert r.status_code == 200
     el = _read_coords(coords_path, 1)
     np.testing.assert_allclose(np.asarray(el.x), gx - 2.0 + 0.5)
@@ -104,14 +130,28 @@ def test_datum_subtracts_then_offset_adds(env):
 
 def test_stereo_z_preserved(env):
     client, base = env
-    coords_path = (base / "stereo_calibrated" / str(_NUM_FRAME_PAIRS) / "Cam1_Cam2"
-                   / "instantaneous" / "coordinates.mat")
+    coords_path = (
+        base
+        / "stereo_calibrated"
+        / str(_NUM_FRAME_PAIRS)
+        / "Cam1_Cam2"
+        / "instantaneous"
+        / "coordinates.mat"
+    )
     gx, gy = _grid()
     _write_coords(coords_path, [(gx, gy)], with_z=True)
 
-    r = client.post("/calibration/set_datum", json={
-        "base_path_idx": 0, "camera": 1, "x_offset": 3.0, "y_offset": 3.0,
-        "use_stereo": True, "camera_pair": [1, 2]})
+    r = client.post(
+        "/calibration/set_datum",
+        json={
+            "base_path_idx": 0,
+            "camera": 1,
+            "x_offset": 3.0,
+            "y_offset": 3.0,
+            "use_stereo": True,
+            "camera_pair": [1, 2],
+        },
+    )
     assert r.status_code == 200
     el = _read_coords(coords_path, 1)
     np.testing.assert_allclose(np.asarray(el.x), gx + 3.0)
@@ -120,13 +160,27 @@ def test_stereo_z_preserved(env):
 
 def test_merged_path_honored(env):
     client, base = env
-    coords_path = (base / "calibrated_piv" / str(_NUM_FRAME_PAIRS) / "Merged"
-                   / "instantaneous" / "coordinates.mat")
+    coords_path = (
+        base
+        / "calibrated_piv"
+        / str(_NUM_FRAME_PAIRS)
+        / "Merged"
+        / "instantaneous"
+        / "coordinates.mat"
+    )
     gx, gy = _grid()
     _write_coords(coords_path, [(gx, gy)])
 
-    r = client.post("/calibration/set_datum", json={
-        "base_path_idx": 0, "camera": 1, "x_offset": 1.0, "y_offset": 0.0, "merged": 1})
+    r = client.post(
+        "/calibration/set_datum",
+        json={
+            "base_path_idx": 0,
+            "camera": 1,
+            "x_offset": 1.0,
+            "y_offset": 0.0,
+            "merged": 1,
+        },
+    )
     assert r.status_code == 200
     assert "Merged" in r.get_json()["coords_path"]
     el = _read_coords(coords_path, 1)
@@ -135,8 +189,15 @@ def test_merged_path_honored(env):
 
 def test_missing_coordinates_is_404(env):
     client, _ = env
-    r = client.post("/calibration/set_datum", json={
-        "base_path_idx": 0, "camera": 1, "type_name": "ensemble", "x_offset": 1.0})
+    r = client.post(
+        "/calibration/set_datum",
+        json={
+            "base_path_idx": 0,
+            "camera": 1,
+            "type_name": "ensemble",
+            "x_offset": 1.0,
+        },
+    )
     assert r.status_code == 404
     assert "Coordinates file not found" in r.get_json()["error"]
 
@@ -148,9 +209,16 @@ def test_explicit_base_path_wins_over_idx(env):
     gx, gy = _grid()
     _write_coords(coords_path, [(gx, gy)])
 
-    r = client.post("/calibration/set_datum", json={
-        "base_path": str(other), "base_path_idx": 0, "camera": 1,
-        "x_offset": 2.0, "y_offset": 0.0})
+    r = client.post(
+        "/calibration/set_datum",
+        json={
+            "base_path": str(other),
+            "base_path_idx": 0,
+            "camera": 1,
+            "x_offset": 2.0,
+            "y_offset": 0.0,
+        },
+    )
     assert r.status_code == 200
     el = _read_coords(coords_path, 1)
     np.testing.assert_allclose(np.asarray(el.x), gx + 2.0)

@@ -33,14 +33,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 import tifffile
-
 from synthetic_piv import render_particles
 
 # ---------------------------------------------------------------------------
 # Physical velocity field
 # ---------------------------------------------------------------------------
-U_MAX = 0.833     # m/s peak centreline velocity
-DT = 1e-3         # seconds between frames
+U_MAX = 0.833  # m/s peak centreline velocity
+DT = 1e-3  # seconds between frames
 
 # ---------------------------------------------------------------------------
 # Image & particle parameters
@@ -48,7 +47,7 @@ DT = 1e-3         # seconds between frames
 IMAGE_H, IMAGE_W = 700, 1100
 IMAGE_SHAPE = (IMAGE_H, IMAGE_W)
 NUM_PARTICLES = 50_000
-PARTICLE_DIAMETER = 3.0   # px (FWHM)
+PARTICLE_DIAMETER = 3.0  # px (FWHM)
 SIGMA = PARTICLE_DIAMETER / 2.355
 NUM_PAIRS = 1
 SEED = 42
@@ -60,12 +59,14 @@ OUTPUT_DIR = Path(__file__).resolve().parent / "poiseuille_multicam"
 # ---------------------------------------------------------------------------
 FX = FY = 5000.0
 CX, CY = 550.0, 350.0
-TZ = FX / (15.0 * 1000)   # 0.333 m  → ~15 px/mm
+TZ = FX / (15.0 * 1000)  # 0.333 m  → ~15 px/mm
 K1 = -0.15
 
 # Per-camera rotation vectors (~5 deg tilts, stress-testing calibration)
-RVEC_CAM1 = np.array([0.070, -0.047, 0.023], dtype=np.float64)   # ~5 deg total
-RVEC_CAM2 = np.array([-0.043, 0.065, -0.033], dtype=np.float64)  # ~5 deg total, different axes
+RVEC_CAM1 = np.array([0.070, -0.047, 0.023], dtype=np.float64)  # ~5 deg total
+RVEC_CAM2 = np.array(
+    [-0.043, 0.065, -0.033], dtype=np.float64
+)  # ~5 deg total, different axes
 
 # Camera placement: tvec controls which part of the physical domain is visible
 # Camera1: image centre maps to physical y = +13.3mm (top of domain)
@@ -131,8 +132,9 @@ def _pixel_to_world(pts_px, camera_matrix, dist_coeffs, rvec, tvec):
     return world_pts
 
 
-def _generate_camera_images(camera_matrix, dist_coeffs, rvec, tvec,
-                            H_phys, rng, output_dir):
+def _generate_camera_images(
+    camera_matrix, dist_coeffs, rvec, tvec, H_phys, rng, output_dir
+):
     """Generate image pair for one camera. Returns pixel displacement stats."""
     H, W = IMAGE_SHAPE
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -147,7 +149,7 @@ def _generate_camera_images(camera_matrix, dist_coeffs, rvec, tvec,
 
         # Poiseuille velocity: y_norm = y_world / (H_phys/2)
         y_norm = world_pts[:, 1] / (H_phys / 2.0)
-        ux_phys = U_MAX * (1.0 - y_norm ** 2)
+        ux_phys = U_MAX * (1.0 - y_norm**2)
         uy_phys = np.zeros_like(ux_phys)
 
         dx_world_m = ux_phys * DT
@@ -158,7 +160,11 @@ def _generate_camera_images(camera_matrix, dist_coeffs, rvec, tvec,
         displaced_world[:, 1] += dy_world_m
 
         displaced_px, _ = cv2.projectPoints(
-            displaced_world, rvec, tvec, camera_matrix, dist_coeffs,
+            displaced_world,
+            rvec,
+            tvec,
+            camera_matrix,
+            dist_coeffs,
         )
         displaced_px = displaced_px.reshape(-1, 2)
 
@@ -166,13 +172,16 @@ def _generate_camera_images(camera_matrix, dist_coeffs, rvec, tvec,
         dy_px = displaced_px[:, 1] - y_pos
 
         img_a = render_particles(IMAGE_SHAPE, x_pos, y_pos, intensities, SIGMA)
-        img_b = render_particles(IMAGE_SHAPE, x_pos + dx_px, y_pos + dy_px,
-                                 intensities, SIGMA)
+        img_b = render_particles(
+            IMAGE_SHAPE, x_pos + dx_px, y_pos + dy_px, intensities, SIGMA
+        )
 
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_A.tif",
-                         _normalize_uint16(img_a))
-        tifffile.imwrite(output_dir / f"B{pair_idx:05d}_B.tif",
-                         _normalize_uint16(img_b))
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_A.tif", _normalize_uint16(img_a)
+        )
+        tifffile.imwrite(
+            output_dir / f"B{pair_idx:05d}_B.tif", _normalize_uint16(img_b)
+        )
 
     return {
         "dx_range": (float(np.min(dx_px)), float(np.max(dx_px))),
@@ -182,11 +191,14 @@ def _generate_camera_images(camera_matrix, dist_coeffs, rvec, tvec,
 
 
 def main():
-    camera_matrix = np.array([
-        [FX,  0, CX],
-        [ 0, FY, CY],
-        [ 0,  0,  1],
-    ], dtype=np.float64)
+    camera_matrix = np.array(
+        [
+            [FX, 0, CX],
+            [0, FY, CY],
+            [0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
     dist_coeffs = np.array([K1, 0, 0, 0, 0], dtype=np.float64)
 
     px_per_mm = FX / (TZ * 1000)
@@ -207,14 +219,16 @@ def main():
 
     # Compute overlap feature point: physical origin [0,0,0] projected to both cameras
     phys_origin = np.array([[0.0, 0.0, 0.0]], dtype=np.float64)
-    overlap_on_cam1, _ = cv2.projectPoints(phys_origin, RVEC_CAM1, TVEC_CAM1,
-                                           camera_matrix, dist_coeffs)
-    overlap_on_cam2, _ = cv2.projectPoints(phys_origin, RVEC_CAM2, TVEC_CAM2,
-                                           camera_matrix, dist_coeffs)
+    overlap_on_cam1, _ = cv2.projectPoints(
+        phys_origin, RVEC_CAM1, TVEC_CAM1, camera_matrix, dist_coeffs
+    )
+    overlap_on_cam2, _ = cv2.projectPoints(
+        phys_origin, RVEC_CAM2, TVEC_CAM2, camera_matrix, dist_coeffs
+    )
     overlap_on_cam1 = overlap_on_cam1.reshape(2)
     overlap_on_cam2 = overlap_on_cam2.reshape(2)
 
-    print(f"\nOverlap feature point (physical origin):")
+    print("\nOverlap feature point (physical origin):")
     print(f"  Cam1 raw pixel: ({overlap_on_cam1[0]:.1f}, {overlap_on_cam1[1]:.1f})")
     print(f"  Cam2 raw pixel: ({overlap_on_cam2[0]:.1f}, {overlap_on_cam2[1]:.1f})")
 
@@ -223,16 +237,26 @@ def main():
 
     print("\nGenerating Cam1 images...")
     stats1 = _generate_camera_images(
-        camera_matrix, dist_coeffs, RVEC_CAM1, TVEC_CAM1, H_phys,
-        rng, OUTPUT_DIR / "Cam1",
+        camera_matrix,
+        dist_coeffs,
+        RVEC_CAM1,
+        TVEC_CAM1,
+        H_phys,
+        rng,
+        OUTPUT_DIR / "Cam1",
     )
     print(f"  dx: [{stats1['dx_range'][0]:.2f}, {stats1['dx_range'][1]:.2f}] px")
     print(f"  ux: [{stats1['ux_range'][0]:.3f}, {stats1['ux_range'][1]:.3f}] m/s")
 
     print("\nGenerating Cam2 images...")
     stats2 = _generate_camera_images(
-        camera_matrix, dist_coeffs, RVEC_CAM2, TVEC_CAM2, H_phys,
-        rng, OUTPUT_DIR / "Cam2",
+        camera_matrix,
+        dist_coeffs,
+        RVEC_CAM2,
+        TVEC_CAM2,
+        H_phys,
+        rng,
+        OUTPUT_DIR / "Cam2",
     )
     print(f"  dx: [{stats2['dx_range'][0]:.2f}, {stats2['dx_range'][1]:.2f}] px")
     print(f"  ux: [{stats2['ux_range'][0]:.3f}, {stats2['ux_range'][1]:.3f}] m/s")

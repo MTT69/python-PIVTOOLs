@@ -3,8 +3,11 @@ include LICENSE
 include NOTICE
 include requirements.txt
 
-# Include C library source files
+# Include C library source files + the codelet generator (needed to build from sdist)
 recursive-include pivtools_cli/lib *.c *.h
+recursive-include pivtools_cli/lib/codelet_gen *.py
+# codelets_gen.h is generated at build time by gen_codelet.py (~19 MB) — never ship it
+exclude pivtools_cli/lib/codelets_gen.h
 
 # Include GUI static files and templates
 recursive-include pivtools_gui/static *
@@ -18,8 +21,15 @@ global-exclude .DS_Store
 
 # Exclude test and development files
 prune tests
+prune unit-tests
 prune manual_tools
 prune logs
 prune env
 prune .git
 prune .github
+prune figures
+prune profile
+prune notes
+prune papers
+exclude config.yaml
+exclude pivtools_cli/lib/pypiv.log

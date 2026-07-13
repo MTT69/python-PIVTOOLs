@@ -12,7 +12,7 @@ Supports scale_factor, dotboard, and charuco calibration methods.
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -22,7 +22,6 @@ from scipy.io import loadmat, savemat
 from pivtools_core.config import Config
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
-from pivtools_core.vector_loading import load_coords_from_directory
 from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 
@@ -61,7 +60,9 @@ class GlobalCoordinateAligner:
                 aligned.append(cam)
         return aligned
 
-    def _write_alignment_marker(self, camera_num: int, type_name: str, shift_x: float, shift_y: float):
+    def _write_alignment_marker(
+        self, camera_num: int, type_name: str, shift_x: float, shift_y: float
+    ):
         """Write alignment marker after successful shift."""
         import json
         from datetime import datetime
@@ -279,7 +280,7 @@ class GlobalCoordinateAligner:
         results = {"cameras": {}}
         for cam, (sx, sy) in camera_shifts.items():
             self._apply_shift_to_camera(cam, type_name, sx, sy)
-            source = "datum" if cam == datum_camera else f"overlap chain"
+            source = "datum" if cam == datum_camera else "overlap chain"
             results["cameras"][cam] = {
                 "shift_x": sx,
                 "shift_y": sy,
@@ -298,7 +299,9 @@ class GlobalCoordinateAligner:
 
         results["status"] = "completed"
         results["invert_ux"] = invert_ux
-        logger.info(f"Global coordinate alignment completed for {len(results['cameras'])} cameras")
+        logger.info(
+            f"Global coordinate alignment completed for {len(results['cameras'])} cameras"
+        )
         return results
 
     def _pixel_to_physical_scale_factor(
@@ -353,8 +356,8 @@ class GlobalCoordinateAligner:
         # save_results.py: x_grid = x_centers + 1, y_grid = (H-1) - y_centers + 1 = H - y_centers
         H = self.config.image_shape[0]
         px_x, px_y = pixel_xy
-        px_x_uncal = px_x + 1       # 1-based
-        px_y_uncal = H - px_y        # flipped: image-downward → physical-upward, 1-based
+        px_x_uncal = px_x + 1  # 1-based
+        px_y_uncal = H - px_y  # flipped: image-downward → physical-upward, 1-based
 
         # Apply calibration formula (pointwise equivalent of calibrate_coordinates)
         # y=0 at bottom of grid, y increasing upward (matching pinhole convention)
@@ -554,8 +557,12 @@ class GlobalCoordinateAligner:
         # Process vector files in parallel
         files_processed = 0
         max_workers = get_max_workers(len(mat_files))
-        with ProcessPoolExecutor(max_workers=max_workers, initializer=worker_initializer) as pool:
-            futures = {pool.submit(_invert_single_file, f, var_name): f for f in mat_files}
+        with ProcessPoolExecutor(
+            max_workers=max_workers, initializer=worker_initializer
+        ) as pool:
+            futures = {
+                pool.submit(_invert_single_file, f, var_name): f for f in mat_files
+            }
             for future in as_completed(futures):
                 if future.result():
                     files_processed += 1
