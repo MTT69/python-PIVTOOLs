@@ -177,11 +177,12 @@ def plan_apply_units(
 _NON_VECTOR_MATS = {"coordinates.mat", "mask.mat"}
 
 # Diagnostic sidecars ensemble PIV writes alongside the result when store_planes /
-# save_diagnostics is on: correlation planes ("planes_pass_N.mat") and first-pair warped
-# images ("warped_pass_N.mat"), one per pass. They carry no piv_result/ensemble_result
-# struct, so a bare "*.mat" glob must skip them by prefix or read_vectors would KeyError
-# on 'piv_result' (they are named per pass, so a fixed name set won't catch them).
-_NON_VECTOR_MAT_PREFIXES = ("planes_pass_", "warped_pass_")
+# save_diagnostics is on: correlation planes ("planes_pass_N.mat"), first-pair warped
+# images ("warped_pass_N.mat") and LM fit diagnostics ("fit_diagnostics_pass_N.mat"),
+# one per pass. They carry no piv_result/ensemble_result struct, so a bare "*.mat" glob
+# must skip them by prefix or read_vectors would KeyError on 'piv_result' (they are
+# named per pass, so a fixed name set won't catch them).
+_NON_VECTOR_MAT_PREFIXES = ("planes_pass_", "warped_pass_", "fit_diagnostics_pass_")
 
 
 def _vector_files(uncal_dir: Path, vector_glob: str) -> List[Path]:

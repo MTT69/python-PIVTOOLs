@@ -1,6 +1,6 @@
 paths:
   base_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4\processed\time96
+  - E:\alk235\cam4_all_512_tiff\Cam4\processed\time96_preproc
   source_paths:
   - E:\alk235\cam4_all_512_tiff\Cam4
   active_paths:
@@ -23,7 +23,7 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 2100
+  num_images: 5
   image_shape:
   - 3536
   - 512
@@ -126,7 +126,10 @@ instantaneous_piv:
     - 96
   - - 16
     - 96
+  - - 8
+    - 96
   overlap:
+  - 50
   - 50
   - 50
   - 50
@@ -135,6 +138,7 @@ instantaneous_piv:
   - 2
   - 3
   - 4
+  - 5
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -152,7 +156,7 @@ ensemble_piv:
   predictor_smoothing: false
   image_warp_interpolation: lanczos
   mask_center_pixel: true
-  background_subtraction_method: correlation
+  background_subtraction_method: window_mean
   window_size:
   - - 64
     - 96
@@ -160,10 +164,7 @@ ensemble_piv:
     - 96
   - - 16
     - 96
-  - - 8
-    - 96
   overlap:
-  - 50
   - 50
   - 50
   - 50
@@ -171,12 +172,10 @@ ensemble_piv:
   - std
   - std
   - single
-  - single
   runs:
   - 1
   - 2
   - 3
-  - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
@@ -186,13 +185,15 @@ ensemble_piv:
   sum_fitting_window:
   - 32
   - 32
-  resume_from_pass: 4
+  resume_from_pass: 0
   window_type: square
   predictor_boundary_conditions:
   - y_position: 0
     ux: 0
     uy: 0
     edge: bottom
+  per_pair_normalization: true
+  predictor_rounding: true
 calibration:
   image_format: calib_Cam4_B00001_crop.tif
   num_images: 10
@@ -265,6 +266,7 @@ calibration:
     model_type: pinhole
     fix_k2: true
 filters:
+- type: meannorm
 - type: time
 masking:
   enabled: true

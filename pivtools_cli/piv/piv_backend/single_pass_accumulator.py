@@ -877,6 +877,11 @@ class SinglePassAccumulator:
             }
             fit_diag["status"] = status_flat.reshape(n_win_y, n_win_x)
             fit_diag["pass_idx"] = pass_idx
+            fit_diag["n_pairs"] = N
+            fit_diag["bg_method"] = bg_method
+            fit_diag["per_pair_normalization"] = (
+                self.config.ensemble_per_pair_normalization
+            )
             diag_outdir = Path(output_path) if output_path else Path(os.getcwd())
             diag_outdir.mkdir(parents=True, exist_ok=True)
             savemat(
@@ -1452,6 +1457,17 @@ class SinglePassAccumulator:
                     "env_auto": env_auto,
                     "env_ab": env_ab,
                     "env_divided": False,
+                    # Accumulation-mode provenance: with 'window_mean' the per-pair
+                    # weighted window mean was removed inside the C correlator (the
+                    # *_bg planes stored above are zeros), and per-pair
+                    # normalization rescales every pair's planes before they enter
+                    # the sums — both change what AA/BB/AB mean, so record them.
+                    "n_pairs": N,
+                    "bg_method": bg_method,
+                    "per_pair_normalization": (
+                        self.config.ensemble_per_pair_normalization
+                    ),
+                    "skip_bg_subtraction": skip_bg_subtraction,
                 }
 
                 savemat(

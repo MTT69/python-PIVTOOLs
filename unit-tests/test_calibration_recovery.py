@@ -421,12 +421,18 @@ def test_apply_mono_skips_diagnostic_mats(tmp_path):
         {"A_warped": np.zeros((2, 2)), "pass_idx": 0},
         oned_as="row",
     )
+    scipy.io.savemat(
+        str(ud / "fit_diagnostics_pass_1.mat"),
+        {"N0_abs": np.zeros((2, 2)), "pass_idx": 0},
+        oned_as="row",
+    )
 
     written = runio.calibrate_mono_run(rec, ud, od, dt=0.001, vector_glob="*.mat")
 
     assert {Path(w).name for w in written} == {"00001.mat"}
     assert not (od / "planes_pass_1.mat").exists()
     assert not (od / "warped_pass_1.mat").exists()
+    assert not (od / "fit_diagnostics_pass_1.mat").exists()
 
 
 def test_record_save_load_roundtrip(tmp_path):
