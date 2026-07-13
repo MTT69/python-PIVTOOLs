@@ -51,9 +51,10 @@ int peakfit_batch_lanes(void)     { return 0; }
 
 void lsqpeaklocate_lm_batch(const float *planes, int L_real,
                             const int *N, int iFitType,
-                            float *peak_loc, float *std_dev)
+                            float *peak_loc, float *std_dev,
+                            const float *fPlaneWeight)
 {
-	(void)planes; (void)N; (void)iFitType;
+	(void)planes; (void)N; (void)iFitType; (void)fPlaneWeight;
 	fprintf(stderr, "lsqpeaklocate_lm_batch: batch fitter not compiled in "
 	                "(plain MSVC cl build) - this call is a selector bug\n");
 	for (int l = 0; l < L_real; ++l) {
@@ -567,7 +568,8 @@ static pk_vi lm_gauss6_fit_batch(const pk_vf *sub, pk_vi active,
  ******************************************************************************/
 void lsqpeaklocate_lm_batch(const float *planes, int L_real,
                             const int *N, int iFitType,
-                            float *peak_loc, float *std_dev)
+                            float *peak_loc, float *std_dev,
+                            const float *fPlaneWeight)
 {
 	const int numel = N[0] * N[1];
 	const int Nsub[2] = { PKSIZE_X, PKSIZE_Y };
@@ -603,32 +605,35 @@ void lsqpeaklocate_lm_batch(const float *planes, int L_real,
 		int i0 = 0, j0 = 0;
 		float fPeakHeight = 0;
 
-		for (i = N[0]/8; i < N[0]*7/8; ++i) {
-			for (j = N[1]/8; j < N[1]*7/8; ++j) {
-				if (src[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
-					fPeakHeight = src[SUB2IND_2D(i, j, N[1])];
-					i0 = i;
-					j0 = j;
-				}
+		/* Westerweel-style search (verbatim scalar logic — see
+		 * peak_locate_lm.c): largest 3x3 local max in the quarter-rule
+		 * region |disp| <= N/4, first-found wins ties. */
+		for (i = N[0]/4; i < N[0]*3/4; ++i) {
+			for (j = N[1]/4; j < N[1]*3/4; ++j) {
+				float v = src[SUB2IND_2D(i, j, N[1])];
+				if (v <= fPeakHeight) continue;
+				int is_max = 1;
+				for (int di = -1; di <= 1 && is_max; ++di)
+					for (int dj = -1; dj <= 1; ++dj)
+						if (src[SUB2IND_2D(i + di, j + dj, N[1])] > v) { is_max = 0; break; }
+				if (is_max) { fPeakHeight = v; i0 = i; j0 = j; }
 			}
 		}
 
 		if (fPeakHeight <= 0 ||
 		    i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2 ||
-		    j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
-		    fPeakHeight <= src[SUB2IND_2D(i0-1, j0, N[1])] ||
-		    fPeakHeight <= src[SUB2IND_2D(i0+1, j0, N[1])] ||
-		    fPeakHeight <= src[SUB2IND_2D(i0, j0-1, N[1])] ||
-		    fPeakHeight <= src[SUB2IND_2D(i0, j0+1, N[1])]) {
+		    j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2) {
 			continue;   /* lane stays dead -> NaN sentinel in phase 3 */
 		}
 
-		/* extract subwindow into SoA lane l */
+		/* extract subwindow into SoA lane l, applying the patch-local
+		 * loss-of-correlation compensation (verbatim scalar logic) */
 		float tmp[NSUB];
 		for (i = 0; i < PKSIZE_X; ++i)
-			for (j = 0; j < PKSIZE_Y; ++j)
-				tmp[i * PKSIZE_Y + j] =
-					src[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
+			for (j = 0; j < PKSIZE_Y; ++j) {
+				int idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
+				tmp[i * PKSIZE_Y + j] = fPlaneWeight ? src[idx] * fPlaneWeight[idx] : src[idx];
+			}
 		for (p = 0; p < NSUB; ++p) sub[p][l] = tmp[p];
 
 		/* 3-point seed + the fit type's seed clamps (verbatim scalar) */

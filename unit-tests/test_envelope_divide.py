@@ -62,9 +62,10 @@ def test_matches_bruteforce_single_mode():
 
 
 def test_single_ab_plateau_is_exactly_one():
-    """The sum-window margin makes AB envelope-free where the peak can live:
-    trapezoid plateau E = 1 for |d| <= (sumwin - win)/2 = 8. This is why the
-    accumulator skips the AB divide in single mode."""
+    """The sum-window margin puts the AB peak on a trapezoid plateau E = 1 for
+    |d| <= (sumwin - win)/2 = 8. The accumulator divides AB by this true envelope
+    (2026-07-13) — a no-op on the plateau, a real correction beyond it (e.g. when
+    a sum-window axis has zero margin and the envelope is a triangle)."""
     win, sumwin = (16, 16), (32, 32)
     WA = CrossCorrelator._window_weight_fun(win, "singlepix", sumwin)
     WB = CrossCorrelator._window_weight_fun(sumwin, "bsingle", sumwin)

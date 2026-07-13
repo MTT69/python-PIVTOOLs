@@ -67,6 +67,7 @@ def _load_bulkxcorr_lib():
         ctypes.c_int,
         ctypes.c_int,
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+        ctypes.c_void_p,  # fPlaneWeight (nullable; None = no compensation)
     ]
     lib.lsqpeaklocate_lm.restype = None
 
@@ -145,7 +146,7 @@ def _run_single_fit(xcorr, fit_type):
     peak_loc = np.zeros(3, dtype=np.float32)
     std_dev = np.zeros(3, dtype=np.float32)
 
-    lib.lsqpeaklocate_lm(xcorr, N, peak_loc, 1, fit_type, std_dev)
+    lib.lsqpeaklocate_lm(xcorr, N, peak_loc, 1, fit_type, std_dev, None)
 
     return peak_loc, std_dev
 

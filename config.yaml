@@ -23,12 +23,12 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 5
+  num_images: 2100
   image_shape:
   - 3536
   - 512
 batches:
-  size: 5
+  size: 20
 logging:
   file: pypiv.log
   level: INFO
@@ -39,14 +39,14 @@ processing:
   auto_compute_params: false
   omp_threads: 3
   dask_workers_per_node: 5
-  dask_memory_limit: 12GB
+  dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: true
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -85,7 +85,7 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: default
   lower: ''
   upper: ''
@@ -114,7 +114,7 @@ statistics:
     mean_peak_height: false
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
+  type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -148,6 +148,7 @@ instantaneous_piv:
   save_mode: full
   save_compression: false
   image_warp_interpolation: lanczos
+  dump_correlation_planes: true
 ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
@@ -279,12 +280,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []

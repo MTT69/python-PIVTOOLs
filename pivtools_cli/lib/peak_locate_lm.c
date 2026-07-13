@@ -676,8 +676,16 @@ static int lm_gauss6_fit(const float *xcorr, const int *N, float *peak_loc, floa
 
 /******************************************************************************
  * Main peak localization function
+ *
+ * fPlaneWeight (nullable): per-pixel loss-of-correlation compensation
+ * (nPx/(W conv W)) applied ONLY to the extracted fit patch, at the patch's own
+ * plane coordinates — Westerweel/PIVware semantics. Detection (the peak
+ * search) runs on the RAW plane: the envelope attenuates signal and noise at
+ * a given displacement equally, so pre-multiplying the plane cannot aid
+ * detection — it only lets boosted far-field noise win the argmax. NULL
+ * disables compensation entirely (tests, callers with unweighted planes).
  *****************************************************************************/
-PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev)
+PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev, const float *fPlaneWeight)
 {
 	int i, j, iPeak, idx;
 	int i0, j0;
@@ -706,25 +714,30 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 
 	for(iPeak = 0; iPeak < nPeaks; ++iPeak)
 	{
+		/* Westerweel-style search (PIVware pwDetectPeaks/pwGetPeaks): a
+		 * candidate is a pixel equal to the max of its 3x3 neighbourhood
+		 * (non-strict); the LARGEST candidate wins, first-found on ties.
+		 * Plateaus/ridges cannot hijack the selection or kill the window —
+		 * the brightest well-formed peak is fitted instead. The region is
+		 * the quarter rule |disp| <= N/4: anything outside it would fail
+		 * the caller's displacement gate anyway. */
 		i0 = j0 = 0;
 		fPeakHeight = 0;
-		for(i = N[0]/8; i < N[0]*7/8; ++i) {
-			for(j = N[1]/8; j < N[1]*7/8; ++j) {
-				if(src[SUB2IND_2D(i, j, N[1])] > fPeakHeight) {
-					fPeakHeight = src[SUB2IND_2D(i, j, N[1])];
-					i0 = i;
-					j0 = j;
-				}
+		for(i = N[0]/4; i < N[0]*3/4; ++i) {
+			for(j = N[1]/4; j < N[1]*3/4; ++j) {
+				float v = src[SUB2IND_2D(i, j, N[1])];
+				if(v <= fPeakHeight) continue;
+				int is_max = 1;
+				for(int di = -1; di <= 1 && is_max; ++di)
+					for(int dj = -1; dj <= 1; ++dj)
+						if(src[SUB2IND_2D(i + di, j + dj, N[1])] > v) { is_max = 0; break; }
+				if(is_max) { fPeakHeight = v; i0 = i; j0 = j; }
 			}
 		}
 
 		if(fPeakHeight <= 0 ||
 		   i0 < (PKSIZE_X-1)/2 || i0 >= N[0]-(PKSIZE_X-1)/2  ||
-		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2 ||
-		   fPeakHeight <= src[SUB2IND_2D(i0-1, j0, N[1])] ||
-		   fPeakHeight <= src[SUB2IND_2D(i0+1, j0, N[1])] ||
-		   fPeakHeight <= src[SUB2IND_2D(i0, j0-1, N[1])] ||
-		   fPeakHeight <= src[SUB2IND_2D(i0, j0+1, N[1])])
+		   j0 < (PKSIZE_Y-1)/2 || j0 >= N[1]-(PKSIZE_Y-1)/2)
 		{
 			peak_loc[SUB2IND_2D(0, iPeak, nPeaks)] = NAN;
 			peak_loc[SUB2IND_2D(1, iPeak, nPeaks)] = NAN;
@@ -735,10 +748,14 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 			continue;
 		}
 
-		/* Extract subwindow */
+		/* Extract subwindow, applying the loss-of-correlation compensation
+		 * at each patch pixel's own plane coordinate (PIVware FI semantics:
+		 * the fit must see envelope-corrected values or the envelope's local
+		 * slope biases the sub-pixel position toward zero displacement). */
 		for(i = 0; i < PKSIZE_X; ++i) {
 			for(j = 0; j < PKSIZE_Y; ++j) {
-				subxcorr[i * PKSIZE_Y + j] = src[SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1])];
+				idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
+				subxcorr[i * PKSIZE_Y + j] = fPlaneWeight ? src[idx] * fPlaneWeight[idx] : src[idx];
 			}
 		}
 
@@ -818,7 +835,11 @@ PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_
 			for(i = 0; i < PKSIZE_X; ++i) {
 				for(j = 0; j < PKSIZE_Y; ++j) {
 					idx = SUB2IND_2D(i0 + i - (PKSIZE_X-1)/2, j0 + j - (PKSIZE_Y-1)/2, N[1]);
-					xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - fitval[i * PKSIZE_Y + j]);
+					/* fitval fits the COMPENSATED patch; the copy holds the
+					 * raw plane — un-compensate before subtracting. */
+					float f = fitval[i * PKSIZE_Y + j];
+					if(fPlaneWeight) f /= fPlaneWeight[idx];
+					xcorr_copy[idx] = MAX(0, xcorr_copy[idx] - f);
 				}
 			}
 		}

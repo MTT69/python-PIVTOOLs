@@ -338,8 +338,6 @@ def parse_memory_limit_gb(memory_limit: str) -> float:
     Returns:
         Memory in GB
     """
-    import re
-
     match = re.match(r"^([\d.]+)\s*(GB|MB)$", memory_limit.strip(), re.IGNORECASE)
     if not match:
         return 0.0

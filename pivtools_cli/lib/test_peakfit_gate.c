@@ -159,11 +159,17 @@ static void gen_gauss6(float *p, float amp, float di, float dj,
 		}
 }
 
+/* Optional plane weight (loss-of-correlation compensation) applied by the
+ * fitters to their 5x5 patch. NULL for the standard gates; the weighted gate
+ * points it at a synthetic envelope to pin scalar/batch agreement on the
+ * fPlaneWeight path too. */
+static const float *g_gate_weight = NULL;
+
 /* run the scalar oracle on one plane */
 static void run_scalar(const float *plane, int fit_type, float out_loc[3], float out_std[3])
 {
 	int N[2] = { PLANE_N, PLANE_N };
-	lsqpeaklocate_lm((float *)plane, N, out_loc, 1, fit_type, out_std);
+	lsqpeaklocate_lm((float *)plane, N, out_loc, 1, fit_type, out_std, g_gate_weight);
 }
 
 /* run the batch fitter on W planes */
@@ -171,7 +177,7 @@ static void run_batch(const float *planes, int L_real, int fit_type,
                       float *loc /*[3][W]*/, float *std /*[3][W]*/)
 {
 	int N[2] = { PLANE_N, PLANE_N };
-	lsqpeaklocate_lm_batch(planes, L_real, N, fit_type, loc, std);
+	lsqpeaklocate_lm_batch(planes, L_real, N, fit_type, loc, std, g_gate_weight);
 }
 
 /* fill one battery plane for the given case index (mix of clean shapes) */
@@ -370,6 +376,50 @@ static void gate_partial_tail(int fit_type)
 	CHECK(bad == 0, "partial tail type %d: %d violations", fit_type, bad);
 }
 
+/* ── gate A5: fPlaneWeight path — scalar vs batch agreement with a synthetic
+ * loss-of-correlation compensation (smooth, >= 1, min at plane centre, like
+ * the production nPx/(W conv W)). Bit-agreement expectations match A1: the
+ * patch multiply is verbatim scalar arithmetic in both fitters. ─────────── */
+static void gate_a5_weighted(int fit_type)
+{
+	static float weight[PLANE_NUMEL];
+	static float planes[PK_LANES][PLANE_NUMEL];
+	int c = (PLANE_N - 1) / 2;
+
+	for (int i = 0; i < PLANE_N; ++i)
+		for (int j = 0; j < PLANE_N; ++j) {
+			float ry = (float)abs(i - c) / (float)PLANE_N;
+			float rx = (float)abs(j - c) / (float)PLANE_N;
+			/* reciprocal-triangle-like: 1 at centre, ~4 in the corners */
+			weight[i * PLANE_N + j] = 1.0f / ((1.0f - ry) * (1.0f - rx));
+		}
+
+	g_rng = 0xFEED0000u + (unsigned)fit_type;
+	for (int l = 0; l < PK_LANES; ++l) gen_case(planes[l], fit_type, l);
+
+	g_gate_weight = weight;
+
+	float bloc[3 * PK_LANES], bstd[3 * PK_LANES];
+	run_batch(&planes[0][0], PK_LANES, fit_type, bloc, bstd);
+
+	int bad = 0;
+	for (int l = 0; l < PK_LANES; ++l) {
+		float sloc[3], sstd[3];
+		run_scalar(planes[l], fit_type, sloc, sstd);
+		int s_nan = isnan(sloc[0]), b_nan = isnan(bloc[0 * PK_LANES + l]);
+		if (s_nan != b_nan) { bad++; continue; }
+		if (s_nan) continue;
+		/* same tolerance philosophy as A1: sub-pixel agreement */
+		if (fabsf(sloc[0] - bloc[0 * PK_LANES + l]) > 1e-3f ||
+		    fabsf(sloc[1] - bloc[1 * PK_LANES + l]) > 1e-3f) bad++;
+	}
+
+	g_gate_weight = NULL;
+
+	printf("gate A5 weighted-patch type %d: %s\n", fit_type, bad ? "BROKEN" : "ok");
+	CHECK(bad == 0, "weighted patch type %d: %d violations", fit_type, bad);
+}
+
 int main(void)
 {
 	printf("peakfit gate: PK_LANES=%d, exp=%s\n", PK_LANES,
@@ -391,6 +441,7 @@ int main(void)
 		gate_a3_nan_masks(t);
 		gate_lane_independence(t);
 		gate_partial_tail(t);
+		gate_a5_weighted(t);
 	}
 
 	if (g_fail) { printf("GATE FAIL\n"); return 1; }

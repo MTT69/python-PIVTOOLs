@@ -209,8 +209,6 @@ def _write_packtype1_im7(path, size_x, size_y, payload: bytes) -> None:
 
 
 def test_packtype1_rle_decodes_all_token_kinds(tmp_path):
-    from pivtools_core.image_handling.readers.im7_reader import read_im7_camera
-
     # Running value starts at 0; tokens exercise every branch:
     #  0x64(+100) 0x01(+1) | 0x81 nibble-run [+2,+3,-1] term 0x8 | 0x80 abs=500 | 0xfe(-2)
     payload = bytes(
@@ -240,8 +238,6 @@ def test_packtype1_rle_decodes_all_token_kinds(tmp_path):
 
 def test_packtype1_byte_delta_roundtrip(tmp_path):
     """A pure int8-delta row (no nibble/abs tokens) round-trips."""
-    from pivtools_core.image_handling.readers.im7_reader import read_im7_camera
-
     vals = [50, 60, 59, 61, 70, 69, 68, 90]  # consecutive deltas all within int8 range
     deltas = [vals[0]] + [vals[i] - vals[i - 1] for i in range(1, len(vals))]
     assert all(

@@ -1779,8 +1779,6 @@ class Config:
                     / "self_calibration.yaml"
                 )
                 if sc_path.exists():
-                    import yaml
-
                     with open(sc_path) as f:
                         data = yaml.safe_load(f) or {}
                     return data
@@ -1956,8 +1954,6 @@ class Config:
         # Return cached result if available
         if self._auto_compute_cache is not None:
             return self._auto_compute_cache
-
-        import os
 
         import psutil
 

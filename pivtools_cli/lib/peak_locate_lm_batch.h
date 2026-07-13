@@ -32,11 +32,14 @@
  * component-major arrays of width peakfit_batch_lanes():
  *   peak_loc[c*W + l], c = 0 row / 1 col / 2 height
  *   std_dev [c*W + l], c = 0 sx  / 1 sy  / 2 sxy (6-DOF: variances)
- * Lanes l >= L_real are written with the NaN sentinel. Planes must already
- * carry the correlation-plane weighting (the caller hoists it). */
+ * Lanes l >= L_real are written with the NaN sentinel. Planes are RAW
+ * (detection runs unweighted, Westerweel-style); fPlaneWeight (nullable) is
+ * the loss-of-correlation compensation applied per-lane to the extracted
+ * PKSIZE fit patch only, at each pixel's own plane coordinate. */
 PEAK_EXPORT void lsqpeaklocate_lm_batch(const float *planes, int L_real,
                                         const int *N, int iFitType,
-                                        float *peak_loc, float *std_dev);
+                                        float *peak_loc, float *std_dev,
+                                        const float *fPlaneWeight);
 
 /* 1 when the batch fitter is compiled in (clang/gcc vecext); 0 under plain
  * MSVC cl (PIVTOOLS_WIN_COMPILER=cl escape hatch) — selecting the batch

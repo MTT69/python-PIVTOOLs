@@ -24,6 +24,7 @@ Code  Stage                   Meaning
 
 import gc
 import logging
+import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -575,41 +576,30 @@ class SinglePassAccumulator:
             AB_3d = R_AB_ensemble.reshape(total_windows, corr_size[0], corr_size[1])
 
             # Envelope divide: remove the window-overlap (pair-count) envelope from the
-            # coherent planes before fitting (Westerweel loss-of-correlation). The rule
-            # is geometry-driven, not configurable:
+            # coherent planes before fitting (Westerweel loss-of-correlation). Every
+            # plane is divided by its own TRUE envelope (2026-07-13; replaces the old
+            # plateau-only single-mode design of env_ab = 1 + plateau guard):
             #   std    — all three planes share E = W ⋆ W: divide AA, BB and AB.
-            #   single — the AB envelope is a trapezoid whose plateau is exactly 1
-            #            wherever the peak can live (the sum-window margin makes AB
-            #            envelope-free by construction), so dividing AB would only
-            #            amplify corner noise into the k⁴ fit columns; the autos carry
-            #            the full triangle envelope of the sum window: divide AA/BB only.
+            #   single — autos carry the sum-window envelope B ⋆ B; AB carries the
+            #            asymmetric A ⋆ B trapezoid (the divide is a no-op wherever a
+            #            sum-window margin puts the peak on the E = 1 plateau).
+            # Safe only because the per-pair pedestal is removed at source
+            # (window_mean) — a surviving pedestal is amplified by the divide into the
+            # 2026-07-08 "bowl" that diverges the LM fit. The weights used here must
+            # match cpu_ensemble.py (singlepix/bsingle) so E equals the actual
+            # attenuation the C correlator applied.
             # E(0) = 1, so the peak values used for normalization below are unchanged.
             envelope_runtype = self.config.ensemble_type[pass_idx]
             if envelope_runtype == "single":
                 env_sum_window = tuple(self.config.ensemble_sum_window)
-                plateau_half = min(
-                    (env_sum_window[0] - win_size[0]) // 2,
-                    (env_sum_window[1] - win_size[1]) // 2,
+                env_weight_a = CrossCorrelator._window_weight_fun(
+                    tuple(win_size), "singlepix", env_sum_window
                 )
-                # TEMP TEST 2026-07-08: plateau guard DISABLED alongside the envelope
-                # division below (the "bowl" mechanism test). The guard only protects the
-                # AB envelope divide, which is commented out, so it must not reject configs
-                # for behaviour that no longer runs. RESTORE together with the /= lines.
-                # if plateau_half < 4:
-                #     raise ValueError(
-                #         f"Pass {pass_idx + 1}: sum window {env_sum_window} leaves only "
-                #         f"{plateau_half} px of AB envelope plateau around the peak "
-                #         f"(need >= 4 px). The single-mode envelope correction assumes "
-                #         f"the AB peak sits on the E=1 plateau; increase the sum-window "
-                #         f"margin over the interrogation window {tuple(win_size)}."
-                #     )
                 env_weight_b = CrossCorrelator._window_weight_fun(
                     env_sum_window, "bsingle", env_sum_window
                 )
                 env_auto = _linear_pair_envelope(env_weight_b, env_weight_b, corr_size)
-                env_ab = np.ones_like(
-                    env_auto
-                )  # plateau: exactly 1 where the peak lives
+                env_ab = _linear_pair_envelope(env_weight_a, env_weight_b, corr_size)
             else:
                 env_weight = CrossCorrelator._window_weight_fun(
                     tuple(win_size), self.config.ensemble_window_type
@@ -618,16 +608,15 @@ class SinglePassAccumulator:
                 env_ab = env_auto
             env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
             env_ab_f32 = env_ab.astype(np.float32)[None, :, :]
-            # TEMP TEST 2026-07-08: envelope division DISABLED to test the "bowl" mechanism.
             # E(0)=1 so the peak/center (and norm_factors below) are unchanged; only the
-            # off-peak floor is affected. RESTORE these three lines after the test.
-            # AA_3d /= env_auto_f32
-            # BB_3d /= env_auto_f32
-            # AB_3d /= env_ab_f32
+            # off-peak floor is affected.
+            AA_3d /= env_auto_f32
+            BB_3d /= env_auto_f32
+            AB_3d /= env_ab_f32
             logging.info(
-                f"Pass {pass_idx + 1}: Envelope divide DISABLED ({envelope_runtype}: "
-                f"planes NOT divided; envelope computed and stored for reference only; "
-                f"min E = {env_auto.min():.3f})"
+                f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
+                f"AA/BB by their pair-count envelope, AB by its true envelope; "
+                f"min E_auto = {env_auto.min():.3f}, min E_ab = {env_ab.min():.3f})"
             )
 
             # Central index (autocorrelation peak is at center)
@@ -864,8 +853,6 @@ class SinglePassAccumulator:
 
         # Persist the LM fitter's per-window diagnostics next to the planes
         if save_fit_diagnostics:
-            import os
-
             from scipy.io import savemat
 
             diag_chunks = [r[3] for r in results]
@@ -1387,9 +1374,6 @@ class SinglePassAccumulator:
             and self.config.ensemble_store_planes
         ):
             try:
-                import os
-                from pathlib import Path
-
                 from scipy.io import savemat
 
                 if output_path is not None:
@@ -1450,13 +1434,12 @@ class SinglePassAccumulator:
                     # Window weights used in cross-correlation
                     "win_weight_A": correlator_for_weights.win_weights_A[pass_idx],
                     "win_weight_B": correlator_for_weights.win_weights_B[pass_idx],
-                    # Pair-count envelopes stored for REFERENCE ONLY — the divide is
-                    # currently DISABLED, so AA/BB/AB above still carry the envelope.
+                    # Pair-count envelopes already divided out of AA/BB/AB above.
                     # Downstream tools must check 'env_divided' before deciding whether
                     # to divide; the presence of env_auto/env_ab alone means nothing.
                     "env_auto": env_auto,
                     "env_ab": env_ab,
-                    "env_divided": False,
+                    "env_divided": True,
                     # Accumulation-mode provenance: with 'window_mean' the per-pair
                     # weighted window mean was removed inside the C correlator (the
                     # *_bg planes stored above are zeros), and per-pair
@@ -1512,8 +1495,6 @@ class SinglePassAccumulator:
         PIVEnsembleResult
             Complete ensemble PIV result with all passes
         """
-        from pivtools_cli.piv.piv_result import PIVEnsembleResult
-
         piv_results = PIVEnsembleResult()
         for pass_result in self.passes_results:
             piv_results.add_pass(pass_result)

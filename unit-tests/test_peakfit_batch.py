@@ -50,6 +50,7 @@ def _load_lib():
         ctypes.c_int,
         ctypes.c_int,
         np.ctypeslib.ndpointer(dtype=np.float32, flags="C_CONTIGUOUS"),
+        ctypes.c_void_p,  # fPlaneWeight (nullable; None = no compensation)
     ]
     lib.lsqpeaklocate_lm.restype = None
 
@@ -75,6 +76,7 @@ def _load_lib():
         np.ctypeslib.ndpointer(
             dtype=np.float32, flags="C_CONTIGUOUS"
         ),  # std_dev  [3][W]
+        ctypes.c_void_p,  # fPlaneWeight (nullable; None = no compensation)
     ]
     lib.lsqpeaklocate_lm_batch.restype = None
 
@@ -132,7 +134,7 @@ def _run_scalar(plane, fit_type):
     N = np.array(plane.shape, dtype=np.int32)
     loc = np.zeros(3, dtype=np.float32)
     std = np.zeros(3, dtype=np.float32)
-    _LIB.lsqpeaklocate_lm(np.ascontiguousarray(plane), N, loc, 1, fit_type, std)
+    _LIB.lsqpeaklocate_lm(np.ascontiguousarray(plane), N, loc, 1, fit_type, std, None)
     return loc, std
 
 
@@ -145,7 +147,7 @@ def _run_batch(planes, L_real, fit_type):
     loc = np.zeros(3 * _LANES, dtype=np.float32)
     std = np.zeros(3 * _LANES, dtype=np.float32)
     _LIB.lsqpeaklocate_lm_batch(
-        np.ascontiguousarray(buf), L_real, N, fit_type, loc, std
+        np.ascontiguousarray(buf), L_real, N, fit_type, loc, std, None
     )
     return loc.reshape(3, _LANES), std.reshape(3, _LANES)
 

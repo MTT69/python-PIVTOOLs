@@ -50,8 +50,9 @@ int bulkxcorr2d_set_peakfit_impl(int impl)
 int bulkxcorr2d_get_peakfit_impl(void) { return g_peakfit_impl; }
 int bulkxcorr2d_peakfit_batch_available(void) { return peakfit_batch_available(); }
 
-/* Post-process one finished correlation lane (instantaneous path): correlation-
- * plane weighting, optional raw-plane copy-out, and peak fit + output writes.
+/* Post-process one finished correlation lane (instantaneous path): optional
+ * raw-plane copy-out, and peak fit + output writes (the fitter applies the
+ * correlation-plane weighting to its 5x5 patch internally).
  * This is the EXACT per-window post-processing of the original scalar loop,
  * factored out so the only thing the batching changed is where the FFT runs.
  * `plane` is one window's correlation surface (length nPxPerWindow). */
@@ -63,17 +64,16 @@ static void instant_postprocess_lane(
     float *fPkLocX, float *fPkLocY, float *fPkHeight, float *fSx, float *fSy, float *fSxy,
     float *fCorrelPlane_Out, double *t_fit)
 {
-    if (!bEnsemble) {
-        int i;  /* MSVC OpenMP needs the counter declared outside the for-init */
-        #pragma omp simd
-        for (i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
-    }
+    /* Since 2026-07-13 the plane is NOT pre-multiplied by fCorrelWeight:
+     * peak detection runs on the RAW plane (Westerweel/PIVware semantics) and
+     * the fitter applies the compensation to its 5x5 patch only. Whole-plane
+     * weighting amplified plane-edge noise x2-8 and let spurious peaks win
+     * the argmax. */
 
     /* Copy correlation plane to output (ensemble accumulation, or the
-     * instantaneous debug dump). In the instantaneous path this runs AFTER
-     * the fCorrelWeight weighting above, so the dumped plane is the exact
-     * surface the peak fitter sees. NULL (the instantaneous default) skips
-     * the copy entirely. */
+     * instantaneous debug dump). The dumped plane is RAW — exactly what the
+     * peak search sees; the fitter sees the 5x5 patch times fCorrelWeight.
+     * NULL (the instantaneous default) skips the copy entirely. */
     if (fCorrelPlane_Out != NULL) {
         memcpy(&fCorrelPlane_Out[(size_t)idx * nPxPerWindow], plane, nPxPerWindow * sizeof(float));
     }
@@ -82,10 +82,10 @@ static void instant_postprocess_lane(
     if (!bEnsemble) {
         if (g_kernel_timing) {
             double t_mark = omp_get_wtime();
-            lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
+            lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd, fCorrelWeight);
             *t_fit += omp_get_wtime() - t_mark;
         } else {
-            lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd);
+            lsqpeaklocate_lm(plane, nWindowSize, fPeakLoc, nPeaks, iPeakFinder, fStd, fCorrelWeight);
         }
         for (int i = 0; i < nPeaks; ++i) {
             int out_idx = n * nPeaks * nWindowsTotal + i * nWindowsTotal + iWindowIdx;
@@ -99,9 +99,9 @@ static void instant_postprocess_lane(
             fSy[out_idx] = fStd[1*nPeaks + i];
             fSxy[out_idx] = fStd[2*nPeaks + i];
 
-            int pk_row = fmin(fmax(0, (int)peak_row), nWindowSize[0]-1);
-            int pk_col = fmin(fmax(0, (int)peak_col), nWindowSize[1]-1);
-            fPkHeight[out_idx] = peak_mag * fEnergyNorm / fCorrelWeight[pk_row*nWindowSize[1] + pk_col];
+            /* peak_mag is the raw-plane argmax height — no un-weighting
+             * needed (PIVware raw-detectability convention). */
+            fPkHeight[out_idx] = peak_mag * fEnergyNorm;
         }
     }
 }
@@ -143,15 +143,12 @@ static void instant_flush_batch(
         const int W = peakfit_batch_lanes();
         float ploc[3 * PEAKFIT_MAX_LANES], pstd[3 * PEAKFIT_MAX_LANES];
 
-        for (int l = 0; l < L_real; ++l) {   /* hoisted plane weighting */
-            float *plane = &packC[(size_t)l * numel];
-            int i;
-            #pragma omp simd
-            for (i = 0; i < nPxPerWindow; ++i) plane[i] *= fCorrelWeight[i];
-        }
+        /* Since 2026-07-13 planes stay RAW (no hoisted fCorrelWeight
+         * multiply): detection on the raw plane, compensation applied by the
+         * fitter to its 5x5 patch only — mirrors instant_postprocess_lane. */
 
         /* Debug plane dump (instantaneous): mirrors the copy-out in
-         * instant_postprocess_lane — post-weighting, same idx layout. */
+         * instant_postprocess_lane — RAW planes, same idx layout. */
         if (fCorrelPlane_Out != NULL) {
             for (int l = 0; l < L_real; ++l)
                 memcpy(&fCorrelPlane_Out[(size_t)lane_idx[l] * nPxPerWindow],
@@ -160,10 +157,10 @@ static void instant_flush_batch(
 
         if (g_kernel_timing) {
             double t_mark = omp_get_wtime();
-            lsqpeaklocate_lm_batch(packC, L_real, nWindowSize, iPeakFinder, ploc, pstd);
+            lsqpeaklocate_lm_batch(packC, L_real, nWindowSize, iPeakFinder, ploc, pstd, fCorrelWeight);
             *t_fit += omp_get_wtime() - t_mark;
         } else {
-            lsqpeaklocate_lm_batch(packC, L_real, nWindowSize, iPeakFinder, ploc, pstd);
+            lsqpeaklocate_lm_batch(packC, L_real, nWindowSize, iPeakFinder, ploc, pstd, fCorrelWeight);
         }
 
         for (int l = 0; l < L_real; ++l) {
@@ -178,9 +175,9 @@ static void instant_flush_batch(
             fSy[out_idx] = pstd[1 * W + l];
             fSxy[out_idx] = pstd[2 * W + l];
 
-            int pk_row = fmin(fmax(0, (int)peak_row), nWindowSize[0]-1);
-            int pk_col = fmin(fmax(0, (int)peak_col), nWindowSize[1]-1);
-            fPkHeight[out_idx] = peak_mag * lane_enorm[l] / fCorrelWeight[pk_row*nWindowSize[1] + pk_col];
+            /* peak_mag is the raw-plane argmax height — no un-weighting
+             * needed (PIVware raw-detectability convention). */
+            fPkHeight[out_idx] = peak_mag * lane_enorm[l];
         }
         return;
     }

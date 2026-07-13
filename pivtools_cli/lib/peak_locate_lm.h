@@ -27,11 +27,16 @@
  * - Reduced iteration count
  *****************************************************************************/
 
-/* Main peak localization function - compatible with existing interface.
+/* Main peak localization function.
+ * Search (since 2026-07-13, Westerweel/PIVware style): all 3x3 local maxima in
+ * the quarter-rule region |disp| <= N/4 are candidates; the largest is fitted.
+ * fPlaneWeight (nullable): loss-of-correlation compensation nPx/(W conv W),
+ * applied ONLY to the extracted PKSIZE fit patch at its own plane coordinates —
+ * detection always runs on the raw plane. NULL = no compensation.
  * Invalid results are NaN: peak_loc row/col = NaN (height 0, std_dev 0) when
- * the peak search fails (flat/border/non-max) OR when the LM fit fails to
+ * the peak search fails (flat/border/no-local-max) OR when the LM fit fails to
  * converge (since 2026-07-06). A finite result is a trustworthy fit. */
-PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev);
+PEAK_EXPORT void lsqpeaklocate_lm(const float *xcorr, const int *N, float *peak_loc, int nPeaks, int iFitType, float *std_dev, const float *fPlaneWeight);
 
 /* Returns 1 if this CPU can run the SIMD kernels this binary was built with.
  * Lives in the scalar TU (compiled with no arch flags on every platform) so

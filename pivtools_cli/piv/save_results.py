@@ -133,8 +133,10 @@ def save_corr_plane_dump(
         ),
         "pk_origin_note": (
             "plane peak pixel = (pk_loc_y_raw + H//2, pk_loc_x_raw + W//2); "
-            "planes are post-weighting (what the peak fitter saw); all-zero "
-            "plane = window skipped (masked/out of bounds)"
+            "planes are RAW (what the peak search saw — since 2026-07-13 the "
+            "loss-of-correlation compensation is applied only to the 5x5 fit "
+            "patch inside the fitter); all-zero plane = window skipped "
+            "(masked/out of bounds)"
         ),
     }
     for p_idx, pass_result in enumerate(piv_result.passes):
