@@ -1,10 +1,12 @@
 """
-Tests for kspace_lm_fitting.py -- the batched-LM k-space fitter (GSL replica minus
-beta) that is the production ensemble fitter since 2026-07-08.
+Tests for kspace_lm_fitting.py -- the batched-LM k-space fitter. Since 2026-07-14
+this is the one-stage 7-parameter joint fit (mu, Sigma, gain g, in-model noise
+floor N0) of the raw transfer ratio; the two-stage GSL-replica design it replaces
+lives in git history.
 
 Driven exactly as the production call site does (``single_pass_accumulator``):
-positional args, use_soft_weighting=True, k_max_cap=None. Gaussian displacement PDF
-only -- there is no shape option (kurtosis was tested and rejected).
+positional args. Gaussian displacement PDF only -- there is no shape option
+(kurtosis was tested and rejected).
 
 Mirrors test_kspace_fitting.py (which still guards the dormant closed-form module):
   - Output contract + masking
@@ -42,11 +44,7 @@ def _fit(R_AA, R_BB, R_AB, n_windows=1, **kw):
         cs,
         None,
         0,
-        True,  # use_soft_weighting (production value)
         False,  # debug
-        None,  # predictor_displacements
-        "bicubic",  # interp_kernel
-        None,  # k_max_cap
         **kw,
     )
 
@@ -55,12 +53,10 @@ def _triplet(shape, **kw):
     """Synthetic triplet with a PHYSICALLY-correct white noise floor.
 
     White camera noise adds a +2*sigma_n^2 delta at the AUTOcorrelation centre
-    pixel (flat pedestal in k-space — what the stage-1 floor models) and cancels
-    in the cross plane (A/B noise independence). The generator's ``offset``
-    kwarg is NOT that: a plane-wide constant is a DC-only delta in k-space, and
-    fitting a white-floor model to it over-subtracts at every k>0 (the linear
-    fitter's refc margin happens to fence that mismatch off; the LM fitter's
-    soft weighting does not).
+    pixel (flat pedestal in k-space — what the joint fit's in-model floor N0
+    models) and cancels in the cross plane (A/B noise independence). The
+    generator's ``offset`` kwarg is NOT that: a plane-wide constant is a DC-only
+    delta in k-space, unrelated to a white floor.
     """
     R_AA, R_BB, R_AB = generate_correlation_triplet(shape, **kw)
     cy, cx = shape[0] // 2, shape[1] // 2
@@ -102,11 +98,6 @@ class TestContract:
             cs,
             None,
             0,
-            True,
-            False,
-            None,
-            "bicubic",
-            None,
         )
         assert status[1] == -1 and status[3] == -1
         assert status[0] == 0 and status[2] == 0
@@ -127,11 +118,6 @@ class TestContract:
             cs,
             None,
             0,
-            True,
-            False,
-            None,
-            "bicubic",
-            None,
         )
         assert np.all(status == -1)
 
@@ -143,10 +129,9 @@ class TestContract:
         )
         gauss, status, _, diag = _fit(R_AA, R_BB, R_AB, n, return_diagnostics=True)
         assert np.all(status == 0)
-        assert diag["s1_conv"].sum() >= 0.99 * n
-        assert diag["s2_conv"].sum() >= 0.99 * n
-        # nowhere near the iteration caps on clean data
-        assert np.median(diag["s2_iter"]) < 50
+        assert diag["conv"].sum() >= 0.99 * n
+        # nowhere near the iteration cap on clean data
+        assert np.median(diag["iter"]) < 50
 
     def test_particle_size_slots_nan(self):
         """Slots 6:9 are NaN by contract (k-space cancels particle shape)."""
@@ -270,11 +255,6 @@ class TestEdgeCases:
             cs,
             None,
             0,
-            True,
-            False,
-            None,
-            "bicubic",
-            None,
         )
         assert status[0] != 0
 
@@ -289,28 +269,3 @@ class TestEdgeCases:
         )
         gauss, status, _ = _fit(R_AA, R_BB, R_AB)
         assert status[0] != 0 or abs(gauss[0, 14] - (window / 2.0 + 1)) < 0.75 * window
-
-    def test_nan_predictor_handled(self):
-        """NaN predictor displacements (invalid windows) must not crash P_noise."""
-        n = 2
-        R_AA, R_BB, R_AB = _triplet((32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5)
-        R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(
-            R_AA, R_BB, R_AB, n_windows=n
-        )
-        pred = np.array([[0.3, 1.2], [np.nan, np.nan]])
-        gauss, status, _ = fit_windows_kspace_lm(
-            R_AA_f,
-            R_BB_f,
-            R_AB_f,
-            mask,
-            cs,
-            None,
-            0,
-            True,
-            False,
-            pred,
-            "bicubic",
-            None,
-        )
-        assert status.shape == (n,)
-        assert np.all(np.isfinite(gauss[status == 0][:, 9:12]))

@@ -2366,11 +2366,12 @@ class Config:
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        - 'kspace' (default): the batched-LM two-stage k-space
-          transfer-function fit (``fit_windows_kspace_lm`` — a GSL-free
-          replica of the original nonlinear fitter minus its beta term,
-          Gaussian displacement PDF only). The ``lm_soft_weighting`` and
-          ``lm_k_max_cap`` knobs apply to this fitter.
+        - 'kspace' (default): the batched-LM one-stage 7-parameter joint
+          fit of the raw k-space transfer ratio (``fit_windows_kspace_lm``:
+          mu, Sigma, gain g, in-model noise floor N0; Gaussian displacement
+          PDF only). No tuning knobs — the former ``lm_soft_weighting`` and
+          ``lm_k_max_cap`` ablation knobs guarded pathologies of the removed
+          two-stage design; stale keys in old workspace configs are ignored.
         - 'kspace_linear': the closed-form linear fitter
           (``fit_windows_kspace_linear``) with the old production recipe
           fixed (joint noise floor, refc trust-region weighting, Gaussian
@@ -2391,38 +2392,6 @@ class Config:
                 f"k-space fitter were removed.)"
             )
         return method
-
-    @property
-    def ensemble_lm_soft_weighting(self) -> bool:
-        """Soft SNR-adaptive weighting in the LM k-space fitter's main fit.
-
-        When True (default, the validated recipe) stage 2 weights complex
-        residuals by w_snr x w_soft (SNR times a Sigma-seed-derived Gaussian
-        taper). When False, flat weights inside the trust ellipse — a
-        diagnostic ablation: if disabling this moves Sigma toward the linear
-        fitter's answer on hostile data, the soft weighting's high-k reach is
-        the failure channel. Only consumed when fit_method is 'kspace'.
-        """
-        return self.data.get("ensemble_piv", {}).get("lm_soft_weighting", True)
-
-    @property
-    def ensemble_lm_k_max_cap(self):
-        """Optional cap on the LM fitter's per-axis trust radius (cycles/px).
-
-        None (default) keeps the fitter's own profile-scan k_max capped at
-        0.35. A smaller value (e.g. 0.15-0.2) restricts the fit to the
-        low-k band where the Gaussian model is safest — the second
-        diagnostic ablation knob. Only consumed when fit_method is 'kspace'.
-        """
-        cap = self.data.get("ensemble_piv", {}).get("lm_k_max_cap", None)
-        if cap is not None:
-            cap = float(cap)
-            if not (0.0 < cap <= 0.5):
-                raise ValueError(
-                    f"ensemble_piv.lm_k_max_cap must be in (0, 0.5] cycles/px "
-                    f"or null, got {cap}"
-                )
-        return cap
 
     @property
     def ensemble_image_warp_interpolation(self) -> str:

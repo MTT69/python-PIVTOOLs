@@ -713,8 +713,6 @@ ensemble_piv:
   background_subtraction_method: correlation
   per_pair_normalization: false
   predictor_rounding: false
-  lm_soft_weighting: true
-  lm_k_max_cap: null
   gradient_correction: false
   window_size:
   - - 128

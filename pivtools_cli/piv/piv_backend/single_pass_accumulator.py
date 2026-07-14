@@ -778,10 +778,9 @@ class SinglePassAccumulator:
                     pred_disp_futures.append(None)
 
         # K-space fit, dispatched across Dask workers. fit_method selects:
-        #   'kspace'        — batched-LM GSL replica minus beta (two-stage
-        #                     nonlinear: joint LM noise floor + complex-domain
-        #                     5-param main fit). lm_soft_weighting / lm_k_max_cap
-        #                     config knobs apply to this fitter only.
+        #   'kspace'        — one-stage 7-param joint LM fit of the raw transfer
+        #                     ratio (mu, Sigma, gain g, in-model noise floor N0);
+        #                     see kspace_lm_fitting.py for the model.
         #   'kspace_linear' — closed-form linear fitter with the old production
         #                     recipe fixed (joint floor, refc trust-region
         #                     weighting, Gaussian shape).
@@ -836,11 +835,7 @@ class SinglePassAccumulator:
                         corr_size,
                         self.config,
                         pass_idx,
-                        self.config.ensemble_lm_soft_weighting,
                         self.config.debug,  # diagnostics when debug=True
-                        pred_disp_futures[i],  # per-window predictor displacements
-                        interp_kernel,  # 'bicubic' or 'lanczos3'
-                        self.config.ensemble_lm_k_max_cap,  # None -> 0.35 default
                         save_fit_diagnostics,  # return per-window diag dict
                     )
                     for i in range(len(R_AA_futures))
