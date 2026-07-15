@@ -492,9 +492,13 @@ def validate_images_generic(
         result["format_detected"] = "set"
         result["sample_files"] = [set_file.name]
 
-        # Get entry count from .set file (opens file briefly, no pixel decode)
+        # Get entry count from .set file (opens file briefly, no pixel decode).
+        # Import from the concrete submodule (mirrors the working .cine branch
+        # below) — `get_set_entry_count` is NOT re-exported from the .readers
+        # package, so `from .readers import ...` would raise ImportError and the
+        # true count would silently degrade to the "container" sentinel.
         try:
-            from .readers import get_set_entry_count
+            from .readers.set_reader import get_set_entry_count
 
             result["found_count"] = get_set_entry_count(str(set_file))
         except Exception as e:
@@ -847,6 +851,28 @@ def _suggest_camera_subfolder(camera_path: Path, camera_num: int) -> Optional[st
             best_name = candidate
 
     return best_name
+
+
+def detect_flat_source_files(source_path: Path, patterns: List[str]) -> List[str]:
+    """Detect image files matching the configured patterns directly in the source folder.
+
+    Used to spot a stale multi-camera config: when camera subfolder paths (e.g.
+    ``source/Cam1``) don't exist but files matching the pattern sit directly in
+    ``source_path``, the dataset is a single-camera layout and the caller can
+    suggest switching camera_count to 1.
+
+    Returns up to 5 matching filenames, or an empty list if none / not a directory.
+    """
+    if not source_path.exists() or not source_path.is_dir():
+        return []
+
+    matches: List[Path] = []
+    for pattern in patterns:
+        if not pattern or not pattern.strip():
+            continue
+        matches.extend(_glob_images(source_path, format_to_glob(pattern)))
+
+    return [f.name for f in sorted(set(matches))[:5]]
 
 
 def validate_single_pattern(

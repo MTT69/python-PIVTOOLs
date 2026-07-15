@@ -954,14 +954,21 @@ def validate_files():
     camera_numbers = cfg.camera_numbers
     results = {}
     overall_valid = True
+    # Stale multi-camera detection: True only if every camera folder is absent
+    all_camera_paths_missing = True
 
     # Import per-pattern validator
-    from pivtools_core.image_handling.path_utils import validate_single_pattern
+    from pivtools_core.image_handling.path_utils import (
+        detect_flat_source_files,
+        validate_single_pattern,
+    )
 
     for camera_num in camera_numbers:
         try:
             # Build camera path using shared utility
             camera_path = build_piv_camera_path(cfg, source_path_idx, camera_num)
+            if camera_path.exists():
+                all_camera_paths_missing = False
             image_type = cfg.image_type
             num_images = cfg.num_images
             num_pairs = cfg.num_frame_pairs
@@ -1037,11 +1044,21 @@ def validate_files():
 
             if cfg.is_container_format:
                 # Container formats (.set, .cine): validate_images_generic already
-                # read frame 1 for preview. If the container exists and frame 1
-                # reads, all frames exist — skip expensive redundant reads.
+                # read frame 1 for preview. Frame 1 reading does NOT prove the last
+                # requested entry exists — a container index can declare more entries
+                # than it actually holds, and the user may request more than exist.
+                # So verify the LAST requested pair reads too (same as the standard
+                # branch below), rather than assuming all frames exist.
                 if validation.get("first_image_preview"):
                     first_frame_status = "exists"
-                    last_frame_status = "exists"
+                    try:
+                        read_pair(num_pairs, camera_path, camera_num, cfg)
+                        last_frame_status = "exists"
+                    except Exception as e:
+                        logger.debug(
+                            f"Last container entry check failed for camera {camera_num}: {e}"
+                        )
+                        # leaves last_frame_status = "missing" -> error branch below
             else:
                 # Standard/im7: individual files can be missing, test both ends
                 try:
@@ -1094,10 +1111,15 @@ def validate_files():
                             f"Loop {loop_idx} source not found: {loop_path.name}"
                         )
 
-            # Determine status based on both generic validation and pair checks
+            # Determine status based on both generic validation and pair checks.
+            # `found_count` is an int for standard/im7/.set/.cine when the count is
+            # known, or the "container" sentinel when it genuinely couldn't be read.
+            # Do NOT substitute num_images for the sentinel: echoing the user's own
+            # input back as the detected count makes every entry "match" (false green
+            # tick) and hides an over-count. A non-int actual_count -> detected_count
+            # = None downstream (honest "unknown"), and the last-entry read above is
+            # the real guard.
             actual_count = validation["found_count"]
-            if actual_count == "container":
-                actual_count = num_images  # For containers, assume expected count
 
             error_msg = validation.get("error")
             status = "ok" if validation["valid"] else "error"
@@ -1144,7 +1166,14 @@ def validate_files():
             elif last_frame_status == "missing":
                 status = "error"
                 end_idx = cfg.start_index + num_images - 1
-                if image_type == "lavision_set":
+                if isinstance(actual_count, int) and actual_count < num_images:
+                    # We know the real container count and it's short — say so
+                    # explicitly rather than the generic "last frame not found".
+                    error_msg = (
+                        f"Requested {num_images} frames but only {actual_count} "
+                        f"available in the container"
+                    )
+                elif image_type == "lavision_set":
                     error_msg = f"Last frame not found. Container file: {format_str}"
                 elif image_type == "cine":
                     error_msg = (
@@ -1160,6 +1189,16 @@ def validate_files():
                 status = "ok"
                 error_msg = (
                     f"Processing subset: {num_images} of {actual_count} files available"
+                )
+
+            elif isinstance(actual_count, int) and actual_count < num_images:
+                # Fewer files/entries than requested - the user asked to process more
+                # frames than exist. Mirrors the shortfall failures the standard/im7
+                # branches already raise in validate_images_generic.
+                status = "error"
+                error_msg = (
+                    f"Requested {num_images} frames but only {actual_count} "
+                    f"available"
                 )
 
             # Check if any per-pattern validation failed
@@ -1261,11 +1300,39 @@ def validate_files():
         if memory_warning:
             overall_valid = False
 
+    # Stale multi-camera config detection: every camera folder (e.g. source/Cam1)
+    # is missing, but files matching the pattern sit directly in the source folder
+    # → this is a single-camera layout left over from a previous multi-camera run.
+    # Suggestion only — the user applies it with an explicit click in the GUI.
+    # Standard image type only: .set/.cine never use camera subfolders, and
+    # im7-with-subfolders would need use_camera_subfolders toggled instead.
+    suggested_camera_count = None
+    suggested_camera_count_files = []
+    if (
+        not overall_valid
+        and len(camera_numbers) > 1
+        and cfg.image_type == "standard"
+        and all_camera_paths_missing
+    ):
+        patterns = (
+            cfg.image_format
+            if isinstance(cfg.image_format, (list, tuple))
+            else [cfg.image_format]
+        )
+        flat_files = detect_flat_source_files(
+            cfg.source_paths[source_path_idx], patterns
+        )
+        if flat_files:
+            suggested_camera_count = 1
+            suggested_camera_count_files = flat_files
+
     return jsonify(
         {
             "valid": overall_valid,
             "detected_count": top_detected_count,
             "memory_warning": memory_warning,
+            "suggested_camera_count": suggested_camera_count,
+            "suggested_camera_count_files": suggested_camera_count_files,
             "details": results,
         }
     )

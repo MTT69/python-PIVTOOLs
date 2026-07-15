@@ -913,10 +913,12 @@ def _create_piv_struct_all_passes(
                 pass_result.peak_mag, "peak_mag"
             )
         # peak detectability (peak1/peak2, PIVware SNR type 2) — 2D per
-        # window, so readers auto-discover it as a plottable variable
+        # window, so readers auto-discover it as a plottable variable.
+        # Kept float32: the ratio is unbounded (clean planes reach ~1e5,
+        # a near-zero second peak) and would clamp at float16's 65504.
         if pass_result.peak_ratio is not None:
-            piv_struct["peak_ratio"][local_idx] = _convert_to_half_precision(
-                pass_result.peak_ratio, "peak_ratio"
+            piv_struct["peak_ratio"][local_idx] = pass_result.peak_ratio.astype(
+                np.float32, copy=False
             )
         if pass_result.peak_choice is not None:
             piv_struct["peak_choice"][local_idx] = (
