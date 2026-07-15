@@ -367,3 +367,175 @@ class TestFitterSelectionAndValidation:
         FakeCfg.ensemble_background_subtraction_method = "window_mean"
         ok, errors, _ = validate_ensemble_config(FakeCfg())
         assert ok, errors
+
+    def test_per_pair_norm_forbidden_with_combined_modes(self):
+        """ppn requires exactly 'window_mean' — the combined modes build an
+        ensemble-level background term from raw mean images, inconsistent
+        with per-pair-normalized sums."""
+        from pivtools_core.validation import validate_ensemble_config
+
+        class FakeCfg:
+            ensemble_type = ["std"]
+            ensemble_window_sizes = [[32, 32]]
+            ensemble_overlaps = [50]
+            ensemble_sum_window = [32, 32]
+            ensemble_sum_fitting_window_enabled = False
+            ensemble_sum_fitting_window = None
+            ensemble_fit_method = "kspace"
+            ensemble_background_subtraction_method = "correlation+window_mean"
+            ensemble_per_pair_normalization = True
+            ensemble_resume_from_pass = 0
+            ensemble_num_passes = 1
+
+        for method in ("correlation+window_mean", "image+window_mean"):
+            FakeCfg.ensemble_background_subtraction_method = method
+            FakeCfg.ensemble_per_pair_normalization = True
+            ok, errors, _ = validate_ensemble_config(FakeCfg())
+            assert not ok, method
+            assert any("per_pair_normalization" in e for e in errors)
+
+            FakeCfg.ensemble_per_pair_normalization = False
+            ok, errors, _ = validate_ensemble_config(FakeCfg())
+            assert ok, (method, errors)
+
+
+# ---------------------------------------------------------------------------
+# Combined background modes: config surface
+# ---------------------------------------------------------------------------
+def _real_config(bg_method):
+    """Real Config with only the ensemble_piv keys set (bypasses YAML load)."""
+    from pivtools_core.config import Config
+
+    cfg = Config.__new__(Config)
+    cfg.data = {"ensemble_piv": {"background_subtraction_method": bg_method}}
+    return cfg
+
+
+class TestCombinedModeConfig:
+    def test_enum_and_derived_properties(self):
+        # (method, base, window_mean_in_correlator)
+        table = [
+            ("correlation", "correlation", False),
+            ("image", "image", False),
+            ("window_mean", "window_mean", True),
+            ("correlation+window_mean", "correlation", True),
+            ("image+window_mean", "image", True),
+        ]
+        for method, base, in_corr in table:
+            cfg = _real_config(method)
+            assert cfg.ensemble_background_subtraction_method == method
+            assert cfg.ensemble_bg_base_method == base
+            assert cfg.ensemble_window_mean_in_correlator is in_corr
+
+    def test_invalid_value_rejected(self):
+        cfg = _real_config("window_mean+correlation")
+        with pytest.raises(ValueError, match="background_subtraction_method"):
+            cfg.ensemble_background_subtraction_method
+
+
+# ---------------------------------------------------------------------------
+# Combined background modes: kernel-boundary behavior
+# ---------------------------------------------------------------------------
+class TestCombinedModeKernel:
+    """Both combined routes are exact — verify at the C-kernel boundary."""
+
+    @staticmethod
+    def _synthetic(n=6, fluctuations=True, seed=11):
+        """Stationary structured background + correlated per-pair DC offsets
+        (pulse-energy scatter) + optional per-pair fluctuations."""
+        rng = np.random.default_rng(seed)
+        bg_a = (rng.random((IMG, IMG)) * 50).astype(np.float32)
+        bg_b = (rng.random((IMG, IMG)) * 50).astype(np.float32)
+        c = rng.normal(0.0, 10.0, n).astype(np.float32)  # same for A and B
+        imgs_a = bg_a[None] + c[:, None, None]
+        imgs_b = bg_b[None] + c[:, None, None]
+        if fluctuations:
+            imgs_a = imgs_a + (rng.random((n, IMG, IMG)) * 20).astype(np.float32)
+            imgs_b = imgs_b + (rng.random((n, IMG, IMG)) * 20).astype(np.float32)
+        return (
+            np.ascontiguousarray(imgs_a, dtype=np.float32),
+            np.ascontiguousarray(imgs_b, dtype=np.float32),
+        )
+
+    def test_window_mean_linearity_identity(self):
+        """The identity the correlation+window_mean route rests on:
+        mean_i(A_i − m(A_i)) == Ā − m(Ā) for the (uniform-weight) window-mean
+        operator m."""
+        imgs_a, _ = self._synthetic()
+        centered = imgs_a - imgs_a.mean(axis=(1, 2), keepdims=True)
+        mean_then_center = imgs_a.mean(axis=0) - imgs_a.mean()
+        np.testing.assert_allclose(
+            centered.mean(axis=0), mean_then_center, rtol=0, atol=1e-4
+        )
+
+    def test_route_equivalence(self, triple_lib):
+        """correlation+window_mean ≡ image+window_mean ≡ numpy reference.
+
+        Route 1 (single sweep): per-pair window-mean-subtracted sums minus the
+        window-mean-subtracted mean-image correlation.
+        Route 2 (two sweeps): subtract mean images per pair, then per-pair
+        window-mean subtraction. Equal because correlation is bilinear and the
+        window-mean operator is linear.
+        """
+        imgs_a, imgs_b = self._synthetic(fluctuations=True)
+        n = imgs_a.shape[0]
+        a_mean = imgs_a.mean(axis=0)
+        b_mean = imgs_b.mean(axis=0)
+
+        # Route 1: correlation+window_mean
+        planes_raw = run_triple(triple_lib, imgs_a, imgs_b, 1, 0)
+        planes_bg = run_triple(triple_lib, a_mean[None], b_mean[None], 1, 0)
+        route1 = [raw / n - bg for raw, bg in zip(planes_raw, planes_bg)]
+
+        # Route 2: image+window_mean
+        a_centered = np.ascontiguousarray(imgs_a - a_mean, dtype=np.float32)
+        b_centered = np.ascontiguousarray(imgs_b - b_mean, dtype=np.float32)
+        route2 = [p / n for p in run_triple(triple_lib, a_centered, b_centered, 1, 0)]
+
+        for p1, p2 in zip(route1, route2):
+            rel = np.abs(p1 - p2).max() / np.abs(p2).max()
+            assert rel < 1e-4
+
+        # Numpy reference for the AB plane of route 2
+        lo = IMG // 2 - WIN // 2
+        hi = lo + WIN
+        ref = np.zeros((WIN, WIN))
+        for i in range(n):
+            wa = a_centered[i, lo:hi, lo:hi].astype(np.float64)
+            wb = b_centered[i, lo:hi, lo:hi].astype(np.float64)
+            wa -= wa.mean()
+            wb -= wb.mean()
+            ref += np.fft.fftshift(
+                np.real(np.fft.ifft2(np.fft.fft2(wb) * np.conj(np.fft.fft2(wa))))
+            )
+        ref /= n
+        rel = np.abs(route2[0] - ref).max() / np.abs(ref).max()
+        assert rel < 1e-4
+
+    def test_combined_removes_both_artefact_families(self, triple_lib):
+        """Stationary background + per-pair DC scatter, no real signal:
+        window_mean alone leaves the stationary structure, correlation alone
+        leaves the DC-scatter pedestal, the combined mode removes both."""
+        imgs_a, imgs_b = self._synthetic(fluctuations=False)
+        n = imgs_a.shape[0]
+        a_mean = imgs_a.mean(axis=0)
+        b_mean = imgs_b.mean(axis=0)
+
+        def ab_residual(mean_subtract, subtract_bg):
+            raw = run_triple(triple_lib, imgs_a, imgs_b, mean_subtract, 0)[0] / n
+            if not subtract_bg:
+                return raw
+            bg = run_triple(
+                triple_lib, a_mean[None], b_mean[None], mean_subtract, 0
+            )[0]
+            return raw - bg
+
+        r_window_mean = ab_residual(1, False)  # stationary structure survives
+        r_correlation = ab_residual(0, True)  # DC-scatter pedestal survives
+        r_combined = ab_residual(1, True)  # both removed
+
+        scale_wm = np.abs(r_window_mean).max()
+        scale_corr = np.abs(r_correlation).max()
+        assert scale_wm > 0 and scale_corr > 0
+        assert np.abs(r_combined).max() < 1e-3 * scale_wm
+        assert np.abs(r_combined).max() < 1e-3 * scale_corr

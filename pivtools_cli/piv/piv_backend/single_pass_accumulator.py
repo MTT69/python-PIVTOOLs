@@ -290,7 +290,11 @@ class SinglePassAccumulator:
         self.n_images += batch_result["n_images"]
 
     def _correlate_mean_images(
-        self, A_mean: np.ndarray, B_mean: np.ndarray, pass_idx: int
+        self,
+        A_mean: np.ndarray,
+        B_mean: np.ndarray,
+        pass_idx: int,
+        window_mean_subtract: bool = False,
     ) -> tuple:
         """
         Correlate mean images to compute background correlation.
@@ -308,6 +312,13 @@ class SinglePassAccumulator:
             Mean of all warped B images, shape (H, W)
         pass_idx : int
             PIV pass index
+        window_mean_subtract : bool
+            'correlation+window_mean' mode: remove each window's weighted mean
+            from the mean images before correlating (bMeanSubtract=1), so the
+            background term matches sums whose pairs had their window means
+            removed in C. Exact by linearity of the window-mean operator:
+            mean(A_i − m(A_i)) = Ā − m(Ā). Must stay False for plain
+            'correlation' (raw sums need the raw <A>⊗<B> term).
 
         Returns
         -------
@@ -411,7 +422,9 @@ class SinglePassAccumulator:
             correlator.win_weights_B[pass_idx],  # auto weight B (symmetric)
             win_size_arr,  # FFT computation size
             fit_size_arr,  # Output size (central extraction)
-            0,  # bMeanSubtract off — this correlates the mean images themselves
+            # bMeanSubtract: 1 in 'correlation+window_mean' so the background
+            # gets the same per-window mean removal as the per-pair sums
+            1 if window_mean_subtract else 0,
             0,  # bPerPairNorm off — background term must stay unnormalized
             correl_AB_bg,
             correl_AA_bg,
@@ -475,6 +488,7 @@ class SinglePassAccumulator:
 
         # Check background subtraction method
         bg_method = self.config.ensemble_background_subtraction_method
+        bg_base = self.config.ensemble_bg_base_method
         skip_bg_subtraction = self.config.ensemble_skip_background_subtraction
 
         with self._profile_section(pass_idx, "mean_computation"):
@@ -489,11 +503,15 @@ class SinglePassAccumulator:
 
         # Step 3-4: Background subtraction depends on method
         with self._profile_section(pass_idx, "bg_subtraction"):
-            if bg_method == "image":
-                # IMAGE method: mean was subtracted BEFORE correlation
-                # Correlation planes are already background-subtracted: R = <(A-Ā)⊗(B-B̄)>
+            if bg_base == "image":
+                # IMAGE method (plain or '+window_mean'): mean was subtracted
+                # per pair BEFORE correlation (and in the combined mode the C
+                # correlator removed each window's weighted mean on top).
+                # Correlation planes are already background-subtracted:
+                # R = <(A-Ā)⊗(B-B̄)>
                 logging.info(
-                    f"Pass {pass_idx + 1}: Using 'image' background method (already subtracted)"
+                    f"Pass {pass_idx + 1}: Using '{bg_method}' background method "
+                    f"(subtracted per pair before accumulation)"
                 )
                 R_AA_ensemble = R_AA_raw
                 R_BB_ensemble = R_BB_raw
@@ -528,10 +546,19 @@ class SinglePassAccumulator:
                 R_BB_bg = np.zeros_like(R_BB_raw)
                 R_AB_bg = np.zeros_like(R_AB_raw)
             else:
-                # CORRELATION method: correlate raw images, subtract correlated means
-                # R_ensemble = <A⊗B> - <A>⊗<B>
+                # CORRELATION method (plain or '+window_mean'):
+                # R_ensemble = <A⊗B> - <A>⊗<B>. In the combined mode the
+                # per-pair sums had each window's weighted mean removed in C,
+                # so the mean images get the identical treatment
+                # (window_mean_subtract=True) — by linearity the subtracted
+                # term is exactly the stationary residual left in the sums.
                 R_AA_bg, R_BB_bg, R_AB_bg = self._correlate_mean_images(
-                    A_mean, B_mean, pass_idx
+                    A_mean,
+                    B_mean,
+                    pass_idx,
+                    window_mean_subtract=(
+                        self.config.ensemble_window_mean_in_correlator
+                    ),
                 )
                 R_AA_ensemble = R_AA_raw - R_AA_bg
                 R_BB_ensemble = R_BB_raw - R_BB_bg

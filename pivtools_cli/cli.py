@@ -710,7 +710,9 @@ ensemble_piv:
   fit_method: kspace
   skip_background_subtraction: false
   image_warp_interpolation: cubic
+  # correlation | image | window_mean | correlation+window_mean | image+window_mean
   background_subtraction_method: correlation
+  # per_pair_normalization requires background_subtraction_method: window_mean (exactly)
   per_pair_normalization: false
   predictor_rounding: false
   gradient_correction: false

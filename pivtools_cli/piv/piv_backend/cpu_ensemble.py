@@ -1001,9 +1001,7 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
                     correl_AB_sum,
                     correl_AA_sum,
                     correl_BB_sum,
-                    mean_subtract=(
-                        config.ensemble_background_subtraction_method == "window_mean"
-                    ),
+                    mean_subtract=config.ensemble_window_mean_in_correlator,
                     per_pair_norm=config.ensemble_per_pair_normalization,
                 )
 
@@ -1353,6 +1351,9 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             correl_AB_sum,
             correl_AA_sum,
             correl_BB_sum,
+            # 'image+window_mean': per pair, mean images already subtracted
+            # above, then C removes each window's weighted mean on top.
+            mean_subtract=config.ensemble_window_mean_in_correlator,
         )
 
         # Reshape to (windows, corr_h, corr_w)

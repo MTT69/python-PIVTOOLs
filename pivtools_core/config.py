@@ -2463,21 +2463,65 @@ class Config:
           that the ensemble-level methods cannot remove. No <A>⊗<B> term is
           subtracted on top (it would over-subtract).
 
+        - 'correlation+window_mean': both — per-pair window-mean removal in
+          the C correlator AND subtraction of the mean-image correlation at
+          finalize. The mean images get the same window-mean treatment
+          (bMeanSubtract=1), so the subtracted term is exactly the stationary
+          residual left in the per-pair sums (the window-mean operator is
+          linear: mean(A_i − m(A_i)) = Ā − m(Ā)) — not over-subtraction.
+          Removes stationary structure (reflections/glare) that survives the
+          per-pair window mean, while keeping the per-pair pedestal removal.
+
+        - 'image+window_mean': both, two-sweep — per pair, subtract the mean
+          images (kills stationary structure) then window-mean removal in C
+          (kills per-pair DC scatter). No finalize-time subtraction.
+
         'correlation' and 'image' are mathematically equivalent for stationary
-        brightness but differ under drift; 'window_mean' is the per-pair method.
+        brightness but differ under drift; 'window_mean' is the per-pair
+        method; the '+window_mean' variants combine an ensemble-level method
+        with the per-pair one (both exact).
 
         Default: 'correlation'
         """
         method = self.data.get("ensemble_piv", {}).get(
             "background_subtraction_method", "correlation"
         )
-        valid_methods = {"correlation", "image", "window_mean"}
+        valid_methods = {
+            "correlation",
+            "image",
+            "window_mean",
+            "correlation+window_mean",
+            "image+window_mean",
+        }
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_background_subtraction_method '{method}'. "
                 f"Must be one of {valid_methods}"
             )
         return method
+
+    @property
+    def ensemble_window_mean_in_correlator(self) -> bool:
+        """True when the per-pair window-mean removal runs in the C correlator.
+
+        Drives the bMeanSubtract flag of bulkxcorr2d_accumulate_triple for the
+        per-pair sweeps: 'window_mean' and both '+window_mean' combined modes.
+        """
+        return self.ensemble_background_subtraction_method in {
+            "window_mean",
+            "correlation+window_mean",
+            "image+window_mean",
+        }
+
+    @property
+    def ensemble_bg_base_method(self) -> str:
+        """Ensemble-level part of the background method: the part before '+'.
+
+        'correlation' / 'image' / 'window_mean'. Drives the sweep-count
+        dispatch (two sweeps for base 'image') and the finalize-time
+        subtraction branch (mean-image correlation for base 'correlation').
+        """
+        return self.ensemble_background_subtraction_method.split("+", 1)[0]
 
     @property
     def ensemble_per_pair_normalization(self) -> bool:
@@ -2490,9 +2534,11 @@ class Config:
         of brightness, seeding or contrast (correlation-coefficient planes).
         The geometric-mean AB scaling keeps T = F_AB/sqrt(F_AA*F_BB) invariant.
 
-        Requires background_subtraction_method 'window_mean' (validated in
-        validate_ensemble_config): the energies must be fluctuation energies,
-        and the ensemble-level background terms assume unnormalized sums.
+        Requires background_subtraction_method exactly 'window_mean'
+        (validated in validate_ensemble_config): the energies must be
+        fluctuation energies, and any ensemble-level background term
+        ('correlation'/'image', plain or '+window_mean') is built from raw
+        full-frame mean images — inconsistent with per-pair-normalized sums.
 
         Default: False
         """

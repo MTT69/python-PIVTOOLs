@@ -142,7 +142,7 @@ def process_pass_worker_accumulate(
     # the data; only runs when the method is explicitly selected.
     scattered_mean_images = None
     image_bg_sums = None
-    if config.ensemble_background_subtraction_method == "image":
+    if config.ensemble_bg_base_method == "image":
         logger.info(
             "  'image' background method: phase A sweep (warped image sums "
             "for the ensemble-mean images) — this doubles the passes over the data"

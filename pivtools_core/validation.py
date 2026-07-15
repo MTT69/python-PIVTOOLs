@@ -288,8 +288,11 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
     if config.ensemble_per_pair_normalization and bg_method != "window_mean":
         errors.append(
             "ensemble_piv.per_pair_normalization requires "
-            "background_subtraction_method 'window_mean' (the per-pair energies "
-            f"must be fluctuation energies), got '{bg_method}'."
+            "background_subtraction_method exactly 'window_mean' (the per-pair "
+            "energies must be fluctuation energies, and any ensemble-level "
+            "background term — 'correlation'/'image', plain or '+window_mean' — "
+            "is built from raw mean images, inconsistent with normalized sums), "
+            f"got '{bg_method}'."
         )
 
     # 9. Validate resume_from_pass
