@@ -1306,11 +1306,15 @@ def validate_files():
     # Suggestion only — the user applies it with an explicit click in the GUI.
     # Standard image type only: .set/.cine never use camera subfolders, and
     # im7-with-subfolders would need use_camera_subfolders toggled instead.
+    # Guard on camera_count (not len(camera_numbers)): camera_count > 1 is exactly
+    # what makes get_camera_folder() synthesize the phantom CamN subfolders, and the
+    # stale state can have camera_count=2 with camera_numbers=[1] (only camera 1
+    # validated) — len([1]) == 1 would miss it.
     suggested_camera_count = None
     suggested_camera_count_files = []
     if (
         not overall_valid
-        and len(camera_numbers) > 1
+        and cfg.camera_count > 1
         and cfg.image_type == "standard"
         and all_camera_paths_missing
     ):

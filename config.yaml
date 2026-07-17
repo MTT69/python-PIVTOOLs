@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4\processed\bgcor+mean
+  - E:\Synthetic\Planar_no_noise\validation_integer
   source_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4
+  - E:\Synthetic\Planar_no_noise
   active_paths:
   - 0
   camera_numbers:
@@ -23,10 +23,10 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 750
+  num_images: 4000
   image_shape:
-  - 3536
-  - 512
+  - 2048
+  - 2048
 batches:
   size: 10
 logging:
@@ -37,16 +37,16 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 7
-  dask_workers_per_node: 2
-  dask_memory_limit: 25GB
+  omp_threads: 3
+  dask_workers_per_node: 5
+  dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -85,14 +85,14 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: instantaneous
+  piv_type: ensemble
   cmap: default
   lower: ''
   upper: ''
   fps: 30
   crf: 15
   resolution: 4k
-  source_endpoint: stereo
+  source_endpoint: regular
 statistics:
   enabled_methods:
     fluctuating_velocity: false
@@ -114,8 +114,8 @@ statistics:
     mean_velocity: true
   gamma_radius: 4
   save_figures: true
-  type_name: instantaneous
-  source_endpoint: stereo
+  type_name: ensemble
+  source_endpoint: regular
 instantaneous_piv:
   window_size:
   - - 96
@@ -149,7 +149,7 @@ ensemble_piv:
   predictor_smoothing: false
   image_warp_interpolation: lanczos
   mask_center_pixel: true
-  background_subtraction_method: window_mean
+  background_subtraction_method: correlation+window_mean
   window_size:
   - - 64
     - 96
@@ -191,23 +191,19 @@ ensemble_piv:
     uy: 0
     edge: bottom
   per_pair_normalization: false
-  predictor_rounding: false
+  predictor_rounding: true
 calibration:
-  image_format: B%05d.im7
+  image_format: calib_Cam4_B00001_crop.tif
   num_images: 10
-  image_type: lavision_im7
+  image_type: standard
   zero_based_indexing: false
-  use_camera_subfolders: true
+  use_camera_subfolders: false
   subfolder: enhanced
   camera_subfolders:
-  - camera1
-  - camera2
-  - camera3
-  - camera4
-  - camera5
+  - Cam1
   path_order: camera_first
   active: stereo_stepped
-  piv_type: instantaneous
+  piv_type: ensemble
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
@@ -237,7 +233,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - E:\andre Project_FlowMaster_260129_152105_x25\Properties\Calibration
+  - E:\alk235\cam4_all_512_tiff\calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -263,8 +259,7 @@ calibration:
     stereo_config: auto
     model_type: pinhole
     fix_k2: true
-filters:
-- type: time
+filters: []
 masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
@@ -276,13 +271,13 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: instantaneous
+  type_name: ensemble
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: instantaneous
+  type_name: ensemble
   cameras:
     1:
       operations: []
-  source_endpoint: stereo
+  source_endpoint: regular
