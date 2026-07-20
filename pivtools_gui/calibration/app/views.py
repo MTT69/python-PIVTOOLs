@@ -1083,7 +1083,10 @@ def scale_factor_generate():
     """Build + save a scale-factor mono model from picked origin/axes + px/mm + dt.
 
     No detection, no fit — a direct uniform pixel->mm map. One frame is loaded only to
-    stamp the image size and draw the proof figure.
+    stamp the image size and draw the proof figure. An explicit ``use_image: false``
+    (the GUI's "Use calibration images" toggle off) skips the frame entirely: the size
+    comes from the existing saved model and no figure is drawn — there is no silent
+    fallback; without an existing model the request fails.
     """
     data = request.get_json() or {}
     source_idx = _source_idx(data.get)
@@ -1107,19 +1110,39 @@ def scale_factor_generate():
             if origin_mm_raw is not None
             else (0.0, 0.0)
         )
-        image = _load_one(
-            camera,
-            frame_idx,
-            source_idx,
-            data.get("image_format"),
-            data.get("image_type"),
-        )
-        h, w = np.asarray(image).shape[:2]
+        source = _source_path(source_idx)
+        model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
+        use_image = bool(data.get("use_image", True))
+        if use_image:
+            image = _load_one(
+                camera,
+                frame_idx,
+                source_idx,
+                data.get("image_format"),
+                data.get("image_type"),
+            )
+            h, w = np.asarray(image).shape[:2]
+            image_size = (int(w), int(h))
+        else:
+            image = None
+            try:
+                existing = rec.load_mono(model_dir, "scale_factor")
+            except FileNotFoundError:
+                raise ValueError(
+                    f"Cannot generate without calibration images: no existing "
+                    f"scale-factor model for Camera {camera} to take the image "
+                    f"size from. Enable 'Use calibration images' and generate "
+                    f"once with an image on disk first."
+                )
+            image_size = (
+                int(existing.camera_model.image_size[0]),
+                int(existing.camera_model.image_size[1]),
+            )
         record = build_scale_factor_record(
             camera=camera,
             origin_px=origin_px,
             px_per_mm=px_per_mm,
-            image_size=(int(w), int(h)),
+            image_size=image_size,
             dt=dt,
             x_dir=x_dir,
             y_dir=y_dir,
@@ -1127,11 +1150,9 @@ def scale_factor_generate():
             frame_idx=frame_idx,
             origin_mm=origin_mm,
         )
-        source = _source_path(source_idx)
-        model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
         path = rec.save_mono(record, model_dir)
         fig_dir = model_dir.parent / "figures"
-        if make_figs:
+        if make_figs and image is not None:
             from pivtools_gui.calibration import figures as c2figs
 
             sf = record.camera_model
@@ -1159,7 +1180,9 @@ def scale_factor_generate():
                 record.camera_model, dt, frame_idx=frame_idx, wf=record.world_frame
             )
         )
-        resp["figures"] = _list_figures(fig_dir) if make_figs else []
+        resp["figures"] = (
+            _list_figures(fig_dir) if (make_figs and image is not None) else []
+        )
         return jsonify(resp)
     except Exception as exc:
         logger.exception("scale_factor_generate failed")
