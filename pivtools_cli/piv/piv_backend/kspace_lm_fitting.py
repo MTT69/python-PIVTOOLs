@@ -18,7 +18,25 @@ ellipse:
 
     T_hat(k) = g * exp(-2 pi^2 k^T Sigma k) * exp(-2 pi i k.mu) * (1 - N0/F_ref(k))
 
-7 parameters (mu_x, mu_y, Sxx, Syy, Sxy, g, N0):
+Optional quartic shape terms (``ensemble_piv.kspace_shape``, added 2026-07-17): the
+Gaussian exponent may be extended with free-signed per-axis quartic terms,
+
+    exponent = -2 pi^2 k^T Sigma k - b4x*kx^4 - b4y*ky^4
+
+selected by ``kspace_shape`` = ``gaussian`` (default, exactly the 7-parameter model
+below) | ``kx4`` | ``ky4`` | ``kx4+ky4`` (8/8/9 parameters). Each b4 is the next
+cumulant of the displacement PDF on that axis (excess kurtosis
+gamma_2 = kappa_4/Sigma^2 with kappa_4 = -24*b4/(2 pi)^4): a non-Gaussian
+displacement PDF curves ln|T|, and forcing a pure Gaussian through that curvature
+biases Sigma by approximately gamma_2 * band_depth / 6 (+15-20 % streamwise below
+y+ 400 on the channel benchmarks). The quartic term absorbs the curvature and
+self-extinguishes (b4 -> 0) where the data has none, so no gating is applied. No
+cross kx^2*ky^2 term (tested and rejected: streamwise curvature leaks into the
+near-Gaussian transverse axis). Selection evidence — 10-fitter bake-off + full
+profiles on clean/noisy synthetic and Cam4:
+wiki/sessions/2026-07-17-fitter-bakeoff-e-debug.md.
+
+7 base parameters (mu_x, mu_y, Sxx, Syy, Sxy, g, N0):
   * mu    — mean displacement (phase ramp).
   * Sigma — displacement covariance = Reynolds stresses in px^2 (Gaussian decay).
   * g     — real peak gain (loss-of-correlation): the low-k amplitude plateau of
@@ -95,6 +113,16 @@ COST_PER_PT_ACCEPT = 1.0  # EMAXITER acceptance: cost/n_valid < this
 # (mu_x, mu_y, Sxx, Syy, Sxy, g, N0): Sxx, Syy >= 0; gain g in [1e-3, 1e3]; N0 >= 0
 MAIN_LO = np.array([-np.inf, -np.inf, 0.0, 0.0, -np.inf, 1e-3, 0.0])
 MAIN_HI = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, 1e3, np.inf])
+
+# kspace_shape -> (use_kx4, use_ky4). Enabled quartic coefficients append to the
+# parameter vector after N0, b4x before b4y; both are free-signed (sub-Gaussian
+# displacement PDF => b4 > 0) and seed at 0, mirroring N0.
+_KSPACE_SHAPES = {
+    "gaussian": (False, False),
+    "kx4": (True, False),
+    "ky4": (False, True),
+    "kx4+ky4": (True, True),
+}
 
 # Sigma seed (Sxx0, Syy0) in px^2; Sxy seeds 0. Seeds steer convergence only (the
 # optimum is set by the residuals); these values converged in 5-8 iterations across
@@ -249,6 +277,71 @@ def _resid_jac_v6(x, Tre, Tim, W, Fr, KXf, KYf, jac=False):
     return r, J
 
 
+def _resid_jac_quartic(x, Tre, Tim, W, Fr, KXf, KYf, use_kx4, use_ky4, jac=False):
+    """_resid_jac_v6 model plus free-signed quartic exponent terms (kspace_shape).
+
+    x (m, 7+n4) = (mu_x, mu_y, Sxx, Syy, Sxy, g, N0, [b4x], [b4y]) with the enabled
+    quartic coefficients appended in order (b4x before b4y). The exponent becomes
+    -2 pi^2 quad - b4x*kx^4 - b4y*ky^4; everything else is identical to the
+    Gaussian model. Only called when at least one term is enabled — the gaussian
+    shape keeps the untouched _resid_jac_v6 path (bit-exact default by construction).
+    """
+    mux = x[:, 0:1]
+    muy = x[:, 1:2]
+    Sxx = x[:, 2:3]
+    Syy = x[:, 3:4]
+    Sxy = x[:, 4:5]
+    g = x[:, 5:6]
+    N0 = x[:, 6:7]
+    KX2 = KXf * KXf
+    KY2 = KYf * KYf
+    KXKY = KXf * KYf
+    quart = []  # (param column, k^4 grid) for the enabled terms
+    col = 7
+    if use_kx4:
+        quart.append((col, KX2 * KX2))
+        col += 1
+    if use_ky4:
+        quart.append((col, KY2 * KY2))
+        col += 1
+    quad = Sxx * KX2[None] + 2.0 * Sxy * KXKY[None] + Syy * KY2[None]  # (m, P)
+    arg = -_TWO_PI2 * quad
+    for c, K4 in quart:
+        arg = arg - x[:, c : c + 1] * K4[None]
+    # clip guards non-PSD trial steps and b4 < 0 blow-ups at high k (see _EXP_ARG_MAX)
+    decay = np.exp(np.minimum(arg, _EXP_ARG_MAX))
+    att = 1.0 - N0 / np.maximum(Fr, 1e-30)
+    phase = -_TWO_PI * (KXf[None] * mux + KYf[None] * muy)
+    cosp = np.cos(phase)
+    sinp = np.sin(phase)
+    gd = g * decay * att
+    r = np.concatenate([W * (Tre - gd * cosp), W * (Tim - gd * sinp)], axis=1)
+    if not jac:
+        return r
+    m, P = decay.shape
+    J = np.empty((m, 2 * P, col))
+    dpx = -_TWO_PI * KXf[None]  # dphase/dmu_x
+    dpy = -_TWO_PI * KYf[None]
+    J[:, :P, 0] = -W * gd * (-sinp) * dpx
+    J[:, P:, 0] = -W * gd * cosp * dpx
+    J[:, :P, 1] = -W * gd * (-sinp) * dpy
+    J[:, P:, 1] = -W * gd * cosp * dpy
+    for c, KK in ((2, KX2), (3, KY2), (4, 2.0 * KXKY)):
+        dd = gd * (-_TWO_PI2 * KK[None])  # d(model amp)/dSigma_c
+        J[:, :P, c] = -W * dd * cosp
+        J[:, P:, c] = -W * dd * sinp
+    J[:, :P, 5] = -W * decay * att * cosp  # dmodel/dg
+    J[:, P:, 5] = -W * decay * att * sinp
+    dN = g * decay * (-1.0 / np.maximum(Fr, 1e-30))  # dmodel/dN0
+    J[:, :P, 6] = -W * dN * cosp
+    J[:, P:, 6] = -W * dN * sinp
+    for c, K4 in quart:
+        db = gd * (-K4[None])  # dmodel/db4
+        J[:, :P, c] = -W * db * cosp
+        J[:, P:, c] = -W * db * sinp
+    return r, J
+
+
 # ==========================================================================================
 # Displacement seed (port of estimate_displacement_from_peak)
 # ==========================================================================================
@@ -366,7 +459,7 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx):
     )
 
 
-def _run_fit(prep):
+def _run_fit(prep, use_kx4=False, use_ky4=False):
     """Batched joint LM on the viable windows of a prepared chunk."""
     n = prep["n"]
     corr_h, corr_w = prep["corr_h"], prep["corr_w"]
@@ -375,6 +468,8 @@ def _run_fit(prep):
     Sigma = np.zeros((n, 3))
     gain = np.full(n, np.nan)
     N0 = np.full(n, np.nan)
+    b4x = np.full(n, np.nan)
+    b4y = np.full(n, np.nan)
     conv_out = np.zeros(n, dtype=bool)
     iter_out = np.zeros(n, dtype=np.int32)
     cost_out = np.full(n, np.nan)
@@ -385,14 +480,31 @@ def _run_fit(prep):
         W, Fr = prep["W"][v_idx], prep["Fr"][v_idx]
         KXf, KYf = prep["KXf"], prep["KYf"]
 
-        def fn(x, idx, jac=False):
-            return _resid_jac_v6(
-                x, Tre[idx], Tim[idx], W[idx], Fr[idx], KXf, KYf, jac=jac
-            )
+        n4 = int(use_kx4) + int(use_ky4)
+        if n4:
+            # quartic modes: append free-signed b4 columns (seed 0, unbounded)
+            def fn(x, idx, jac=False):
+                return _resid_jac_quartic(
+                    x, Tre[idx], Tim[idx], W[idx], Fr[idx], KXf, KYf,
+                    use_kx4, use_ky4, jac=jac,
+                )
 
-        xs, conv, cost, it = _batched_lm(
-            fn, prep["seed"][v_idx], MAIN_LO, MAIN_HI, MAIN_MAX_ITER
-        )
+            lo = np.concatenate([MAIN_LO, np.full(n4, -np.inf)])
+            hi = np.concatenate([MAIN_HI, np.full(n4, np.inf)])
+            seed = np.concatenate(
+                [prep["seed"][v_idx], np.zeros((v_idx.size, n4))], axis=1
+            )
+        else:
+            # gaussian: the untouched 7-parameter path, bit-identical to before
+            def fn(x, idx, jac=False):
+                return _resid_jac_v6(
+                    x, Tre[idx], Tim[idx], W[idx], Fr[idx], KXf, KYf, jac=jac
+                )
+
+            lo, hi = MAIN_LO, MAIN_HI
+            seed = prep["seed"][v_idx]
+
+        xs, conv, cost, it = _batched_lm(fn, seed, lo, hi, MAIN_MAX_ITER)
         conv_out[v_idx] = conv
         iter_out[v_idx] = it
         cpp = cost / prep["n_valid"][v_idx]
@@ -416,8 +528,14 @@ def _run_fit(prep):
         Sigma[v_idx[good]] = np.stack([Sxx_f, Syy_f, xs[:, 4]], axis=1)[good]
         gain[v_idx[good]] = xs[good, 5]
         N0[v_idx[good]] = xs[good, 6]
+        col = 7
+        if use_kx4:
+            b4x[v_idx[good]] = xs[good, col]
+            col += 1
+        if use_ky4:
+            b4y[v_idx[good]] = xs[good, col]
 
-    return mu, Sigma, gain, N0, status, conv_out, iter_out, cost_out
+    return mu, Sigma, gain, N0, b4x, b4y, status, conv_out, iter_out, cost_out
 
 
 # ==========================================================================================
@@ -434,13 +552,19 @@ def fit_windows_kspace_lm(
     debug: bool = False,
     return_diagnostics: bool = False,
 ):
-    """One-stage 7-parameter joint LM fit (see module docstring for the model).
+    """One-stage joint LM fit (see module docstring for the model).
+
+    7 parameters for the default ``gaussian`` shape; ``config.ensemble_kspace_shape``
+    (``kx4`` | ``ky4`` | ``kx4+ky4``) appends free-signed quartic exponent
+    coefficients (8/8/9 parameters) that absorb displacement-PDF kurtosis.
 
     Returns ``(gauss_flat[n,16], status_flat[n], initial_guess_flat[n,16])`` and, when
     ``return_diagnostics=True``, a fourth element: a dict of per-window arrays
     (gain = fitted peak gain g, N0 = fitted noise floor in F_ref units, cost_per_pt,
-    n_valid, conv, iter).
+    n_valid, conv, iter, plus b4x/b4y when the shape enables them).
     """
+    shape = config.ensemble_kspace_shape
+    use_kx4, use_ky4 = _KSPACE_SHAPES[shape]
     corr_h, corr_w = corr_size
     n_windows = len(mask_flat)
     n_per = corr_h * corr_w
@@ -478,6 +602,11 @@ def fit_windows_kspace_lm(
     diag["n_valid"] = np.zeros(n_windows, dtype=np.int32)
     diag["iter"] = np.zeros(n_windows, dtype=np.int32)
     diag["conv"] = np.zeros(n_windows, dtype=bool)
+    # quartic exponent coefficients, present only when the shape enables them
+    if use_kx4:
+        diag["b4x"] = np.full(n_windows, np.nan)
+    if use_ky4:
+        diag["b4y"] = np.full(n_windows, np.nan)
 
     center_x = corr_w / 2.0 + 1.0  # 1-based centres (C convention)
     center_y = corr_h / 2.0 + 1.0
@@ -501,7 +630,9 @@ def fit_windows_kspace_lm(
             idx = proc[start : start + CHUNK]
 
             prep = _prepare_chunk(R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, cy, cx)
-            mu, Sigma, gain, N0, status, conv, niter, cpp = _run_fit(prep)
+            mu, Sigma, gain, N0, b4x, b4y, status, conv, niter, cpp = _run_fit(
+                prep, use_kx4, use_ky4
+            )
 
             gauss_flat[idx, 0:3] = prep["amps"]
             gauss_flat[idx, 9] = Sigma[:, 0]
@@ -522,13 +653,19 @@ def fit_windows_kspace_lm(
 
             diag["gain"][idx] = gain
             diag["N0"][idx] = N0
+            if use_kx4:
+                diag["b4x"][idx] = b4x
+            if use_ky4:
+                diag["b4y"][idx] = b4y
             diag["cost_per_pt"][idx] = cpp
             diag["n_valid"][idx] = prep["n_valid"]
             diag["conv"][idx] = conv
             diag["iter"][idx] = niter
 
     n_ok = int(np.sum(status_flat == STATUS_SUCCESS))
-    logger.info(f"Pass {pass_idx + 1}: k-space-LM joint fit {n_ok}/{proc.size} ok")
+    logger.info(
+        f"Pass {pass_idx + 1}: k-space-LM joint fit ({shape}) {n_ok}/{proc.size} ok"
+    )
     if debug and n_ok:
         ok = status_flat == STATUS_SUCCESS
         logger.info(

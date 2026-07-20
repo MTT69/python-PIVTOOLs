@@ -891,6 +891,7 @@ class SinglePassAccumulator:
             fit_diag["per_pair_normalization"] = (
                 self.config.ensemble_per_pair_normalization
             )
+            fit_diag["kspace_shape"] = self.config.ensemble_kspace_shape
             diag_outdir = Path(output_path) if output_path else Path(os.getcwd())
             diag_outdir.mkdir(parents=True, exist_ok=True)
             savemat(

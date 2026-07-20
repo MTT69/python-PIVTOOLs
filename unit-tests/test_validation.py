@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, PropertyMock
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pivtools_core.fft_sizes import BUILT_FFT_SIZES
@@ -38,6 +40,7 @@ def _make_config(
     sum_fitting_window_enabled=False,
     sum_fitting_window=None,
     fit_method="kspace",
+    kspace_shape="gaussian",
     background_subtraction_method="correlation",
     per_pair_normalization=False,
     resume_from_pass=0,
@@ -49,6 +52,7 @@ def _make_config(
     sum_window_raise=None,
     sum_fitting_window_raise=None,
     fit_method_raise=None,
+    kspace_shape_raise=None,
 ):
     """Create a mock Config object with the specified ensemble properties."""
     cfg = MagicMock()
@@ -99,6 +103,12 @@ def _make_config(
         type(cfg).ensemble_fit_method = PropertyMock(side_effect=fit_method_raise)
     else:
         type(cfg).ensemble_fit_method = PropertyMock(return_value=fit_method)
+
+    # kspace_shape (check 7b: quartic terms are LM-fitter-only)
+    if kspace_shape_raise:
+        type(cfg).ensemble_kspace_shape = PropertyMock(side_effect=kspace_shape_raise)
+    else:
+        type(cfg).ensemble_kspace_shape = PropertyMock(return_value=kspace_shape)
 
     # background subtraction / per-pair normalization consistency (check 8)
     type(cfg).ensemble_background_subtraction_method = PropertyMock(
@@ -218,6 +228,33 @@ class TestValidateEnsembleConfig:
         cfg = _make_config(fit_method="kspace")
         valid, errors, warnings = validate_ensemble_config(cfg)
         assert valid
+
+    def test_invalid_kspace_shape(self):
+        """ValueError from ensemble_kspace_shape produces error."""
+        cfg = _make_config(kspace_shape_raise=ValueError("bad shape"))
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert not valid
+        assert any("kspace shape" in e.lower() for e in errors)
+
+    @pytest.mark.parametrize("shape", ["gaussian", "kx4", "ky4", "kx4+ky4"])
+    def test_kspace_shape_valid_with_lm_fitter(self, shape):
+        """All four shapes pass with fit_method kspace."""
+        cfg = _make_config(fit_method="kspace", kspace_shape=shape)
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert valid, errors
+
+    def test_kspace_shape_requires_lm_fitter(self):
+        """Non-gaussian shape + kspace_linear is an error, not a silent no-op."""
+        cfg = _make_config(fit_method="kspace_linear", kspace_shape="kx4+ky4")
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert not valid
+        assert any("kspace_shape" in e for e in errors)
+
+    def test_gaussian_shape_fine_with_linear_fitter(self):
+        """The default shape never conflicts with kspace_linear."""
+        cfg = _make_config(fit_method="kspace_linear", kspace_shape="gaussian")
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert valid, errors
 
     def test_resume_from_pass_out_of_range(self):
         """resume_from_pass beyond num_passes should produce error."""

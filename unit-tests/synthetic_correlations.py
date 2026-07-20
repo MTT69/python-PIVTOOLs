@@ -238,6 +238,73 @@ def generate_correlation_triplet(
     return R_AA, R_BB, R_AB
 
 
+def generate_quartic_triplet(
+    shape,
+    sigma_particle_x=2.0,
+    sigma_particle_y=2.0,
+    sigma_stress_xx=0.0,
+    sigma_stress_yy=0.0,
+    sigma_stress_xy=0.0,
+    b4x=0.0,
+    b4y=0.0,
+    mu_x=0.0,
+    mu_y=0.0,
+    amplitude=1.0,
+    noise_std=0.0,
+    seed=42,
+):
+    """Generate a (R_AA, R_BB, R_AB) triplet with a quartic-shape transfer ratio.
+
+    R_AA = R_BB are Gaussian auto-correlations (as ``generate_autocorrelation``).
+    R_AB is synthesized in k-space so the measured transfer ratio is exactly the
+    LM fitter's quartic-shape model:
+
+        T(k) = exp(-2 pi^2 k^T Sigma_stress k - b4x*kx^4 - b4y*ky^4)
+               * exp(-2 pi i k.mu)
+
+    making the ground truth (Sigma_stress, b4x, b4y, mu) exact by construction.
+    b4 > 0 models a sub-Gaussian (platykurtic) displacement PDF — the ln|T|
+    curvature that biases a pure-Gaussian fit. FFT centring conventions match
+    ``kspace_common``: spectra via fftshift(fft2(ifftshift(R))), k-grids are
+    fftshifted ``fftfreq`` in cycles/px.
+
+    ``noise_std`` adds white plane noise: keep it > 0 for LM fits. Perfectly
+    noiseless planes drive the weighted cost to the float floor (~1e-34) where
+    trial steps are accepted/rejected by rounding noise and the batched LM's
+    no-progress exit fires before its convergence test — a solver bookkeeping
+    exit on unphysical data, not a model failure (real planes always carry a
+    pair-count/sensor floor and converge).
+    """
+    h, w = shape
+    R_AA = generate_autocorrelation(
+        shape, sigma_particle_x, sigma_particle_y, amplitude
+    )
+    R_BB = R_AA.copy()
+
+    F_AA = np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(R_AA)))
+    F_ref = np.abs(F_AA)  # sqrt(|F_AA|*|F_BB|) with identical autos
+
+    kx = np.fft.fftshift(np.fft.fftfreq(w))
+    ky = np.fft.fftshift(np.fft.fftfreq(h))
+    KX, KY = np.meshgrid(kx, ky)
+    quad = (
+        sigma_stress_xx * KX**2
+        + 2.0 * sigma_stress_xy * KX * KY
+        + sigma_stress_yy * KY**2
+    )
+    T = np.exp(-2.0 * np.pi**2 * quad - b4x * KX**4 - b4y * KY**4) * np.exp(
+        -2j * np.pi * (KX * mu_x + KY * mu_y)
+    )
+    R_AB = np.real(np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(F_ref * T))))
+
+    if noise_std > 0:
+        rng = np.random.default_rng(seed)
+        R_AA = R_AA + rng.normal(0, noise_std, shape)
+        R_BB = R_BB + rng.normal(0, noise_std, shape)
+        R_AB = R_AB + rng.normal(0, noise_std, shape)
+    return R_AA, R_BB, R_AB
+
+
 def flatten_for_kspace(R_AA, R_BB, R_AB, n_windows=1):
     """Pack correlation planes into the flat format expected by fit_windows_kspace().
 
@@ -270,7 +337,7 @@ flatten_for_gaussian = flatten_for_kspace
 
 
 class _MockConfig:
-    """Minimal mock config for the k-space fitter (fit_windows_kspace_linear)."""
+    """Minimal mock config for the k-space fitters."""
 
     def __init__(
         self,
@@ -280,7 +347,7 @@ class _MockConfig:
         ensemble_type=None,
         ensemble_sum_window=None,
         ensemble_sum_fitting_window=None,
-        ensemble_kspace_kurtosis=True,
+        ensemble_kspace_shape="gaussian",
     ):
         self.ensemble_fit_method = fit_method
         self.ensemble_gradient_correction = gradient_correction
@@ -288,7 +355,7 @@ class _MockConfig:
         self.ensemble_type = ensemble_type or ["std"]
         self.ensemble_sum_window = ensemble_sum_window or [64, 64]
         self.ensemble_sum_fitting_window = ensemble_sum_fitting_window
-        self.ensemble_kspace_kurtosis = ensemble_kspace_kurtosis
+        self.ensemble_kspace_shape = ensemble_kspace_shape
 
 
 def make_mock_config(
@@ -298,7 +365,7 @@ def make_mock_config(
     ensemble_type=None,
     ensemble_sum_window=None,
     ensemble_sum_fitting_window=None,
-    ensemble_kspace_kurtosis=True,
+    ensemble_kspace_shape="gaussian",
 ):
     """Create a minimal mock config object."""
     return _MockConfig(
@@ -308,5 +375,5 @@ def make_mock_config(
         ensemble_type,
         ensemble_sum_window,
         ensemble_sum_fitting_window,
-        ensemble_kspace_kurtosis,
+        ensemble_kspace_shape,
     )

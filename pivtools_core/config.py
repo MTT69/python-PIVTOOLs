@@ -2366,12 +2366,14 @@ class Config:
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        - 'kspace' (default): the batched-LM one-stage 7-parameter joint
-          fit of the raw k-space transfer ratio (``fit_windows_kspace_lm``:
-          mu, Sigma, gain g, in-model noise floor N0; Gaussian displacement
-          PDF only). No tuning knobs — the former ``lm_soft_weighting`` and
-          ``lm_k_max_cap`` ablation knobs guarded pathologies of the removed
-          two-stage design; stale keys in old workspace configs are ignored.
+        - 'kspace' (default): the batched-LM one-stage joint fit of the raw
+          k-space transfer ratio (``fit_windows_kspace_lm``: mu, Sigma,
+          gain g, in-model noise floor N0; 7 parameters for the default
+          Gaussian shape). ``kspace_shape`` (see ``ensemble_kspace_shape``)
+          optionally adds per-axis quartic kurtosis terms. No other tuning
+          knobs — the former ``lm_soft_weighting`` and ``lm_k_max_cap``
+          ablation knobs guarded pathologies of the removed two-stage
+          design; stale keys in old workspace configs are ignored.
         - 'kspace_linear': the closed-form linear fitter
           (``fit_windows_kspace_linear``) with the old production recipe
           fixed (joint noise floor, refc trust-region weighting, Gaussian
@@ -2380,8 +2382,10 @@ class Config:
 
         A stale ``fit_method: gaussian`` fails loudly here rather than
         silently falling back. The former ``kspace_kurtosis`` toggle was
-        removed (kurtosis tested and rejected in both fitters); a stale key
-        in old workspace configs is ignored.
+        removed with the two-stage/GSL designs (kurtosis rejected in THOSE
+        implementations; the 2026-07-17 bake-off validated quartic terms in
+        the joint LM, now available via ``kspace_shape``); a stale key in
+        old workspace configs is ignored.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
         valid_methods = {"kspace", "kspace_linear"}
@@ -2392,6 +2396,44 @@ class Config:
                 f"k-space fitter were removed.)"
             )
         return method
+
+    @property
+    def ensemble_kspace_shape(self) -> str:
+        """Displacement-PDF shape model for the 'kspace' LM ensemble fitter.
+
+        The fitter reads the Reynolds stresses from the Gaussian decay of the
+        k-space transfer ratio. When the flow's displacement PDF is
+        non-Gaussian (excess kurtosis gamma_2 != 0), ln|T| is curved, not
+        parabolic, and forcing a Gaussian through it biases Sigma by
+        approximately gamma_2 * band_depth / 6 (measured +15-20 % streamwise
+        below y+ 400 on the channel benchmarks). Each quartic term adds one
+        free-signed coefficient b4 per axis to the exponent
+        (-2 pi^2 k^T Sigma k - b4x*kx^4 - b4y*ky^4), the next cumulant of
+        the displacement PDF on that axis (kappa_4 = -24*b4/(2 pi)^4,
+        gamma_2 = kappa_4/Sigma^2). The term self-extinguishes (b4 -> 0)
+        where the data has no curvature, so no gating is applied; fitted b4
+        values are reported in the fit_diagnostics sidecar.
+
+        Options:
+        - 'gaussian' (default): the historical 7-parameter model, unchanged.
+        - 'kx4': + b4x*kx^4 (streamwise kurtosis), 8 parameters.
+        - 'ky4': + b4y*ky^4 (transverse/wall-normal kurtosis), 8 parameters.
+        - 'kx4+ky4': both terms, 9 parameters — orientation-agnostic; no
+          cross kx^2*ky^2 term (tested and rejected).
+
+        Only meaningful for ``fit_method: kspace``; combining a non-gaussian
+        shape with 'kspace_linear' is a validation error rather than a
+        silent no-op. Selection evidence:
+        wiki/sessions/2026-07-17-fitter-bakeoff-e-debug.md.
+        """
+        shape = self.data.get("ensemble_piv", {}).get("kspace_shape", "gaussian")
+        valid_shapes = {"gaussian", "kx4", "ky4", "kx4+ky4"}
+        if shape not in valid_shapes:
+            raise ValueError(
+                f"Invalid ensemble_kspace_shape '{shape}'. Must be one of "
+                f"{valid_shapes}."
+            )
+        return shape
 
     @property
     def ensemble_image_warp_interpolation(self) -> str:

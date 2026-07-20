@@ -1,19 +1,22 @@
 """
 Tests for kspace_lm_fitting.py -- the batched-LM k-space fitter. Since 2026-07-14
-this is the one-stage 7-parameter joint fit (mu, Sigma, gain g, in-model noise
-floor N0) of the raw transfer ratio; the two-stage GSL-replica design it replaces
-lives in git history.
+this is the one-stage joint fit (mu, Sigma, gain g, in-model noise floor N0) of
+the raw transfer ratio; the two-stage GSL-replica design it replaces lives in
+git history. Since 2026-07-17 ``ensemble_piv.kspace_shape`` optionally appends
+free-signed quartic exponent terms (kx4 / ky4 / kx4+ky4) that absorb
+displacement-PDF kurtosis; the default ``gaussian`` path is unchanged.
 
 Driven exactly as the production call site does (``single_pass_accumulator``):
-positional args. Gaussian displacement PDF only -- there is no shape option
-(kurtosis was tested and rejected).
+positional args, with a mock config supplying ``ensemble_kspace_shape``.
 
 Mirrors test_kspace_fitting.py (which still guards the dormant closed-form module):
   - Output contract + masking
   - Displacement recovery (complex phase)
   - Stress recovery (isotropic / anisotropic / shear)
   - Ghost-stress rejection + edge cases
-plus an LM-specific convergence-health check via the diagnostics return.
+plus an LM-specific convergence-health check via the diagnostics return and the
+quartic shape-mode suite (null self-extinction, biased-Gaussian recovery, and a
+sentinel guarding that the gaussian shape still runs the untouched v6 residual).
 """
 
 import numpy as np
@@ -21,6 +24,8 @@ import pytest
 from synthetic_correlations import (
     flatten_for_kspace,
     generate_correlation_triplet,
+    generate_quartic_triplet,
+    make_mock_config,
 )
 
 from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
@@ -30,8 +35,14 @@ from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
 # Relative height of the white-noise pedestal injected into the auto planes.
 _PEDESTAL = 0.05
 
+ALL_SHAPES = ("gaussian", "kx4", "ky4", "kx4+ky4")
 
-def _fit(R_AA, R_BB, R_AB, n_windows=1, **kw):
+
+def _cfg(shape="gaussian"):
+    return make_mock_config(ensemble_kspace_shape=shape)
+
+
+def _fit(R_AA, R_BB, R_AB, n_windows=1, shape="gaussian", **kw):
     """Run the LM fitter with the production call-site argument pattern."""
     R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(
         R_AA, R_BB, R_AB, n_windows=n_windows
@@ -42,7 +53,7 @@ def _fit(R_AA, R_BB, R_AB, n_windows=1, **kw):
         R_AB_f,
         mask,
         cs,
-        None,
+        _cfg(shape),
         0,
         False,  # debug
         **kw,
@@ -96,7 +107,7 @@ class TestContract:
             R_AB_f,
             mask,
             cs,
-            None,
+            _cfg(),
             0,
         )
         assert status[1] == -1 and status[3] == -1
@@ -116,7 +127,7 @@ class TestContract:
             R_AB_f,
             mask,
             cs,
-            None,
+            _cfg(),
             0,
         )
         assert np.all(status == -1)
@@ -253,7 +264,7 @@ class TestEdgeCases:
             R_AB_f,
             mask,
             cs,
-            None,
+            _cfg(),
             0,
         )
         assert status[0] != 0
@@ -269,3 +280,165 @@ class TestEdgeCases:
         )
         gauss, status, _ = _fit(R_AA, R_BB, R_AB)
         assert status[0] != 0 or abs(gauss[0, 14] - (window / 2.0 + 1)) < 0.75 * window
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quartic shape modes (ensemble_piv.kspace_shape, 2026-07-17)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Quartic ground truth for the recovery tests: sigma_particle=1.0 keeps the
+# F_ref weights alive out to |k| ~ 0.35 cycles/px so the k^4 curvature is
+# actually in-band. b4=30 <=> kappa_4 = -24*30/(2pi)^4 = -0.462 px^4, i.e.
+# excess kurtosis gamma_2 ~ -0.46 at Sigma=1 px^2 — the near-wall channel level.
+_B4_TRUE = 30.0
+
+
+class TestShapeModes:
+    @pytest.mark.parametrize("shape", ALL_SHAPES)
+    def test_contract_and_diag_keys(self, shape):
+        """Every shape keeps the 16-col contract; b4 diag keys appear iff enabled."""
+        n = 3
+        R_AA, R_BB, R_AB = _triplet((32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5)
+        gauss, status, initial, diag = _fit(
+            R_AA, R_BB, R_AB, n, shape=shape, return_diagnostics=True
+        )
+        assert gauss.shape == (n, 16)
+        assert status.shape == (n,)
+        assert initial.shape == (n, 16)
+        assert np.all(status == 0)
+        assert ("b4x" in diag) == ("kx4" in shape)
+        assert ("b4y" in diag) == ("ky4" in shape)
+
+    @pytest.mark.parametrize("shape", ALL_SHAPES)
+    def test_null_on_gaussian_data(self, shape):
+        """On Gaussian planes every shape recovers Sigma and b4 -> ~0.
+
+        The self-extinction property: the quartic term must not invent
+        curvature where the data has none, so all four modes agree. A small
+        white plane noise keeps the LM cost off the float floor — perfectly
+        noiseless data trips the solver's no-progress exit at cost ~1e-34
+        (see generate_quartic_triplet docstring); real planes always carry a
+        pair-count/sensor floor.
+        """
+        Sxx, Syy = 1.0, 0.5
+        R_AA, R_BB, R_AB = _triplet(
+            (64, 64),
+            sigma_stress_xx=Sxx,
+            sigma_stress_yy=Syy,
+            mu_x=1.0,
+            noise_std=1e-4,
+        )
+        gauss, status, _, diag = _fit(
+            R_AA, R_BB, R_AB, shape=shape, return_diagnostics=True
+        )
+        assert status[0] == 0
+        assert gauss[0, 9] == pytest.approx(Sxx, rel=0.10)
+        assert gauss[0, 10] == pytest.approx(Syy, rel=0.10)
+        # The term absorbs a sliver of the injected plane noise, so "zero"
+        # means an order below the recovery-test signal (_B4_TRUE = 30):
+        # |b4| = 5 is gamma_2 ~ 0.08 at Sigma = 1 px^2 — negligible curvature,
+        # and the Sigma asserts above are the real null criterion.
+        if "b4x" in diag:
+            assert abs(diag["b4x"][0]) < 5.0
+        if "b4y" in diag:
+            assert abs(diag["b4y"][0]) < 5.0
+
+    def test_kx4_recovers_biased_gaussian(self):
+        """Sub-Gaussian x-displacement PDF: gaussian mode over-reads Sxx, kx4 fixes it."""
+        Sxx, Syy = 1.0, 0.5
+        R_AA, R_BB, R_AB = generate_quartic_triplet(
+            (64, 64),
+            sigma_particle_x=1.0,
+            sigma_particle_y=1.0,
+            sigma_stress_xx=Sxx,
+            sigma_stress_yy=Syy,
+            b4x=_B4_TRUE,
+            mu_x=1.0,
+            noise_std=1e-4,
+        )
+        g_gauss, st_g, _ = _fit(R_AA, R_BB, R_AB, shape="gaussian")
+        g_k4, st_k, _, diag = _fit(
+            R_AA, R_BB, R_AB, shape="kx4", return_diagnostics=True
+        )
+        assert st_g[0] == 0 and st_k[0] == 0
+        # the pure Gaussian must show the kurtosis bias (that's the disease)...
+        assert g_gauss[0, 9] > Sxx * 1.03
+        # ...and the quartic term must remove it and read back the true b4
+        assert g_k4[0, 9] == pytest.approx(Sxx, rel=0.05)
+        assert g_k4[0, 10] == pytest.approx(Syy, rel=0.10)
+        assert diag["b4x"][0] == pytest.approx(_B4_TRUE, rel=0.15)
+
+    def test_ky4_recovers_biased_gaussian(self):
+        """Symmetric case on the y axis."""
+        Sxx, Syy = 0.5, 1.0
+        R_AA, R_BB, R_AB = generate_quartic_triplet(
+            (64, 64),
+            sigma_particle_x=1.0,
+            sigma_particle_y=1.0,
+            sigma_stress_xx=Sxx,
+            sigma_stress_yy=Syy,
+            b4y=_B4_TRUE,
+            mu_y=-0.5,
+            noise_std=1e-4,
+        )
+        g_gauss, st_g, _ = _fit(R_AA, R_BB, R_AB, shape="gaussian")
+        g_k4, st_k, _, diag = _fit(
+            R_AA, R_BB, R_AB, shape="ky4", return_diagnostics=True
+        )
+        assert st_g[0] == 0 and st_k[0] == 0
+        assert g_gauss[0, 10] > Syy * 1.03
+        assert g_k4[0, 10] == pytest.approx(Syy, rel=0.05)
+        assert g_k4[0, 9] == pytest.approx(Sxx, rel=0.10)
+        assert diag["b4y"][0] == pytest.approx(_B4_TRUE, rel=0.15)
+
+    def test_kx4_ky4_recovers_both_axes(self):
+        """9-parameter mode: independent curvature on both axes at once."""
+        Sxx, Syy = 1.0, 0.8
+        b4x, b4y = _B4_TRUE, 0.5 * _B4_TRUE
+        R_AA, R_BB, R_AB = generate_quartic_triplet(
+            (64, 64),
+            sigma_particle_x=1.0,
+            sigma_particle_y=1.0,
+            sigma_stress_xx=Sxx,
+            sigma_stress_yy=Syy,
+            b4x=b4x,
+            b4y=b4y,
+            mu_x=1.0,
+            mu_y=-0.5,
+            noise_std=1e-4,
+        )
+        gauss, status, _, diag = _fit(
+            R_AA, R_BB, R_AB, shape="kx4+ky4", return_diagnostics=True
+        )
+        assert status[0] == 0
+        assert gauss[0, 9] == pytest.approx(Sxx, rel=0.05)
+        assert gauss[0, 10] == pytest.approx(Syy, rel=0.05)
+        assert diag["b4x"][0] == pytest.approx(b4x, rel=0.15)
+        assert diag["b4y"][0] == pytest.approx(b4y, rel=0.15)
+
+    def test_gaussian_shape_uses_v6_residual(self, monkeypatch):
+        """The default shape must run the untouched v6 residual (bit-exact path)."""
+        import pivtools_cli.piv.piv_backend.kspace_lm_fitting as klm
+
+        calls = {"v6": 0, "quartic": 0}
+        real_v6 = klm._resid_jac_v6
+        real_q = klm._resid_jac_quartic
+
+        def spy_v6(*a, **kw):
+            calls["v6"] += 1
+            return real_v6(*a, **kw)
+
+        def spy_q(*a, **kw):
+            calls["quartic"] += 1
+            return real_q(*a, **kw)
+
+        monkeypatch.setattr(klm, "_resid_jac_v6", spy_v6)
+        monkeypatch.setattr(klm, "_resid_jac_quartic", spy_q)
+
+        R_AA, R_BB, R_AB = _triplet((32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5)
+        _fit(R_AA, R_BB, R_AB, shape="gaussian")
+        assert calls["v6"] > 0 and calls["quartic"] == 0
+
+        calls["v6"] = 0
+        _fit(R_AA, R_BB, R_AB, shape="kx4+ky4")
+        assert calls["quartic"] > 0 and calls["v6"] == 0

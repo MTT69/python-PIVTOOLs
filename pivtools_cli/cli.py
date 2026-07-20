@@ -707,7 +707,10 @@ instantaneous_piv:
   save_compression: false
   dump_correlation_planes: false
 ensemble_piv:
+  # kspace (batched-LM joint fit) | kspace_linear (closed-form)
   fit_method: kspace
+  # gaussian | kx4 | ky4 | kx4+ky4 — quartic kurtosis terms (fit_method kspace only)
+  kspace_shape: gaussian
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   # correlation | image | window_mean | correlation+window_mean | image+window_mean

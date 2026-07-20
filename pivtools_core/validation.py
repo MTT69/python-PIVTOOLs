@@ -274,10 +274,24 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
             errors.append(f"Ensemble sum fitting window: {e}")
 
     # 7. Validate fit_method
+    fit_method = None
     try:
-        config.ensemble_fit_method
+        fit_method = config.ensemble_fit_method
     except ValueError as e:
         errors.append(f"Ensemble fit method: {e}")
+
+    # 7b. Validate kspace_shape (quartic kurtosis terms are LM-fitter-only)
+    try:
+        kspace_shape = config.ensemble_kspace_shape
+        if kspace_shape != "gaussian" and fit_method is not None and fit_method != "kspace":
+            errors.append(
+                f"ensemble_piv.kspace_shape '{kspace_shape}' requires "
+                f"fit_method 'kspace' (the '{fit_method}' fitter has no quartic "
+                "shape terms and would silently ignore it), got "
+                f"fit_method '{fit_method}'."
+            )
+    except ValueError as e:
+        errors.append(f"Ensemble kspace shape: {e}")
 
     # 8. Validate background subtraction / per-pair normalization consistency
     try:

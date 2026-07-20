@@ -355,6 +355,7 @@ class TestFitterSelectionAndValidation:
             ensemble_sum_fitting_window_enabled = False
             ensemble_sum_fitting_window = None
             ensemble_fit_method = "kspace"
+            ensemble_kspace_shape = "gaussian"
             ensemble_background_subtraction_method = "correlation"
             ensemble_per_pair_normalization = True
             ensemble_resume_from_pass = 0
@@ -382,6 +383,7 @@ class TestFitterSelectionAndValidation:
             ensemble_sum_fitting_window_enabled = False
             ensemble_sum_fitting_window = None
             ensemble_fit_method = "kspace"
+            ensemble_kspace_shape = "gaussian"
             ensemble_background_subtraction_method = "correlation+window_mean"
             ensemble_per_pair_normalization = True
             ensemble_resume_from_pass = 0
@@ -431,6 +433,31 @@ class TestCombinedModeConfig:
         cfg = _real_config("window_mean+correlation")
         with pytest.raises(ValueError, match="background_subtraction_method"):
             cfg.ensemble_background_subtraction_method
+
+
+# ---------------------------------------------------------------------------
+# Quartic shape terms (kspace_shape): config surface
+# ---------------------------------------------------------------------------
+class TestKspaceShapeConfig:
+    @staticmethod
+    def _cfg(**ensemble_keys):
+        from pivtools_core.config import Config
+
+        cfg = Config.__new__(Config)
+        cfg.data = {"ensemble_piv": ensemble_keys}
+        return cfg
+
+    def test_enum_values(self):
+        for shape in ("gaussian", "kx4", "ky4", "kx4+ky4"):
+            assert self._cfg(kspace_shape=shape).ensemble_kspace_shape == shape
+
+    def test_default_is_gaussian(self):
+        assert self._cfg().ensemble_kspace_shape == "gaussian"
+
+    def test_invalid_value_rejected(self):
+        cfg = self._cfg(kspace_shape="ky4+kx4")
+        with pytest.raises(ValueError, match="kspace_shape"):
+            cfg.ensemble_kspace_shape
 
 
 # ---------------------------------------------------------------------------
