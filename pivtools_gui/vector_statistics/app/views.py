@@ -378,7 +378,6 @@ def _run_statistics_job(
             use_stereo=use_stereo,
             stereo_camera_pair=stereo_camera_pair,
             config=get_config(),
-            use_threading=True,
         )
 
         result = processor.process(

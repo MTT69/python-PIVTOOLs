@@ -8,7 +8,6 @@ inherited by both dotboard (circle grid) and ChArUco stereo calibrators.
 """
 
 import math
-import os
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -23,6 +22,7 @@ from scipy.io import savemat
 
 from pivtools_core.config import Config, get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_image
+from pivtools_gui.utils.worker_pool import get_max_workers
 
 from .calibration_io import (
     find_calibration_images,
@@ -690,7 +690,9 @@ class BaseStereoCalibrator(ABC):
             logger.info(f"Container has {container_count} frames")
 
         # --- Parallel detection across frames ---
-        max_workers = min(os.cpu_count() or 4, num_frame_pairs, 8)
+        # Threads scale here (cv2 detection releases the GIL); size the pool from the
+        # processing.post_processing_workers knob instead of a hard cap of 8.
+        max_workers = get_max_workers(num_frame_pairs)
         raw_results = {}
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

@@ -13,6 +13,7 @@ Pattern matches: planar_calibration_production.py
 
 import concurrent.futures
 import logging
+import pickle
 import re
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +25,11 @@ import numpy as np
 import scipy.io
 from scipy.io import savemat
 
-from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
+from pivtools_gui.utils.worker_pool import (
+    get_max_workers,
+    get_worker_payload,
+    payload_worker_initializer,
+)
 
 matplotlib.use("Agg")
 
@@ -412,7 +417,6 @@ class VectorStatisticsProcessor:
         config=None,
         use_stereo: bool = False,
         stereo_camera_pair: Optional[Tuple[int, int]] = None,
-        use_threading: bool = False,
     ):
         """
         Initialize the statistics processor.
@@ -441,9 +445,6 @@ class VectorStatisticsProcessor:
             Whether processing stereo (3D) data
         stereo_camera_pair : tuple, optional
             Camera pair for stereo data (e.g., (1, 2))
-        use_threading : bool
-            If True, use ThreadPoolExecutor instead of ProcessPoolExecutor
-            for frame-level parallelism (useful when called from GUI threads)
         """
         self.data_dir = Path(data_dir)
         self.base_dir = Path(base_dir)
@@ -456,7 +457,6 @@ class VectorStatisticsProcessor:
         self._config = config
         self.use_stereo = use_stereo
         self.stereo_camera_pair = stereo_camera_pair
-        self.use_threading = use_threading
 
         # Determine camera folder name
         if use_stereo and stereo_camera_pair:
@@ -553,7 +553,7 @@ class VectorStatisticsProcessor:
             logger.info(f"[Statistics] Normalized to: {active_stats}")
 
             if progress_callback:
-                progress_callback(5)
+                progress_callback(2)
 
             # Check data directory exists
             if not self.data_dir.exists():
@@ -583,9 +583,6 @@ class VectorStatisticsProcessor:
                 f"[Statistics] Found {len(valid_runs)} valid runs: {valid_runs}"
             )
 
-            if progress_callback:
-                progress_callback(10)
-
             # Create output directories
             self.mean_stats_dir.mkdir(parents=True, exist_ok=True)
             if save_figures:
@@ -597,21 +594,31 @@ class VectorStatisticsProcessor:
             )
 
             if progress_callback:
-                progress_callback(15)
+                progress_callback(5)
 
             # Determine computation flags
             calc_flags = self._determine_calc_flags(active_stats)
 
+            # Progress bands sized to where wall time actually goes: the mean and
+            # instantaneous phases each sweep every frame file, so they share the
+            # wide bands; figures and the final save are quick tail work.
+            should_save_inst = self._should_compute_instantaneous(active_stats)
+            if should_save_inst:
+                mean_band, inst_band, tail_start = (5, 35), (35, 90), 90
+            else:
+                mean_band, inst_band, tail_start = (5, 85), None, 85
+
             # Phase 1: Compute mean statistics
             mean_results = self._compute_mean_statistics(
-                valid_runs, coords_x_list, coords_y_list, calc_flags, progress_callback
+                valid_runs,
+                coords_x_list,
+                coords_y_list,
+                calc_flags,
+                progress_callback,
+                progress_band=mean_band,
             )
 
-            if progress_callback:
-                progress_callback(50)
-
             # Phase 2: Compute instantaneous statistics (if requested)
-            should_save_inst = self._should_compute_instantaneous(active_stats)
             if should_save_inst:
                 self._compute_instantaneous_statistics(
                     valid_runs,
@@ -620,10 +627,11 @@ class VectorStatisticsProcessor:
                     coords_y_list,
                     calc_flags,
                     progress_callback,
+                    progress_band=inst_band,
                 )
 
             if progress_callback:
-                progress_callback(75)
+                progress_callback(tail_start)
 
             # Phase 3: Save figures (if requested)
             if save_figures:
@@ -636,7 +644,7 @@ class VectorStatisticsProcessor:
                 )
 
             if progress_callback:
-                progress_callback(85)
+                progress_callback(95)
 
             # Phase 4: Save results to mat file
             output_file = self._save_results(
@@ -752,6 +760,7 @@ class VectorStatisticsProcessor:
         coords_y_list: list,
         calc_flags: dict,
         progress_callback: Optional[Callable[[int], None]],
+        progress_band: Tuple[int, int],
     ) -> dict:
         """
         Compute mean statistics for all valid runs.
@@ -784,8 +793,8 @@ class VectorStatisticsProcessor:
             results[run_num] = run_result
 
             if progress_callback:
-                progress = 15 + int((idx + 1) / total_runs * 35)  # 15-50%
-                progress_callback(progress)
+                lo, hi = progress_band
+                progress_callback(lo + int((idx + 1) / total_runs * (hi - lo)))
 
         return results
 
@@ -942,6 +951,7 @@ class VectorStatisticsProcessor:
         coords_y_list: list,
         calc_flags: dict,
         progress_callback: Optional[Callable[[int], None]],
+        progress_band: Tuple[int, int],
     ):
         """
         Compute per-frame instantaneous statistics using parallel processing.
@@ -983,25 +993,28 @@ class VectorStatisticsProcessor:
         n_frames = len(frame_files)
         logger.info(f"[Statistics] Processing {n_frames} frames with parallelism...")
 
-        # Process frames in parallel - use threading for GUI (avoids pickling issues),
-        # multiprocessing for CLI (better CPU utilization)
-        if self.use_threading:
-            executor_class = concurrent.futures.ThreadPoolExecutor
-            executor_kwargs = {"max_workers": min(8, n_frames)}
-            logger.info(
-                f"[Statistics] Using ThreadPoolExecutor with {executor_kwargs['max_workers']} workers"
-            )
-        else:
-            executor_class = concurrent.futures.ProcessPoolExecutor
-            executor_kwargs = {
-                "max_workers": get_max_workers(len(frame_files)),
-                "initializer": worker_initializer,
+        # Frame-level parallelism via processes: the worker is a module-level function,
+        # and threads would serialise on the GIL (loadmat + the gamma kernels are
+        # Python/NumPy-bound). The shared means/coords payload is installed once per
+        # worker via payload_worker_initializer (pre-pickled bytes so spawn bootstrap
+        # does not import numpy before thread pinning) — not re-pickled per task.
+        max_workers = get_max_workers(len(frame_files))
+        logger.info(
+            f"[Statistics] Using ProcessPoolExecutor with {max_workers} workers"
+        )
+        payload = pickle.dumps(
+            {
+                "means_dict": means_dict,
+                "calc_flags": calc_flags,
+                "coords_dict": coords_dict,
             }
-            logger.info(
-                f"[Statistics] Using ProcessPoolExecutor with {executor_kwargs['max_workers']} workers"
-            )
+        )
 
-        with executor_class(**executor_kwargs) as executor:
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=max_workers,
+            initializer=payload_worker_initializer,
+            initargs=(payload,),
+        ) as executor:
             futures = {}
             for i, file_path in enumerate(frame_files):
                 out_name = f"{i + 1:05d}.mat"
@@ -1011,23 +1024,31 @@ class VectorStatisticsProcessor:
                     _process_frame_parallel,
                     str(file_path),
                     str(out_path),
-                    means_dict,
-                    calc_flags,
-                    coords_dict,
                 )
                 futures[future] = i
 
             completed = 0
+            failures = []
             for future in concurrent.futures.as_completed(futures):
                 try:
                     future.result()
-                    completed += 1
-                    # Report progress every frame for better granularity
-                    if progress_callback:
-                        progress = 50 + int(completed / n_frames * 25)  # 50-75%
-                        progress_callback(progress)
                 except Exception as e:
+                    # Keep draining so every frame gets attempted, then fail loudly
+                    # below — a green job with silently missing frames is worse
+                    # than a failed one.
                     logger.error(f"Frame processing failed: {e}")
+                    failures.append(e)
+                completed += 1
+                # Report progress every frame for better granularity
+                if progress_callback:
+                    lo, hi = progress_band
+                    progress_callback(lo + int(completed / n_frames * (hi - lo)))
+
+        if failures:
+            raise RuntimeError(
+                f"instantaneous statistics failed for {len(failures)}/{n_frames} "
+                f"frames; first error: {failures[0]}"
+            )
 
         logger.info(f"[Statistics] Completed {completed}/{n_frames} frames")
 
@@ -1304,18 +1325,24 @@ class VectorStatisticsProcessor:
 def _process_frame_parallel(
     file_path: str,
     out_path: str,
-    means_dict: dict,
-    calc_flags: dict,
-    coords_dict: dict,
+    means_dict: Optional[dict] = None,
+    calc_flags: Optional[dict] = None,
+    coords_dict: Optional[dict] = None,
 ):
     """
     Process a single frame for instantaneous statistics.
-    Designed to run in a separate process.
+    Designed to run in a separate process: when the dicts are not passed
+    explicitly they come from the pool's payload_worker_initializer payload.
 
     Args:
         coords_dict: Dict mapping run_num -> (cx, cy) coordinates for each run.
                      Different runs may have different grid sizes (especially for stereo).
     """
+    if means_dict is None:
+        payload = get_worker_payload()
+        means_dict = payload["means_dict"]
+        calc_flags = payload["calc_flags"]
+        coords_dict = payload["coords_dict"]
     try:
         mat_data = scipy.io.loadmat(file_path, squeeze_me=True, struct_as_record=False)
 

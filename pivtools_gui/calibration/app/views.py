@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
@@ -81,9 +82,39 @@ from pivtools_gui.utils import (
     get_display_contrast_stats,
     numpy_to_base64,
 )
+from pivtools_gui.utils.worker_pool import get_max_workers
 
 calibration_bp = Blueprint("calibration", __name__)
 logger = logging.getLogger(__name__)
+
+
+def _detect_parallel(board, params, imgs, spacing_mm=None, on_done=None):
+    """Detect calibration targets in many views concurrently.
+
+    Detection is OpenCV-bound (the GIL is released inside cv2), so threads scale and
+    the pool honours the ``processing.post_processing_workers`` knob. Each task builds
+    its own detector — cv2 detector objects are not documented thread-safe. Results
+    return in image order; ``on_done()`` fires once per completed view (any order).
+    """
+    dets: List[Any] = [None] * len(imgs)
+    if not imgs:
+        return dets
+    max_workers = get_max_workers(len(imgs))
+
+    def _one(k):
+        d = c2._build_detector(board, params).detect(imgs[k])
+        if spacing_mm is not None:
+            d.spacing_mm = spacing_mm
+        return k, d
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_one, k) for k in range(len(imgs))]
+        for future in as_completed(futures):
+            k, d = future.result()
+            dets[k] = d
+            if on_done is not None:
+                on_done()
+    return dets
 
 # Datum-view detections cached for the snap workflow, keyed by camera number.
 _datum_cache = {}
@@ -853,8 +884,8 @@ def generate_model():
             if cache_hit:
                 det1, det2 = side.detections[cam1], side.detections[cam2]
             else:
-                det1 = [detector.detect(im) for im in imgs1]
-                det2 = [detector.detect(im) for im in imgs2]
+                det1 = _detect_parallel(board, params, imgs1)
+                det2 = _detect_parallel(board, params, imgs2)
             # World-frame picks: the live request, else the cam1 clicks stored in the sidecar
             # (so a deleted-model re-solve rebuilds the shared frame without re-clicking).
             clicks_payload = data.get("clicks") or (side.coords if side else None)
@@ -983,7 +1014,9 @@ def generate_model():
                 distortion_model=_MODEL,
                 fix_k2=bool(data.get("fix_k2", False)),
             )
-            dets = list(cached) if cache_hit else [detector.detect(im) for im in imgs]
+            dets = (
+                list(cached) if cache_hit else _detect_parallel(board, params, imgs)
+            )
             record = calr.run_mono(
                 imgs,
                 camera=camera,
@@ -1943,19 +1976,19 @@ def _joint_detect(
     detections: dict = {}
     image_size_by_cam: dict = {}
     for cam in cameras:
-        detector = c2._build_detector(board, params)
         imgs = _load_views(cam, n_views, source_idx, image_format, image_type)
         if not imgs:
             raise ValueError(f"joint: no images loaded for cam{cam}")
-        dets = []
-        for img in imgs:
-            d = detector.detect(img)
-            d.spacing_mm = spacing
-            dets.append(d)
+
+        def _on_done():
+            nonlocal done
             done += 1
             if progress_cb is not None:
                 progress_cb(done, total)
-        detections[cam] = dets
+
+        detections[cam] = _detect_parallel(
+            board, params, imgs, spacing_mm=spacing, on_done=_on_done
+        )
         h, w = imgs[0].shape[:2]
         image_size_by_cam[cam] = (int(w), int(h))
 

@@ -435,6 +435,159 @@ def test_apply_mono_skips_diagnostic_mats(tmp_path):
     assert not (od / "fit_diagnostics_pass_1.mat").exists()
 
 
+def test_apply_mono_parallel_pool(tmp_path, monkeypatch):
+    """Multi-file apply exercises the ProcessPool fan-out (1-file tests run inline).
+
+    Each frame carries a distinct displacement so a mixed-up frame/output pairing
+    would fail the per-file value check; progress must tick once per frame.
+    Workers are forced >1 so the pool path runs regardless of the ambient
+    post_processing_workers knob (knob=1 would silently test the inline path).
+    """
+    import scipy.io
+
+    monkeypatch.setattr(runio, "get_max_workers", lambda n_items=None, config=None: 4)
+
+    K = np.array([[8000.0, 0, 800], [0, 8000, 600], [0, 0, 1]])
+    cam = CameraModel(
+        K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200)
+    )
+    rec = REC.MonoRecord(
+        camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame()
+    )
+    X, Y = np.meshgrid(np.linspace(200, 1400, 20) + 1, np.linspace(150, 1050, 16) + 1)
+    ud, od = tmp_path / "u", tmp_path / "c"
+    ud.mkdir()
+    cs = np.empty((1,), dtype=[("x", object), ("y", object)])
+    cs["x"][0], cs["y"][0] = X.astype(np.float32), Y.astype(np.float32)
+    scipy.io.savemat(str(ud / "coordinates.mat"), {"coordinates": cs}, oned_as="row")
+    n_frames = 6
+    for k in range(n_frames):
+        ps = np.empty((1,), dtype=[("ux", object), ("uy", object), ("b_mask", object)])
+        ps["ux"][0] = np.full(X.shape, float(k + 1), np.float64)
+        ps["uy"][0] = np.full(X.shape, -2.0, np.float64)
+        ps["b_mask"][0] = np.ones(X.shape, bool)
+        scipy.io.savemat(
+            str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row"
+        )
+
+    progress = []
+    written = runio.calibrate_mono_run(
+        rec, ud, od, dt=0.001, progress_cb=lambda d, t: progress.append((d, t))
+    )
+
+    assert [Path(w).name for w in written] == [
+        f"B{k+1:05d}.mat" for k in range(n_frames)
+    ]
+    assert progress == [(k + 1, n_frames) for k in range(n_frames)]
+    # fx=8000, Z~1000mm -> 1 px = 0.125 mm; dt=0.001 s -> k+1 px = 0.125*(k+1) m/s
+    for k in range(n_frames):
+        bb = scipy.io.loadmat(str(od / f"B{k+1:05d}.mat"), squeeze_me=True)[
+            "piv_result"
+        ]
+        u = np.asarray(bb["ux"].tolist() if bb["ux"].dtype == object else bb["ux"])
+        assert float(np.nanmean(u)) == pytest.approx(0.125 * (k + 1), abs=0.01)
+
+
+def test_apply_mono_worker_failure_raises(tmp_path, monkeypatch):
+    """A corrupt vector file must fail the whole apply loudly (no silent skip),
+    from the pool path too — the worker exception propagates via future.result()."""
+    import scipy.io
+
+    monkeypatch.setattr(runio, "get_max_workers", lambda n_items=None, config=None: 4)
+    K = np.array([[8000.0, 0, 800], [0, 8000, 600], [0, 0, 1]])
+    cam = CameraModel(
+        K, np.zeros(5), np.eye(3), np.array([[-50.0], [-40.0], [1000.0]]), (1600, 1200)
+    )
+    rec = REC.MonoRecord(
+        camera=1, board_type="dotboard", camera_model=cam, world_frame=REC.WorldFrame()
+    )
+    X, Y = np.meshgrid(np.linspace(200, 1400, 20) + 1, np.linspace(150, 1050, 16) + 1)
+    ud, od = tmp_path / "u", tmp_path / "c"
+    ud.mkdir()
+    cs = np.empty((1,), dtype=[("x", object), ("y", object)])
+    cs["x"][0], cs["y"][0] = X.astype(np.float32), Y.astype(np.float32)
+    scipy.io.savemat(str(ud / "coordinates.mat"), {"coordinates": cs}, oned_as="row")
+    for k in range(3):
+        ps = np.empty((1,), dtype=[("ux", object), ("uy", object), ("b_mask", object)])
+        ps["ux"][0] = np.full(X.shape, 3.0, np.float64)
+        ps["uy"][0] = np.full(X.shape, -2.0, np.float64)
+        ps["b_mask"][0] = np.ones(X.shape, bool)
+        scipy.io.savemat(
+            str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row"
+        )
+    (ud / "B00004.mat").write_bytes(b"this is not a mat file")
+
+    with pytest.raises(Exception):
+        runio.calibrate_mono_run(rec, ud, od, dt=0.001)
+
+
+def test_reconstruct_stereo_run_parallel(stereo_render, tmp_path, monkeypatch):
+    """reconstruct_stereo_run plumbing over several frames (pool path): zero pixel
+    displacement in both cameras must reconstruct to ~zero 3C velocity on the
+    regular world grid, one output per common frame + one coordinates.mat.
+    (The 3C math itself is covered by test_3c_reconstruction; workers forced >1
+    so the pool path runs regardless of the ambient knob.)"""
+    import scipy.io
+
+    monkeypatch.setattr(runio, "get_max_workers", lambda n_items=None, config=None: 3)
+
+    imgs1, imgs2 = stereo_render["charuco"]
+    det = CharucoBoardDetector(CHARUCO)
+    rec = StereoCalibrator(det, "charuco").run_stereo(
+        imgs1, imgs2, 1, 2, clicks=None, spacing_mm=CHARUCO.square_size_mm
+    )
+    # Pixel coordinate grids: project one world-mm grid on the sheet through each model.
+    d1 = det.detect(imgs1[0])
+    wp = WF.apply_world_frame(d1.grid_indices, CHARUCO.square_size_mm, rec.world_frame)
+    gx = np.linspace(wp[:, 0].min(), wp[:, 0].max(), 12)
+    gy = np.linspace(wp[:, 1].min(), wp[:, 1].max(), 10)
+    Xw, Yw = np.meshgrid(gx, gy)
+    pts = np.column_stack([Xw.ravel(), Yw.ravel(), np.zeros(Xw.size)])
+    px1 = rec.model1.project(pts).reshape(Xw.shape + (2,))
+    px2 = rec.model2.project(pts).reshape(Xw.shape + (2,))
+
+    n_frames = 3
+    for cam_i, px in ((1, px1), (2, px2)):
+        ud = tmp_path / f"u{cam_i}"
+        ud.mkdir()
+        cs = np.empty((1,), dtype=[("x", object), ("y", object)])
+        cs["x"][0], cs["y"][0] = px[..., 0], px[..., 1]
+        scipy.io.savemat(
+            str(ud / "coordinates.mat"), {"coordinates": cs}, oned_as="row"
+        )
+        for k in range(n_frames):
+            ps = np.empty(
+                (1,), dtype=[("ux", object), ("uy", object), ("b_mask", object)]
+            )
+            ps["ux"][0] = np.zeros(Xw.shape)
+            ps["uy"][0] = np.zeros(Xw.shape)
+            ps["b_mask"][0] = np.ones(Xw.shape, bool)
+            scipy.io.savemat(
+                str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row"
+            )
+
+    od = tmp_path / "stereo_out"
+    progress = []
+    written = runio.reconstruct_stereo_run(
+        rec,
+        tmp_path / "u1",
+        tmp_path / "u2",
+        od,
+        dt=0.001,
+        progress_cb=lambda d, t: progress.append((d, t)),
+    )
+
+    assert len(written) == n_frames
+    assert progress == [(k + 1, n_frames) for k in range(n_frames)]
+    assert (od / "coordinates.mat").exists()
+    bb = scipy.io.loadmat(str(od / "B00001.mat"), squeeze_me=True)["piv_result"]
+    for comp in ("ux", "uy", "uz"):
+        arr = np.asarray(
+            bb[comp].tolist() if bb[comp].dtype == object else bb[comp], dtype=float
+        )
+        assert np.nanmax(np.abs(arr)) < 1e-6
+
+
 def test_record_save_load_roundtrip(tmp_path):
     K = np.array([[5000.0, 0, 400], [0, 5000, 300], [0, 0, 1]])
     cam = CameraModel(

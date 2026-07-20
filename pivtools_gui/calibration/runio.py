@@ -11,6 +11,8 @@ Y-flips — the sign is carried by the camera model.
 
 from __future__ import annotations
 
+import pickle
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -18,6 +20,11 @@ import numpy as np
 import scipy.io
 
 from pivtools_core.paths import get_data_paths
+from pivtools_gui.utils.worker_pool import (
+    get_max_workers,
+    get_worker_payload,
+    payload_worker_initializer,
+)
 
 from . import frames
 from . import record as rec
@@ -379,6 +386,154 @@ def _vectors_struct(
     return st
 
 
+# --- Parallel per-frame apply -------------------------------------------------
+# Every vector file in a run is independent (read .mat -> transform -> write .mat),
+# so apply/reconstruction fan out over a process pool sized by the
+# ``processing.post_processing_workers`` knob (same pattern as transforms/merging).
+# The shared per-job payload (model, coords, world grid) is installed once per
+# worker via worker_pool.payload_worker_initializer — pre-pickled to bytes so the
+# spawn bootstrap does not import numpy before thread pinning — instead of being
+# pickled into every task.
+
+
+def _mono_frame_task(
+    bmat_path: str, out_path: str, ctx: Optional[dict] = None
+) -> str:
+    """Calibrate one vector .mat file. ``ctx`` defaults to the worker's payload."""
+    c = ctx if ctx is not None else get_worker_payload()
+    bmat = Path(bmat_path)
+    out_b = Path(out_path)
+    if bmat.name == ENSEMBLE_FILE:
+        # Ensemble: mean velocity + Reynolds-stress tensors (different struct/fields).
+        calibrate_ensemble_file(
+            bmat,
+            out_b,
+            c["model"],
+            c["coords_px"],
+            c["dt"],
+            c["z_world"],
+            c["tilt_x"],
+            c["tilt_y"],
+        )
+        return str(out_b)
+    vecs = read_vectors(bmat)
+    cal_vecs: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
+    for i, (ux, uy, b) in vecs.items():
+        if i not in c["coords_px"]:
+            continue
+        xpx, ypx = c["coords_px"][i]
+        coords_stack = np.stack([xpx, ypx], axis=-1)
+        disp_stack = np.stack([ux, uy], axis=-1)
+        u, v = calibrate_displacements(
+            c["model"],
+            coords_stack,
+            disp_stack,
+            c["dt"],
+            c["z_world"],
+            c["tilt_x"],
+            c["tilt_y"],
+        )
+        cal_vecs[i] = (u, v, b)
+    scipy.io.savemat(
+        str(out_b),
+        {"piv_result": _vectors_struct(cal_vecs, c["n_passes"])},
+        oned_as="row",
+        do_compression=True,
+    )
+    return str(out_b)
+
+
+def _stereo_frame_task(
+    bmat1_path: str, bmat2_path: str, out_path: str, ctx: Optional[dict] = None
+) -> Optional[str]:
+    """3C-reconstruct one frame pair; returns None when the pass is absent (skipped)."""
+    from .stereo_model import reconstruct_3c_field
+
+    c = ctx if ctx is not None else get_worker_payload()
+    p = c["pass_index"]
+    v1 = read_vectors(Path(bmat1_path))
+    v2 = read_vectors(Path(bmat2_path))
+    if p not in v1 or p not in v2:
+        return None
+    ux1, uy1, b1 = v1[p]
+    ux2, uy2, b2 = v2[p]
+    U, V, Wc, bmask = reconstruct_3c_field(
+        c["model1"],
+        c["model2"],
+        c["grid"],
+        c["c1"],
+        ux1,
+        uy1,
+        c["c2"],
+        ux2,
+        uy2,
+        c["dt"],
+        interpolator=c["interpolator"],
+        bmask1=b1,
+        bmask2=b2,
+    )
+    n_passes = p + 1
+    st = np.empty(
+        (n_passes,),
+        dtype=[("ux", object), ("uy", object), ("uz", object), ("b_mask", object)],
+    )
+    empty = np.array([], dtype=np.float64)
+    for i in range(n_passes):
+        if i == p:
+            st["ux"][i], st["uy"][i], st["uz"][i] = U, V, Wc
+            st["b_mask"][i] = bmask
+        else:
+            st["ux"][i] = st["uy"][i] = st["uz"][i] = st["b_mask"][i] = empty
+    scipy.io.savemat(
+        str(out_path), {"piv_result": st}, oned_as="row", do_compression=True
+    )
+    return str(out_path)
+
+
+def _run_frame_tasks(
+    task_fn: Callable[..., Optional[str]],
+    tasks: List[tuple],
+    ctx: dict,
+    progress_cb: Optional[Callable[[int, int], None]],
+) -> List[str]:
+    """Fan per-frame apply tasks out over a process pool sized by the worker knob.
+
+    A single-worker run (tiny run, or knob set to 1) executes inline instead: no pool
+    spin-up cost, and the parent keeps ``ctx`` explicit rather than mutating module
+    state (which two concurrent apply jobs would race on). Skipped frames (task
+    returns None) still advance progress. Output paths return in name order.
+    """
+    total = len(tasks)
+    written: List[str] = []
+    if total == 0:
+        return written
+    done = 0
+    max_workers = get_max_workers(total)
+    if max_workers == 1:
+        for t in tasks:
+            out = task_fn(*t, ctx=ctx)
+            if out is not None:
+                written.append(out)
+            done += 1
+            if progress_cb:
+                progress_cb(done, total)
+        return sorted(written)
+    with ProcessPoolExecutor(
+        max_workers=max_workers,
+        initializer=payload_worker_initializer,
+        initargs=(pickle.dumps(ctx),),
+    ) as executor:
+        futures = [executor.submit(task_fn, *t) for t in tasks]
+        for future in as_completed(futures):
+            out = future.result()
+            if out is not None:
+                written.append(out)
+            done += 1
+            if progress_cb:
+                progress_cb(done, total)
+    return sorted(written)
+
+
 def calibrate_mono_run(
     record: MonoRecord,
     uncal_dir: Path,
@@ -423,42 +578,18 @@ def calibrate_mono_run(
         do_compression=True,
     )
 
-    written: List[str] = []
     bmats = _vector_files(uncal_dir, vector_glob)
-    total = len(bmats)
-    for k, bmat in enumerate(bmats):
-        out_b = out_dir / bmat.name
-        if bmat.name == ENSEMBLE_FILE:
-            # Ensemble: mean velocity + Reynolds-stress tensors (different struct/fields).
-            calibrate_ensemble_file(
-                bmat, out_b, model, coords_px, dt, z_world, tilt_x, tilt_y
-            )
-            written.append(str(out_b))
-            if progress_cb:
-                progress_cb(k + 1, total)
-            continue
-        vecs = read_vectors(bmat)
-        cal_vecs: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
-        for i, (ux, uy, b) in vecs.items():
-            if i not in coords_px:
-                continue
-            xpx, ypx = coords_px[i]
-            coords_stack = np.stack([xpx, ypx], axis=-1)
-            disp_stack = np.stack([ux, uy], axis=-1)
-            u, v = calibrate_displacements(
-                model, coords_stack, disp_stack, dt, z_world, tilt_x, tilt_y
-            )
-            cal_vecs[i] = (u, v, b)
-        scipy.io.savemat(
-            str(out_b),
-            {"piv_result": _vectors_struct(cal_vecs, n_passes)},
-            oned_as="row",
-            do_compression=True,
-        )
-        written.append(str(out_b))
-        if progress_cb:
-            progress_cb(k + 1, total)
-    return written
+    ctx = {
+        "model": model,
+        "coords_px": coords_px,
+        "n_passes": n_passes,
+        "dt": dt,
+        "z_world": z_world,
+        "tilt_x": tilt_x,
+        "tilt_y": tilt_y,
+    }
+    tasks = [(str(b), str(out_dir / b.name)) for b in bmats]
+    return _run_frame_tasks(_mono_frame_task, tasks, ctx, progress_cb)
 
 
 def reconstruct_stereo_run(
@@ -482,7 +613,7 @@ def reconstruct_stereo_run(
     vector pitch — see ``regular_world_grid``) into ``out_dir``. Uses the final
     populated pass unless ``pass_index`` set.
     """
-    from .stereo_model import reconstruct_3c_field, regular_world_grid
+    from .stereo_model import regular_world_grid
 
     uncal_dir1 = Path(uncal_dir1)
     uncal_dir2 = Path(uncal_dir2)
@@ -512,62 +643,29 @@ def reconstruct_stereo_run(
         tilt_y,
     )
 
-    written: List[str] = []
-    coords_written = False
     bmats1 = {b.name: b for b in _vector_files(uncal_dir1, vector_glob)}
     bmats2 = {b.name: b for b in _vector_files(uncal_dir2, vector_glob)}
     common = sorted(set(bmats1) & set(bmats2))
-    total = len(common)
-    for k, name in enumerate(common):
-        v1 = read_vectors(bmats1[name])
-        v2 = read_vectors(bmats2[name])
-        if p not in v1 or p not in v2:
-            continue
-        ux1, uy1, b1 = v1[p]
-        ux2, uy2, b2 = v2[p]
-        U, V, Wc, bmask = reconstruct_3c_field(
-            record.model1,
-            record.model2,
-            (gX, gY, gZ),
-            c1,
-            ux1,
-            uy1,
-            c2,
-            ux2,
-            uy2,
-            dt,
-            interpolator=interpolator,
-            bmask1=b1,
-            bmask2=b2,
-        )
-        n_passes = p + 1
-        # The regular world grid is frame-invariant — write coordinates once, on the
-        # first processed frame, not once per frame (no frames -> no output).
-        if not coords_written:
-            cs = _coords_struct({p: (gX, gY)}, n_passes)
-            scipy.io.savemat(
-                str(out_dir / "coordinates.mat"),
-                {"coordinates": cs},
-                oned_as="row",
-                do_compression=True,
-            )
-            coords_written = True
-        st = np.empty(
-            (n_passes,),
-            dtype=[("ux", object), ("uy", object), ("uz", object), ("b_mask", object)],
-        )
-        empty = np.array([], dtype=np.float64)
-        for i in range(n_passes):
-            if i == p:
-                st["ux"][i], st["uy"][i], st["uz"][i] = U, V, Wc
-                st["b_mask"][i] = bmask
-            else:
-                st["ux"][i] = st["uy"][i] = st["uz"][i] = st["b_mask"][i] = empty
-        out_b = out_dir / name
+    ctx = {
+        "model1": record.model1,
+        "model2": record.model2,
+        "grid": (gX, gY, gZ),
+        "c1": c1,
+        "c2": c2,
+        "pass_index": p,
+        "dt": dt,
+        "interpolator": interpolator,
+    }
+    tasks = [(str(bmats1[name]), str(bmats2[name]), str(out_dir / name)) for name in common]
+    written = _run_frame_tasks(_stereo_frame_task, tasks, ctx, progress_cb)
+    # The regular world grid is frame-invariant — write coordinates once, and only if
+    # at least one frame actually reconstructed (no frames -> no output).
+    if written:
+        cs = _coords_struct({p: (gX, gY)}, p + 1)
         scipy.io.savemat(
-            str(out_b), {"piv_result": st}, oned_as="row", do_compression=True
+            str(out_dir / "coordinates.mat"),
+            {"coordinates": cs},
+            oned_as="row",
+            do_compression=True,
         )
-        written.append(str(out_b))
-        if progress_cb:
-            progress_cb(k + 1, total)
     return written

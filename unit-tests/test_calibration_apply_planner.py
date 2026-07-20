@@ -53,7 +53,8 @@ def test_mono_all_paths_two_by_two(tmp_path):
     for u in units:
         assert u["stereo"] is False
         assert "uncalibrated_piv" in str(u["uncal"])
-        assert "/calibrated_piv/" in str(u["out"]) and "uncalibrated" not in str(
+        # Path.parts is separator-agnostic (str() would need "/" vs "\\" per-OS).
+        assert "calibrated_piv" in u["out"].parts and "uncalibrated" not in str(
             u["out"]
         )
         assert u["record"].camera_model.model_type == "scale_factor"
@@ -84,4 +85,4 @@ def test_explicit_single_unit_override(tmp_path):
     assert len(units) == 1
     u = units[0]
     assert u["label"] == "manual"
-    assert str(u["uncal"]).endswith("/u") and str(u["out"]).endswith("/o")
+    assert u["uncal"].name == "u" and u["out"].name == "o"
