@@ -611,6 +611,10 @@ def _create_ensemble_struct_all_passes(
                     win_ctrs_y=pass_result.win_ctrs_y,
                     image_height=image_height if image_height else 0,
                     window_size=window_size,
+                    # warped passes: correction must use the residual gradient
+                    # (U − pred); pass 0 has pred None/zeros → total gradient
+                    pred_x=pass_result.pred_x,
+                    pred_y=pass_result.pred_y,
                 )
             else:
                 logging.warning(

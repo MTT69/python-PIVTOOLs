@@ -17,6 +17,22 @@ Where:
 - L_x, L_y = particle window dimensions (from config.ensemble_window_sizes)
 - σ_A_x, σ_A_y = particle image VARIANCE from autocorrelation fit (already σ², not σ)
 
+Multipass / image-deformation note (2026-07-20):
+    The L²/12 term is derived for UNDEFORMED interrogation, where the ensemble
+    correlation pools laboratory-frame displacements and a mean-shear ramp
+    across the window broadens the peak. Under iterative image deformation the
+    frames are resampled by the dense predictor (±pred/2) BEFORE correlation,
+    so the pooled displacements are residuals d − pred and the in-window ramp
+    is set by the RESIDUAL mean gradient ∂(U − pred). On a converged multipass
+    the predictor carries >98% of the mean shear at window scale (measured on
+    the clean channel benchmark), so evaluating the correction on the total
+    gradient double-counts a bias the warp already removed — up to 12% of u'u'
+    below y+ ≈ 10. All gradients are therefore evaluated on (U − pred) when
+    the per-window predictor is supplied; pred = None/zeros (pass 0, unwarped)
+    reproduces the original laboratory-frame formula identically. Windows
+    where the predictor is NaN are treated as un-warped (pred → 0), matching
+    the warp path's NaN-predictor convention.
+
 K-space fitting note:
     K-space fitting does not estimate σ_A (particle image variance) because the
     particle contribution is algebraically cancelled in Fourier space. When used
@@ -50,6 +66,8 @@ def compute_gradient_corrections(
     dx: float,
     dy: float,
     window_size: Tuple[int, int],
+    pred_U: Optional[np.ndarray] = None,
+    pred_V: Optional[np.ndarray] = None,
 ) -> Tuple[
     np.ndarray,
     np.ndarray,
@@ -89,6 +107,12 @@ def compute_gradient_corrections(
         (y increases with row index). Corrected stresses are independent of its sign.
     window_size : Tuple[int, int]
         Particle window dimensions (L_y, L_x) in pixels
+    pred_U : np.ndarray, optional
+        Per-window predictor of U used to deform the images this pass (same
+        grid/convention as U). When given, all gradients are evaluated on the
+        residual (U − pred_U) — see module docstring. None ⇒ unwarped pass.
+    pred_V : np.ndarray, optional
+        Per-window predictor of V. Same handling as pred_U.
 
     Returns
     -------
@@ -103,12 +127,19 @@ def compute_gradient_corrections(
     """
     L_y, L_x = window_size
 
+    # Image deformation removes the predictor's share of the in-window mean
+    # ramp before correlation, so the broadening is set by the RESIDUAL field
+    # (module docstring). NaN predictor windows warp as zero shift → residual
+    # falls back to the full field there.
+    U_res = U if pred_U is None else U - np.nan_to_num(pred_U, nan=0.0)
+    V_res = V if pred_V is None else V - np.nan_to_num(pred_V, nan=0.0)
+
     # Compute ALL velocity gradients using SIGNED spacing
     # axis=0 is rows (y direction), axis=1 is columns (x direction)
-    dU_dx = np.gradient(U, dx, axis=1)
-    dU_dy = np.gradient(U, dy, axis=0)
-    dV_dx = np.gradient(V, dx, axis=1)
-    dV_dy = np.gradient(V, dy, axis=0)
+    dU_dx = np.gradient(U_res, dx, axis=1)
+    dU_dy = np.gradient(U_res, dy, axis=0)
+    dV_dx = np.gradient(V_res, dx, axis=1)
+    dV_dy = np.gradient(V_res, dy, axis=0)
 
     # Window averaging effect: L²/12 (variance of uniform distribution over window)
     L_x_sq_12 = (L_x**2) / 12.0
@@ -187,6 +218,8 @@ def apply_gradient_correction_to_pass(
     win_ctrs_y: np.ndarray,
     image_height: int,
     window_size: Optional[Tuple[int, int]] = None,
+    pred_x: Optional[np.ndarray] = None,
+    pred_y: Optional[np.ndarray] = None,
 ) -> Tuple[
     np.ndarray,
     np.ndarray,
@@ -231,6 +264,13 @@ def apply_gradient_correction_to_pass(
     window_size : tuple of (int, int), optional
         Particle window dimensions (L_y, L_x) in pixels. Required for full correction.
         If not provided, only particle extent correction is applied (window correction = 0).
+    pred_x : np.ndarray, optional
+        Per-window predictor of ux for this pass (image coords, same grid as
+        ux) — the field the images were deformed by (±pred/2). Supply for
+        warped passes so the correction uses the residual gradient; omit (or
+        pass zeros) for pass 0 / unwarped correlation. See module docstring.
+    pred_y : np.ndarray, optional
+        Per-window predictor of uy. Same handling as pred_x.
 
     Returns
     -------
@@ -279,8 +319,16 @@ def apply_gradient_correction_to_pass(
     else:
         dy = 1.0
 
+    for name, pred in (("pred_x", pred_x), ("pred_y", pred_y)):
+        if pred is not None and np.shape(pred) != np.shape(ux):
+            raise ValueError(
+                f"{name} shape {np.shape(pred)} does not match velocity grid "
+                f"{np.shape(ux)} — predictor must be on the same pass grid"
+            )
+
     logging.debug(
-        f"Gradient correction: dx={dx:.2f}, dy={dy:.2f}, window_size={window_size} (image coords)"
+        f"Gradient correction: dx={dx:.2f}, dy={dy:.2f}, window_size={window_size} "
+        f"(image coords, {'residual-gradient' if pred_x is not None else 'total-gradient'})"
     )
 
     # Apply correction
@@ -305,6 +353,8 @@ def apply_gradient_correction_to_pass(
         dx=dx,
         dy=dy,
         window_size=window_size,
+        pred_U=pred_x,
+        pred_V=pred_y,
     )
 
     return (
