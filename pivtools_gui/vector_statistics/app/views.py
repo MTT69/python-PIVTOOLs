@@ -149,9 +149,6 @@ def calculate_statistics():
             else False
         )
 
-        # Stereo available if EITHER config says stereo OR stereo data exists
-        is_stereo_config or has_stereo_data
-
         # Auto-select stereo workflow if source_endpoint is stereo
         if source_endpoint == "stereo" and has_stereo_data:
             workflow = "stereo"

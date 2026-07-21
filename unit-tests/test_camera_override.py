@@ -110,6 +110,7 @@ def test_handler_sets_and_clears_env(command, monkeypatch):
     when the flag is absent (no silent single-camera run)."""
     import types
 
+    import pivtools_core
     from pivtools_cli import cli
 
     seen = {}
@@ -120,16 +121,27 @@ def test_handler_sets_and_clears_env(command, monkeypatch):
 
     # Inject a stub so the handler's `from pivtools_core import <command>` binds
     # this instead of importing the real (heavy) pipeline module — we only want
-    # to exercise the env-var glue in the handler.
+    # to exercise the env-var glue in the handler. The sys.modules entry alone
+    # is NOT enough: `from pivtools_core import <command>` prefers an existing
+    # package ATTRIBUTE, and collecting any test module that imports the real
+    # pipeline (e.g. test_multipass_convergence.py) sets that attribute before
+    # this test runs — so stub the attribute too, or the REAL main() executes.
     fake = types.ModuleType(f"pivtools_core.{command}")
     fake.main = _fake_main
     monkeypatch.setitem(sys.modules, f"pivtools_core.{command}", fake)
+    monkeypatch.setattr(pivtools_core, command, fake, raising=False)
 
     handler = getattr(cli, f"{command}_command")
 
     # Flag present -> env set, visible to main()
     handler(Namespace(active_paths=None, camera=5))
     assert seen["piv_camera"] == "5"
+
+    # The handler set PIV_CAMERA=5 DIRECTLY (not via monkeypatch), so pop it
+    # before monkeypatch.setenv below snapshots it — otherwise teardown
+    # "restores" the leaked 5 into the process env and poisons every later
+    # config-reading test ("Camera numbers [5] must be between 1 and 1").
+    os.environ.pop("PIV_CAMERA", None)
 
     # Stale value inherited + flag absent -> cleared, main() sees no override
     monkeypatch.setenv("PIV_CAMERA", "3")

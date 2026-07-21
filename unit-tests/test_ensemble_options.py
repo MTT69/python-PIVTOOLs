@@ -3,8 +3,9 @@
 Covers the two new C-correlator flags on ``bulkxcorr2d_accumulate_triple``
 (per-window weighted-mean subtraction for the 'window_mean' background method,
 and per-pair zero-lag-energy normalization), the ``round_shifts`` flag on the
-fused symmetric warp, the ``kspace_linear`` fit-method dispatch recipe, and
-the per-pair-normalization config validation rule.
+fused symmetric warp, the dormant ``kspace_linear`` fitter's recipe contract
+(direct call — the fit_method option was removed from production selection),
+and the per-pair-normalization config validation rule.
 
 The C libraries are exercised through raw ctypes (same pattern as
 ``test_peakfit_batch.py``) so the invariances are tested at the kernel
@@ -297,11 +298,11 @@ class TestRoundShifts:
 
 
 # ---------------------------------------------------------------------------
-# kspace_linear dispatch recipe + validation rule
+# kspace_linear recipe contract (dormant module, direct call) + validation rule
 # ---------------------------------------------------------------------------
 class TestFitterSelectionAndValidation:
     def test_kspace_linear_production_recipe_contract(self):
-        """The dispatch recipe (joint/refc/gauss) recovers a synthetic
+        """The former production recipe (joint/refc/gauss) recovers a synthetic
         Gaussian displacement on the 16-element output contract."""
         from synthetic_correlations import make_mock_config
 

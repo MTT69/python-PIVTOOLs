@@ -2366,34 +2366,34 @@ class Config:
     def ensemble_fit_method(self) -> str:
         """Return fitting method for ensemble PIV.
 
-        - 'kspace' (default): the batched-LM one-stage joint fit of the raw
-          k-space transfer ratio (``fit_windows_kspace_lm``: mu, Sigma,
-          gain g, in-model noise floor N0; 7 parameters for the default
-          Gaussian shape). ``kspace_shape`` (see ``ensemble_kspace_shape``)
-          optionally adds per-axis quartic kurtosis terms. No other tuning
-          knobs — the former ``lm_soft_weighting`` and ``lm_k_max_cap``
-          ablation knobs guarded pathologies of the removed two-stage
-          design; stale keys in old workspace configs are ignored.
-        - 'kspace_linear': the closed-form linear fitter
-          (``fit_windows_kspace_linear``) with the old production recipe
-          fixed (joint noise floor, refc trust-region weighting, Gaussian
-          shape). Cannot fail to converge; hard trust fences instead of
-          soft weighting — the robust choice on model-violating data.
+        - 'kspace' (default, and the only production method): the batched-LM
+          one-stage joint fit of the raw k-space transfer ratio
+          (``fit_windows_kspace_lm``: mu, Sigma, gain g, in-model noise floor
+          N0; 7 parameters for the default Gaussian shape). ``kspace_shape``
+          (see ``ensemble_kspace_shape``) optionally adds per-axis quartic
+          kurtosis terms. No other tuning knobs — the former
+          ``lm_soft_weighting`` and ``lm_k_max_cap`` ablation knobs guarded
+          pathologies of the removed two-stage design; stale keys in old
+          workspace configs are ignored.
 
-        A stale ``fit_method: gaussian`` fails loudly here rather than
-        silently falling back. The former ``kspace_kurtosis`` toggle was
-        removed with the two-stage/GSL designs (kurtosis rejected in THOSE
-        implementations; the 2026-07-17 bake-off validated quartic terms in
-        the joint LM, now available via ``kspace_shape``); a stale key in
-        old workspace configs is ignored.
+        A stale ``fit_method: gaussian`` or ``kspace_linear`` fails loudly
+        here rather than silently falling back — 'kspace_linear' (the
+        closed-form fitter in ``kspace_linear_fitting.py``) was retired from
+        production selection on 2026-07-21; the module and its unit tests
+        remain as a reference implementation. The former ``kspace_kurtosis``
+        toggle was removed with the two-stage/GSL designs (kurtosis rejected
+        in THOSE implementations; the 2026-07-17 bake-off validated quartic
+        terms in the joint LM, now available via ``kspace_shape``); a stale
+        key in old workspace configs is ignored.
         """
         method = self.data.get("ensemble_piv", {}).get("fit_method", "kspace")
-        valid_methods = {"kspace", "kspace_linear"}
+        valid_methods = {"kspace"}
         if method not in valid_methods:
             raise ValueError(
                 f"Invalid ensemble_fit_method '{method}'. Must be one of "
-                f"{valid_methods}. (The 'gaussian' method and the GSL-based "
-                f"k-space fitter were removed.)"
+                f"{valid_methods}. (The 'gaussian' method, the GSL-based "
+                f"k-space fitter, and the 'kspace_linear' closed-form fitter "
+                f"were removed from production selection.)"
             )
         return method
 
@@ -2421,9 +2421,9 @@ class Config:
         - 'kx4+ky4': both terms, 9 parameters — orientation-agnostic; no
           cross kx^2*ky^2 term (tested and rejected).
 
-        Only meaningful for ``fit_method: kspace``; combining a non-gaussian
-        shape with 'kspace_linear' is a validation error rather than a
-        silent no-op. Selection evidence:
+        Only meaningful for ``fit_method: kspace`` (validation rejects a
+        non-gaussian shape with any other fitter rather than silently
+        ignoring it). Selection evidence:
         wiki/sessions/2026-07-17-fitter-bakeoff-e-debug.md.
         """
         shape = self.data.get("ensemble_piv", {}).get("kspace_shape", "gaussian")
@@ -3230,6 +3230,9 @@ class Config:
     def get_camera_folder(self, camera_num: int) -> str:
         """Get the subfolder name for a specific camera.
 
+        A single-camera setup (camera_count == 1) always resolves images at
+        the source root; camera_subfolders entries never apply to it.
+
         Container formats (.cine, .set) don't use camera subfolders:
         - .set: All cameras in one file
         - .cine: Separate files per camera in source dir (uses %d in pattern)
@@ -3248,15 +3251,18 @@ class Config:
                 return ""  # Multi-camera file, no subfolder
             # Fall through to use camera subfolders
 
+        # Single camera resolves at the source root — an explicit subfolder
+        # entry is stale state from a previous multi-camera session, never a
+        # valid override (the GUI hides subfolder inputs at count 1).
+        if self.camera_count == 1:
+            return ""
+
         subfolders = self.camera_subfolders
         # camera_num is 1-based
         idx = camera_num - 1
 
         if subfolders and idx < len(subfolders) and subfolders[idx]:
             return subfolders[idx]
-
-        if self.camera_count == 1:
-            return ""
 
         return f"Cam{camera_num}"
 

@@ -722,27 +722,13 @@ class SinglePassAccumulator:
         else:
             mask_flat = np.zeros(total_windows, dtype=bool)
 
-        # Closed-form k-space fitting, dispatched across Dask workers.
+        # K-space fitting, dispatched across Dask workers.
         # Reading the property here also validates fit_method (a stale
-        # 'gaussian' config raises loudly rather than silently falling back).
+        # 'gaussian' or 'kspace_linear' config raises loudly rather than
+        # silently falling back).
         fit_method = self.config.ensemble_fit_method
         logging.info(
             f"Pass {pass_idx + 1}: Starting k-space transfer function fitting..."
-        )
-
-        # Build per-window predictor displacements for the noise PSD (joint floor)
-        predictor_displacements = None
-        if pass_idx > 0:
-            smoothed_pred = pass_data.get("smoothed_predictor")
-            if smoothed_pred is not None:
-                # smoothed_pred shape: (n_win_y, n_win_x, 2) where [:,:,0]=Y, [:,:,1]=X
-                predictor_displacements = smoothed_pred.reshape(-1, 2)
-
-        # Determine kernel type from config (k-space only)
-        interp_kernel = (
-            "lanczos3"
-            if self.config.ensemble_image_warp_interpolation == "lanczos"
-            else "bicubic"
         )
 
         with self._profile_section(pass_idx, "scatter"):
@@ -753,7 +739,6 @@ class SinglePassAccumulator:
             R_BB_futures = []
             R_AB_futures = []
             mask_flat_futures = []
-            pred_disp_futures = []
             for worker_idx in range(n_workers):
                 # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
                 start_idx = (
@@ -794,79 +779,34 @@ class SinglePassAccumulator:
                     )
                 )
 
-                if predictor_displacements is not None:
-                    pred_disp_futures.append(
-                        client.scatter(
-                            predictor_displacements[start_idx_win:end_idx_win],
-                            broadcast=False,
-                        )
-                    )
-                else:
-                    pred_disp_futures.append(None)
-
-        # K-space fit, dispatched across Dask workers. fit_method selects:
-        #   'kspace'        — one-stage 7-param joint LM fit of the raw transfer
-        #                     ratio (mu, Sigma, gain g, in-model noise floor N0);
-        #                     see kspace_lm_fitting.py for the model.
-        #   'kspace_linear' — closed-form linear fitter with the old production
-        #                     recipe fixed (joint floor, refc trust-region
-        #                     weighting, Gaussian shape).
-        # Both return the same 16-element gauss_flat contract.
+        # K-space fit, dispatched across Dask workers. 'kspace' — the only
+        # production method — is the one-stage 7-param joint LM fit of the raw
+        # transfer ratio (mu, Sigma, gain g, in-model noise floor N0);
+        # see kspace_lm_fitting.py for the model. Returns the 16-element
+        # gauss_flat contract.
         save_fit_diagnostics = (
             fit_method == "kspace" and self.config.ensemble_save_diagnostics
         )
         with self._profile_section(pass_idx, "fitting"):
-            if fit_method == "kspace_linear":
-                from pivtools_cli.piv.piv_backend.kspace_linear_fitting import (
-                    fit_windows_kspace_linear,
-                )
+            from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
+                fit_windows_kspace_lm,
+            )
 
-                if self.config.ensemble_save_diagnostics:
-                    logging.info(
-                        f"Pass {pass_idx + 1}: fit diagnostics are LM-only — "
-                        f"none saved for fit_method 'kspace_linear'"
-                    )
-                futures = [
-                    client.submit(
-                        fit_windows_kspace_linear,
-                        R_AA_futures[i],
-                        R_BB_futures[i],
-                        R_AB_futures[i],
-                        mask_flat_futures[i],
-                        corr_size,
-                        self.config,
-                        pass_idx,
-                        True,  # use_soft_weighting (accepted, unused)
-                        self.config.debug,  # diagnostics when debug=True
-                        pred_disp_futures[i],  # per-window predictor displacements
-                        interp_kernel,  # 'bicubic' or 'lanczos3'
-                        None,  # k_max_cap (accepted, unused)
-                        floor_mode="joint",
-                        weight_mode="refc",
-                        shape_mode="gauss",
-                    )
-                    for i in range(len(R_AA_futures))
-                ]
-            else:
-                from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
+            futures = [
+                client.submit(
                     fit_windows_kspace_lm,
+                    R_AA_futures[i],
+                    R_BB_futures[i],
+                    R_AB_futures[i],
+                    mask_flat_futures[i],
+                    corr_size,
+                    self.config,
+                    pass_idx,
+                    self.config.debug,  # diagnostics when debug=True
+                    save_fit_diagnostics,  # return per-window diag dict
                 )
-
-                futures = [
-                    client.submit(
-                        fit_windows_kspace_lm,
-                        R_AA_futures[i],
-                        R_BB_futures[i],
-                        R_AB_futures[i],
-                        mask_flat_futures[i],
-                        corr_size,
-                        self.config,
-                        pass_idx,
-                        self.config.debug,  # diagnostics when debug=True
-                        save_fit_diagnostics,  # return per-window diag dict
-                    )
-                    for i in range(len(R_AA_futures))
-                ]
+                for i in range(len(R_AA_futures))
+            ]
 
             results = client.gather(futures)
         gauss_flat = np.concatenate([r[0] for r in results])

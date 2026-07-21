@@ -6,8 +6,8 @@ End-to-end integration tests for multipass PIV convergence using synthetic
 Poiseuille flow images. Tests both instantaneous (single pair) and ensemble
 (20 pairs, mixed std/single mode) pipelines.
 
-Ensemble tests are parametrized by fit_method (gaussian, kspace) to verify
-both fitting backends produce converged results.
+Ensemble tests run the production fit_method ('kspace', the joint LM fitter —
+the only selectable method) and verify it produces converged results.
 
 Key verification:
   - Predictor field converges to measured velocity (proves warping works)
@@ -420,11 +420,12 @@ PASS_2_IDX = 1  # first 16×16 single pass (0-based)
 PASS_3_IDX = 2  # second 16×16 single pass (0-based, final)
 
 
-@pytest.fixture(scope="module", params=["kspace", "kspace_linear"])
+@pytest.fixture(scope="module", params=["kspace"])
 def ensemble_workspace(request):
     """
-    Run 3-pass ensemble PIV, parametrized by fit_method.
-    Each fit_method gets its own workspace directory.
+    Run 3-pass ensemble PIV with the production fit_method ('kspace' — the
+    LM fitter is the only selectable method; the dormant closed-form fitter
+    is covered by its direct unit tests, not this e2e path).
     """
     fit_method = request.param
 

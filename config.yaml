@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Synthetic\Planar_no_noise\validation
+  - E:\Synthetic_Results\planar_noisy
   source_paths:
-  - E:\Synthetic\Planar_no_noise
+  - E:\Synthetic\planar_noise
   active_paths:
   - 0
   camera_numbers:
@@ -37,16 +37,16 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 3
-  dask_workers_per_node: 5
-  dask_memory_limit: 10GB
+  omp_threads: 5
+  dask_workers_per_node: 3
+  dask_memory_limit: 18GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -85,7 +85,7 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: default
   lower: ''
   upper: ''
@@ -95,26 +95,26 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
+    mean_stresses: true
+    mean_vorticity: false
+    inst_stresses: false
+    mean_tke: false
+    gamma1: false
+    inst_velocity: false
+    inst_gamma: false
+    tke: false
+    gamma2: false
+    inst_vorticity: false
+    mean_velocity: true
     fluctuating_velocity: false
+    vorticity: false
     divergence: false
     inst_divergence: false
-    tke: false
     mean_peak_height: false
-    mean_vorticity: false
-    inst_velocity: false
     mean_divergence: false
-    inst_stresses: false
-    inst_vorticity: false
-    mean_tke: false
-    vorticity: false
-    mean_stresses: true
-    gamma2: false
-    gamma1: false
-    inst_gamma: false
-    mean_velocity: true
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
@@ -132,7 +132,6 @@ instantaneous_piv:
   - 50
   - 50
   runs:
-  - 2
   - 3
   - 4
   time_resolved: false
@@ -147,7 +146,7 @@ instantaneous_piv:
   dump_correlation_planes: false
 ensemble_piv:
   fit_method: kspace
-  kspace_shape: gaussian
+  kspace_shape: kx4
   skip_background_subtraction: false
   gradient_correction: true
   persist_images: false
@@ -157,13 +156,13 @@ ensemble_piv:
   background_subtraction_method: correlation+window_mean
   window_size:
   - - 64
-    - 96
+    - 64
   - - 32
-    - 96
+    - 32
   - - 16
-    - 96
+    - 16
   - - 8
-    - 96
+    - 8
   overlap:
   - 50
   - 50
@@ -172,23 +171,21 @@ ensemble_piv:
   type:
   - std
   - std
-  - std
-  - std
+  - single
+  - single
   runs:
-  - 1
-  - 2
   - 3
   - 4
   store_planes: true
   save_diagnostics: true
   sum_window:
   - 48
-  - 96
+  - 48
   sum_fitting_window_enabled: true
   sum_fitting_window:
   - 32
   - 32
-  resume_from_pass: 0
+  resume_from_pass: 4
   window_type: square
   predictor_boundary_conditions:
   - y_position: 0
@@ -198,7 +195,7 @@ ensemble_piv:
   per_pair_normalization: false
   predictor_rounding: true
 calibration:
-  image_format: calib_Cam4_B00001_crop.tif
+  image_format: calib%05d.tif
   num_images: 10
   image_type: standard
   zero_based_indexing: false
@@ -207,8 +204,8 @@ calibration:
   camera_subfolders:
   - Cam1
   path_order: camera_first
-  active: stereo_stepped
-  piv_type: ensemble
+  active: charuco
+  piv_type: instantaneous
   scale_factor:
     dt: 0.0057553
     px_per_mm: 13.653
@@ -222,7 +219,7 @@ calibration:
   charuco:
     squares_h: 10
     squares_v: 7
-    square_size: 0.03
+    square_size: 0.012
     marker_ratio: 0.5
     aruco_dict: DICT_4X4_1000
     min_corners: 6
@@ -238,7 +235,7 @@ calibration:
     datum_camera: 1
     datum_frame: 1
   calibration_sources:
-  - E:\Synthetic\Planar_no_noise\calibration
+  - E:\Synthetic\calibration_charuco\planar\Cam1
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -250,8 +247,8 @@ calibration:
     overlap_points: []
     invert_ux: false
     overlap_pairs: []
-  n_views: 1
-  dt: 5.0e-06
+  n_views: 20
+  dt: 0.0057553
   datum_frame: 1
   camera_pair:
   - 1
@@ -276,12 +273,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

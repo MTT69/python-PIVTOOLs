@@ -12,6 +12,8 @@ semantics.
 
 import ctypes
 import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -19,6 +21,17 @@ import pytest
 # ---------------------------------------------------------------------------
 # Library loading (pattern: test_instantaneous_peaks.py)
 # ---------------------------------------------------------------------------
+
+_LIB_EXTENSION = ".dll" if os.name == "nt" else ".so"
+_LIB_PATH = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "pivtools_cli",
+        "lib",
+        f"libbulkxcorr2d{_LIB_EXTENSION}",
+    )
+)
 
 _lib = None
 
@@ -28,16 +41,7 @@ def _load_lib():
     if _lib is not None:
         return _lib
 
-    lib_extension = ".dll" if os.name == "nt" else ".so"
-    path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "pivtools_cli",
-            "lib",
-            f"libbulkxcorr2d{lib_extension}",
-        )
-    )
+    path = _LIB_PATH
     if not os.path.isfile(path):
         raise FileNotFoundError(f"libbulkxcorr2d not found at {path}")
 
@@ -166,7 +170,26 @@ class TestSelector:
         )
 
     def test_default_is_scalar(self):
-        assert _LIB.bulkxcorr2d_get_peakfit_impl() == 0
+        """The DLL's built-in default must be the scalar fitter.
+
+        The selector is PROCESS-GLOBAL and the production correlator switches
+        it to batch the first time it runs, so the pristine startup default is
+        only observable in a fresh process — assert it there, not in this
+        (shared) test process where earlier tests may have run the correlator.
+        """
+        code = (
+            "import ctypes; "
+            f"lib = ctypes.CDLL({_LIB_PATH!r}); "
+            "lib.bulkxcorr2d_get_peakfit_impl.restype = ctypes.c_int; "
+            "print(lib.bulkxcorr2d_get_peakfit_impl())"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "0"
 
     @needs_batch
     def test_select_and_restore(self):

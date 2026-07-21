@@ -1,16 +1,15 @@
 """
 Closed-form (GSL-free) k-space transfer-function fitting for ensemble PIV.
 
-SELECTABLE IN PRODUCTION since 2026-07-10 via ``ensemble_piv.fit_method:
-kspace_linear`` (dispatched from ``single_pass_accumulator`` with the old
-production recipe fixed: floor_mode='joint', weight_mode='refc',
-shape_mode='gauss'). The batched-LM fitter (``kspace_lm_fitting``) remains the
-default ('kspace'). On the 2026-07 experimental dataset this fitter proved
-robust where the LM failed (its hard trust fences, model-free/grid-bounded
-floors, closed-form solve and amplitude-independent phase displacement have no
-convergence or model-misfit failure channels); the LM's earlier synthetic-set
-win over this fitter is no longer treated as a general ranking.
-manual_tools/kspace research scripts also import this module.
+DORMANT — NOT SELECTABLE IN PRODUCTION since 2026-07-21. The
+``ensemble_piv.fit_method: kspace_linear`` option and its dispatch in
+``single_pass_accumulator`` were removed (the batched-LM fitter,
+``kspace_lm_fitting``, is the only production path). This module is kept as a
+reference implementation of the closed-form recipe (floor_mode='joint',
+weight_mode='refc', shape_mode='gauss') and is exercised only by its unit
+tests (``test_kspace_fitting.py``, ``test_ensemble_options.py``) and the
+manual_tools/kspace research scripts. Was production-selectable
+2026-07-10 → 2026-07-21.
 
 This is the *de-janked* fitter: single stage, no beta, no nonlinear solver. It is a
 drop-in replacement for ``fit_windows_kspace`` (same positional signature and the same

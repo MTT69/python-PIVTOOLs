@@ -1657,6 +1657,19 @@ def update_config():
             valid_numbers = list(range(1, new_camera_count + 1))
         cfg.data["paths"]["camera_numbers"] = valid_numbers
 
+    # Camera-subfolder invariant: a single-camera setup resolves images at the
+    # source root, and a multi-camera setup has at most one subfolder entry per
+    # camera. Stale entries from a previous session must not survive a count
+    # change, so prune on every persist.
+    subfolders = cfg.data["paths"].get("camera_subfolders", [])
+    pruned = [] if new_camera_count == 1 else subfolders[:new_camera_count]
+    if pruned != subfolders:
+        logger.info(
+            f"Pruned camera_subfolders {subfolders!r} -> {pruned!r} "
+            f"for camera_count={new_camera_count}"
+        )
+    cfg.data["paths"]["camera_subfolders"] = pruned
+
     with open(cfg.config_path, "w", encoding="utf-8") as f:
         yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
     reload_config()
@@ -1666,6 +1679,15 @@ def update_config():
     if "images" in data:
         data["images"]["num_frame_pairs"] = cfg.num_frame_pairs
         data["images"]["per_loop_frame_pairs"] = cfg.per_loop_frame_pairs
+
+    # Echo server-reconciled camera state so the frontend context tracks the
+    # persisted config (camera_numbers/camera_subfolders may differ from what
+    # the client sent after reconciliation above). Gated on "paths" in data
+    # because callers that sent no paths keys don't merge updated.paths.
+    if "paths" in data:
+        data["paths"]["camera_count"] = cfg.camera_count
+        data["paths"]["camera_numbers"] = cfg.data["paths"].get("camera_numbers", [])
+        data["paths"]["camera_subfolders"] = cfg.camera_subfolders
 
     return jsonify({"status": "success", "updated": data})
 

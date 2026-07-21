@@ -707,9 +707,9 @@ instantaneous_piv:
   save_compression: false
   dump_correlation_planes: false
 ensemble_piv:
-  # kspace (batched-LM joint fit) | kspace_linear (closed-form)
+  # kspace (batched-LM joint fit) — the only production fitter
   fit_method: kspace
-  # gaussian | kx4 | ky4 | kx4+ky4 — quartic kurtosis terms (fit_method kspace only)
+  # gaussian | kx4 | ky4 | kx4+ky4 — quartic kurtosis terms
   kspace_shape: gaussian
   skip_background_subtraction: false
   image_warp_interpolation: cubic
@@ -1048,8 +1048,12 @@ def main():
         "--type-name",
         "-t",
         default=None,
-        choices=["instantaneous", "ensemble"],
-        help="Data type (default: instantaneous)",
+        choices=["instantaneous"],
+        help=(
+            "Data type (default: instantaneous). Ensemble is not accepted: the "
+            "processor time-averages per-frame vector files, and ensemble PIV "
+            "already writes means and Reynolds stresses directly."
+        ),
     )
     statistics_parser.add_argument(
         "--merged",
