@@ -711,6 +711,8 @@ ensemble_piv:
   fit_method: kspace
   # gaussian | kx4 | ky4 | kx4+ky4 — quartic kurtosis terms
   kspace_shape: gaussian
+  # coloured (analytic N0*P(k;f) pipeline floor) | flat (pre-2026-07 model)
+  kspace_floor: coloured
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   # correlation | image | window_mean | correlation+window_mean | image+window_mean
@@ -719,6 +721,10 @@ ensemble_piv:
   per_pair_normalization: false
   predictor_rounding: false
   gradient_correction: false
+  # std passes: FFT sizes only (8, 12, 16, 24, 32, 48, 64, 96, 128).
+  # single passes: also 4 and 6 - window_size is the Frame-A mask support
+  # inside sum_window, not an FFT length. Grid spacing follows it, so plane
+  # memory grows as 1/spacing^2: a 4 px A window costs 16x a 16 px one.
   window_size:
   - - 128
     - 128
@@ -740,6 +746,8 @@ ensemble_piv:
   - 3
   store_planes: false
   save_diagnostics: false
+  # single-mode correlation size, and a genuine FFT size: built sizes ONLY
+  # (the small Frame-A sizes above are not legal here). Must be >= window_size.
   sum_window:
   - 32
   - 32

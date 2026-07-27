@@ -18,6 +18,19 @@ ellipse:
 
     T_hat(k) = g * exp(-2 pi^2 k^T Sigma k) * exp(-2 pi i k.mu) * (1 - N0/F_ref(k))
 
+Coloured noise floor (``ensemble_piv.kspace_floor``, added 2026-07-24, default
+``coloured``): the attenuation generalises to (1 - N0 * P(k;fx,fy)/F_ref) with P
+the ANALYTIC pipeline colour of a white sensor floor (warp-kernel tap
+autocorrelation x window-mean DC hole x envelope divide — ``kspace_floor_psd``),
+evaluated per window at (fx, fy) = frac(pred/2). The flat-level assumption was
+the last wrong one in the chain: the floor of F_ref is jagged in ky at ALL f
+(ring-1 +30-65 %), which flat N0 books as fake vv (noisy vv+ 1.37x of DNS ->
+1.02x with the coloured floor; centre uu 1.77x -> 0.99x). P carries SHAPE only
+(normalized to unit mean at f=0); the per-window fitted N0 remains the level.
+``flat`` preserves the pre-promotion behaviour on a byte-identical code path.
+Derivation + validation: wiki/pipelines/ensemble-piv-fitting.md and
+wiki/sessions/2026-07-22-noise-floor-colouring-psim.md.
+
 Optional quartic shape terms (``ensemble_piv.kspace_shape``, added 2026-07-17): the
 Gaussian exponent may be extended with free-signed per-axis quartic terms,
 
@@ -83,11 +96,13 @@ two-stage fit 0.010 px median.
 
 Parallelism: pure NumPy, vectorised over windows in fixed-size chunks; native
 threadpools pinned to 1 (the accumulator submits one window block per Dask worker).
-The warp-noise MTF (interpolation_noise_psd) left with stage 1 — the floor is
-in-model and flat (the lab's anisotropic-floor variant showed the floor's shape is
-irrelevant, only its level matters) — so windows no longer chunk by fractional
-predictor shift and the predictor/interp-kernel/soft-weighting/k_max arguments are
-gone from the signature.
+Windows do not chunk by fractional predictor shift: the coloured floor arrives as
+the precomputed per-window ``P_win`` regressor (built by the accumulator from the
+analytic grid + the pass predictor), so the fitter itself stays predictor-free.
+The 2026-07-14 note that "the floor's shape is irrelevant, only its level
+matters" was measured on the old subtractive design's k-band; the 2026-07-22
+white-noise null through the exact pipeline showed the ky ring-1 colour is real
+and vv-critical — hence ``kspace_floor``.
 """
 
 import logging
@@ -113,6 +128,15 @@ COST_PER_PT_ACCEPT = 1.0  # EMAXITER acceptance: cost/n_valid < this
 # (mu_x, mu_y, Sxx, Syy, Sxy, g, N0): Sxx, Syy >= 0; gain g in [1e-3, 1e3]; N0 >= 0
 MAIN_LO = np.array([-np.inf, -np.inf, 0.0, 0.0, -np.inf, 1e-3, 0.0])
 MAIN_HI = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, 1e3, np.inf])
+
+# Coloured floor (kspace_floor='coloured'): the offline free-arm configuration
+# (refit_coloured_floor.py --arm free, validated 2026-07-22/23). N0 is bounded
+# [0, 10] in normalized F_ref units and seeded from the tail median of Fr/P
+# over |k| >= 0.35, where the floor dominates. The flat branch keeps seed 0 /
+# [0, inf) untouched (bit-identity).
+COLOURED_N0_HI = 10.0
+COLOURED_SEED_KR_MIN = 0.35
+COLOURED_SEED_CLIP = (1e-3, 10.0)
 
 # kspace_shape -> (use_kx4, use_ky4). Enabled quartic coefficients append to the
 # parameter vector after N0, b4x before b4y; both are free-signed (sub-Gaussian
@@ -227,7 +251,7 @@ def _batched_lm(fn, x0, lo, hi, max_iter, xtol=LM_XTOL, ftol=LM_FTOL):
 # ==========================================================================================
 # Residuals + analytic Jacobian (the one-stage joint model)
 # ==========================================================================================
-def _resid_jac_v6(x, Tre, Tim, W, Fr, KXf, KYf, jac=False):
+def _resid_jac_v6(x, Tre, Tim, W, Fr, KXf, KYf, jac=False, D=None):
     """One-stage joint fit of the raw transfer ratio. x (m,7) = (mu_x, mu_y, Sxx,
     Syy, Sxy, g, N0).
 
@@ -235,6 +259,10 @@ def _resid_jac_v6(x, Tre, Tim, W, Fr, KXf, KYf, jac=False):
     noise-bias attenuation on the MEASURED reference spectrum ``Fr``).
     Residuals (m, 2P): [W*(Tre - model_re), W*(Tim - model_im)]. Sxx/Syy arrive
     >= 0, g > 0 and N0 >= 0 (projected box); no residual-side clamp needed.
+
+    ``D`` (m, P) switches the floor to the coloured model att = 1 - N0*D with
+    D = P(k;fx,fy)/F_ref precomputed per chunk (kspace_floor='coloured');
+    D=None keeps the flat floor on a byte-identical code path.
     """
     mux = x[:, 0:1]
     muy = x[:, 1:2]
@@ -249,7 +277,7 @@ def _resid_jac_v6(x, Tre, Tim, W, Fr, KXf, KYf, jac=False):
     quad = Sxx * KX2[None] + 2.0 * Sxy * KXKY[None] + Syy * KY2[None]  # (m, P)
     # clip guards against non-PSD trial steps (quad<0); no-op for feasible steps (see _EXP_ARG_MAX)
     decay = np.exp(np.minimum(-_TWO_PI2 * quad, _EXP_ARG_MAX))
-    att = 1.0 - N0 / np.maximum(Fr, 1e-30)
+    att = 1.0 - N0 / np.maximum(Fr, 1e-30) if D is None else 1.0 - N0 * D
     phase = -_TWO_PI * (KXf[None] * mux + KYf[None] * muy)
     cosp = np.cos(phase)
     sinp = np.sin(phase)
@@ -271,19 +299,23 @@ def _resid_jac_v6(x, Tre, Tim, W, Fr, KXf, KYf, jac=False):
         J[:, P:, c] = -W * dd * sinp
     J[:, :P, 5] = -W * decay * att * cosp  # dmodel/dg
     J[:, P:, 5] = -W * decay * att * sinp
-    dN = g * decay * (-1.0 / np.maximum(Fr, 1e-30))  # dmodel/dN0
+    # dmodel/dN0 (flat: -1/F_ref; coloured: -D)
+    dN = g * decay * (-1.0 / np.maximum(Fr, 1e-30)) if D is None else g * decay * (-D)
     J[:, :P, 6] = -W * dN * cosp
     J[:, P:, 6] = -W * dN * sinp
     return r, J
 
 
-def _resid_jac_quartic(x, Tre, Tim, W, Fr, KXf, KYf, use_kx4, use_ky4, jac=False):
+def _resid_jac_quartic(
+    x, Tre, Tim, W, Fr, KXf, KYf, use_kx4, use_ky4, jac=False, D=None
+):
     """_resid_jac_v6 model plus free-signed quartic exponent terms (kspace_shape).
 
     x (m, 7+n4) = (mu_x, mu_y, Sxx, Syy, Sxy, g, N0, [b4x], [b4y]) with the enabled
     quartic coefficients appended in order (b4x before b4y). The exponent becomes
     -2 pi^2 quad - b4x*kx^4 - b4y*ky^4; everything else is identical to the
-    Gaussian model. Only called when at least one term is enabled — the gaussian
+    Gaussian model, including the flat/coloured floor switch via ``D`` (see
+    _resid_jac_v6). Only called when at least one term is enabled — the gaussian
     shape keeps the untouched _resid_jac_v6 path (bit-exact default by construction).
     """
     mux = x[:, 0:1]
@@ -310,7 +342,7 @@ def _resid_jac_quartic(x, Tre, Tim, W, Fr, KXf, KYf, use_kx4, use_ky4, jac=False
         arg = arg - x[:, c : c + 1] * K4[None]
     # clip guards non-PSD trial steps and b4 < 0 blow-ups at high k (see _EXP_ARG_MAX)
     decay = np.exp(np.minimum(arg, _EXP_ARG_MAX))
-    att = 1.0 - N0 / np.maximum(Fr, 1e-30)
+    att = 1.0 - N0 / np.maximum(Fr, 1e-30) if D is None else 1.0 - N0 * D
     phase = -_TWO_PI * (KXf[None] * mux + KYf[None] * muy)
     cosp = np.cos(phase)
     sinp = np.sin(phase)
@@ -332,7 +364,8 @@ def _resid_jac_quartic(x, Tre, Tim, W, Fr, KXf, KYf, use_kx4, use_ky4, jac=False
         J[:, P:, c] = -W * dd * sinp
     J[:, :P, 5] = -W * decay * att * cosp  # dmodel/dg
     J[:, P:, 5] = -W * decay * att * sinp
-    dN = g * decay * (-1.0 / np.maximum(Fr, 1e-30))  # dmodel/dN0
+    # dmodel/dN0 (flat: -1/F_ref; coloured: -D)
+    dN = g * decay * (-1.0 / np.maximum(Fr, 1e-30)) if D is None else g * decay * (-D)
     J[:, :P, 6] = -W * dN * cosp
     J[:, P:, 6] = -W * dN * sinp
     for c, K4 in quart:
@@ -385,11 +418,17 @@ def _peak_mu(R_AB, cy, cx):
 # ==========================================================================================
 # Chunk pipeline: preparation shared by the batched fit and the oracle
 # ==========================================================================================
-def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx):
+def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx, P=None):
     """Prepare one chunk for the joint fit: raw T, measured weights, seeds, gates.
 
     Everything the LM needs (T, weights, F_ref, seeds), plus per-window status for
     windows that fail a gate on the way.
+
+    ``P`` (n, P_bins) is the per-window coloured-floor shape (kspace_floor=
+    'coloured'): the prep gains ``D = P/max(F_ref, 1e-30)`` for the residuals
+    and the N0 seed switches from 0 to the tail median of F_ref/P over
+    |k| >= COLOURED_SEED_KR_MIN (the floor-dominated band). P=None (flat) is
+    byte-identical to before.
     """
     n = R_AA.shape[0]
     corr_h, corr_w = KX.shape
@@ -423,6 +462,21 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx):
     # ---- one measured weight: w ~ F_ref (sigma_T ~ 1/F_ref), max-normalised ----
     W = np.where(valid, Fr / np.maximum(Fr.max(axis=1), 1e-30)[:, None], 0.0)
 
+    # ---- coloured floor: D regressor + tail N0 seed ----
+    D = None
+    if P is not None:
+        D = P / np.maximum(Fr, 1e-30)
+        tail = (KXf * KXf + KYf * KYf) >= COLOURED_SEED_KR_MIN**2
+        if not tail.any():
+            raise ValueError(
+                f"no |k| >= {COLOURED_SEED_KR_MIN} bins in a "
+                f"{corr_h}x{corr_w} window — cannot seed the coloured N0"
+            )
+        n0_seed = np.clip(
+            np.median(Fr[:, tail] / np.maximum(P[:, tail], 1e-30), axis=1),
+            *COLOURED_SEED_CLIP,
+        )
+
     # ---- seeds ----
     mu_x0, mu_y0 = _peak_mu(R_AB.astype(np.float64, copy=False), cy, cx)
     ring = np.abs(T.reshape(n, corr_h, corr_w)[:, cy - 1 : cy + 2, cx - 1 : cx + 2])
@@ -436,7 +490,9 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx):
             np.full(n, SIGMA_SEED[1]),
             np.zeros(n),
             g0,
-            np.zeros(n),  # N0 seed 0: the tail bins pin the floor regardless
+            # N0 seed: 0 for flat (the tail bins pin the floor regardless);
+            # tail median of Fr/P for coloured (offline free-arm recipe)
+            np.zeros(n) if P is None else n0_seed,
         ],
         axis=1,
     )
@@ -455,6 +511,7 @@ def _prepare_chunk(R_AA, R_BB, R_AB, KX, KY, cy, cx):
         Tim=np.imag(T),
         W=W,
         Fr=Fr,
+        D=D,
         n_valid=n_valid,
     )
 
@@ -479,6 +536,16 @@ def _run_fit(prep, use_kx4=False, use_ky4=False):
         Tre, Tim = prep["Tre"][v_idx], prep["Tim"][v_idx]
         W, Fr = prep["W"][v_idx], prep["Fr"][v_idx]
         KXf, KYf = prep["KXf"], prep["KYf"]
+        D = prep["D"]
+        Dv = D[v_idx] if D is not None else None
+        if Dv is None:
+            # flat floor: MAIN_LO/HI objects untouched (bit-identity)
+            lo7, hi7 = MAIN_LO, MAIN_HI
+        else:
+            # coloured floor: N0 bounded [0, COLOURED_N0_HI] (offline free arm)
+            lo7 = MAIN_LO
+            hi7 = MAIN_HI.copy()
+            hi7[6] = COLOURED_N0_HI
 
         n4 = int(use_kx4) + int(use_ky4)
         if n4:
@@ -487,10 +554,11 @@ def _run_fit(prep, use_kx4=False, use_ky4=False):
                 return _resid_jac_quartic(
                     x, Tre[idx], Tim[idx], W[idx], Fr[idx], KXf, KYf,
                     use_kx4, use_ky4, jac=jac,
+                    D=Dv[idx] if Dv is not None else None,
                 )
 
-            lo = np.concatenate([MAIN_LO, np.full(n4, -np.inf)])
-            hi = np.concatenate([MAIN_HI, np.full(n4, np.inf)])
+            lo = np.concatenate([lo7, np.full(n4, -np.inf)])
+            hi = np.concatenate([hi7, np.full(n4, np.inf)])
             seed = np.concatenate(
                 [prep["seed"][v_idx], np.zeros((v_idx.size, n4))], axis=1
             )
@@ -498,10 +566,11 @@ def _run_fit(prep, use_kx4=False, use_ky4=False):
             # gaussian: the untouched 7-parameter path, bit-identical to before
             def fn(x, idx, jac=False):
                 return _resid_jac_v6(
-                    x, Tre[idx], Tim[idx], W[idx], Fr[idx], KXf, KYf, jac=jac
+                    x, Tre[idx], Tim[idx], W[idx], Fr[idx], KXf, KYf, jac=jac,
+                    D=Dv[idx] if Dv is not None else None,
                 )
 
-            lo, hi = MAIN_LO, MAIN_HI
+            lo, hi = lo7, hi7
             seed = prep["seed"][v_idx]
 
         xs, conv, cost, it = _batched_lm(fn, seed, lo, hi, MAIN_MAX_ITER)
@@ -551,12 +620,22 @@ def fit_windows_kspace_lm(
     pass_idx: int,
     debug: bool = False,
     return_diagnostics: bool = False,
+    *,
+    P_win: np.ndarray | None = None,
 ):
     """One-stage joint LM fit (see module docstring for the model).
 
     7 parameters for the default ``gaussian`` shape; ``config.ensemble_kspace_shape``
     (``kx4`` | ``ky4`` | ``kx4+ky4``) appends free-signed quartic exponent
     coefficients (8/8/9 parameters) that absorb displacement-PDF kurtosis.
+
+    ``config.ensemble_kspace_floor`` selects the floor model: ``flat`` is the
+    pre-2026-07 behaviour (scalar N0 on 1/F_ref, byte-identical code path);
+    ``coloured`` switches to att = 1 - N0*P(k;fx,fy)/F_ref and REQUIRES
+    ``P_win`` — the per-window analytic floor shape (n_windows, h*w) from
+    ``kspace_floor_psd`` (built and interpolated by the caller, which holds
+    the envelope/weights/predictor). Passing P_win with the flat floor raises
+    (wiring-bug guard).
 
     Returns ``(gauss_flat[n,16], status_flat[n], initial_guess_flat[n,16])`` and, when
     ``return_diagnostics=True``, a fourth element: a dict of per-window arrays
@@ -565,6 +644,7 @@ def fit_windows_kspace_lm(
     """
     shape = config.ensemble_kspace_shape
     use_kx4, use_ky4 = _KSPACE_SHAPES[shape]
+    floor = config.ensemble_kspace_floor
     corr_h, corr_w = corr_size
     n_windows = len(mask_flat)
     n_per = corr_h * corr_w
@@ -572,6 +652,26 @@ def fit_windows_kspace_lm(
         raise ValueError(
             f"R_AA size {R_AA.size} != expected {n_windows * n_per} "
             f"(n_windows={n_windows}, corr_size={corr_size})"
+        )
+    if floor == "coloured":
+        if P_win is None:
+            raise ValueError(
+                "kspace_floor='coloured' requires P_win (the per-window "
+                "analytic floor shape) — the caller must build it via "
+                "kspace_floor_psd.build_P_grid/interp_P"
+            )
+        if P_win.size != n_windows * n_per:
+            raise ValueError(
+                f"P_win size {P_win.size} != expected {n_windows * n_per} "
+                f"(n_windows={n_windows}, corr_size={corr_size})"
+            )
+        P_win = np.ascontiguousarray(P_win, dtype=np.float64).reshape(
+            n_windows, n_per
+        )
+    elif P_win is not None:
+        raise ValueError(
+            f"P_win passed but kspace_floor='{floor}' — wiring bug (the flat "
+            "floor must not receive a P grid)"
         )
 
     R_AA = np.ascontiguousarray(R_AA, dtype=np.float64).reshape(
@@ -629,7 +729,16 @@ def fit_windows_kspace_lm(
         for start in range(0, proc.size, CHUNK):
             idx = proc[start : start + CHUNK]
 
-            prep = _prepare_chunk(R_AA[idx], R_BB[idx], R_AB[idx], KX, KY, cy, cx)
+            prep = _prepare_chunk(
+                R_AA[idx],
+                R_BB[idx],
+                R_AB[idx],
+                KX,
+                KY,
+                cy,
+                cx,
+                P=P_win[idx] if P_win is not None else None,
+            )
             mu, Sigma, gain, N0, b4x, b4y, status, conv, niter, cpp = _run_fit(
                 prep, use_kx4, use_ky4
             )
@@ -664,7 +773,8 @@ def fit_windows_kspace_lm(
 
     n_ok = int(np.sum(status_flat == STATUS_SUCCESS))
     logger.info(
-        f"Pass {pass_idx + 1}: k-space-LM joint fit ({shape}) {n_ok}/{proc.size} ok"
+        f"Pass {pass_idx + 1}: k-space-LM joint fit ({shape}, {floor} floor) "
+        f"{n_ok}/{proc.size} ok"
     )
     if debug and n_ok:
         ok = status_flat == STATUS_SUCCESS

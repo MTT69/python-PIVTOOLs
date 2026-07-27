@@ -19,7 +19,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pivtools_core.fft_sizes import BUILT_FFT_SIZES
+from pivtools_core.fft_sizes import (
+    BUILT_FFT_SIZES,
+    SINGLE_MODE_A_SIZES,
+    SINGLE_MODE_WINDOW_SIZES,
+)
 from pivtools_core.validation import (
     _check_built_sizes,
     validate_batch_size_for_pod,
@@ -41,6 +45,7 @@ def _make_config(
     sum_fitting_window=None,
     fit_method="kspace",
     kspace_shape="gaussian",
+    kspace_floor="coloured",
     background_subtraction_method="correlation",
     per_pair_normalization=False,
     resume_from_pass=0,
@@ -53,6 +58,7 @@ def _make_config(
     sum_fitting_window_raise=None,
     fit_method_raise=None,
     kspace_shape_raise=None,
+    kspace_floor_raise=None,
 ):
     """Create a mock Config object with the specified ensemble properties."""
     cfg = MagicMock()
@@ -109,6 +115,12 @@ def _make_config(
         type(cfg).ensemble_kspace_shape = PropertyMock(side_effect=kspace_shape_raise)
     else:
         type(cfg).ensemble_kspace_shape = PropertyMock(return_value=kspace_shape)
+
+    # kspace_floor (check 7c: coloured analytic floor is LM-fitter-only)
+    if kspace_floor_raise:
+        type(cfg).ensemble_kspace_floor = PropertyMock(side_effect=kspace_floor_raise)
+    else:
+        type(cfg).ensemble_kspace_floor = PropertyMock(return_value=kspace_floor)
 
     # background subtraction / per-pair normalization consistency (check 8)
     type(cfg).ensemble_background_subtraction_method = PropertyMock(
@@ -251,8 +263,49 @@ class TestValidateEnsembleConfig:
         assert any("kspace_shape" in e for e in errors)
 
     def test_gaussian_shape_fine_with_linear_fitter(self):
-        """The default shape never conflicts with kspace_linear."""
-        cfg = _make_config(fit_method="kspace_linear", kspace_shape="gaussian")
+        """The default shape never conflicts with kspace_linear (floor pinned
+        to flat here — the coloured default carries its own kspace-only rule,
+        tested separately)."""
+        cfg = _make_config(
+            fit_method="kspace_linear",
+            kspace_shape="gaussian",
+            kspace_floor="flat",
+        )
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert valid, errors
+
+    def test_invalid_kspace_floor(self):
+        """ValueError from ensemble_kspace_floor produces error."""
+        cfg = _make_config(kspace_floor_raise=ValueError("bad floor"))
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert not valid
+        assert any("kspace floor" in e.lower() for e in errors)
+
+    @pytest.mark.parametrize("floor", ["coloured", "flat"])
+    def test_kspace_floor_valid_with_lm_fitter(self, floor):
+        """Both floors pass with fit_method kspace."""
+        cfg = _make_config(fit_method="kspace", kspace_floor=floor)
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert valid, errors
+
+    def test_kspace_floor_requires_lm_fitter(self):
+        """Coloured floor + a non-LM fitter is an error, not a silent no-op."""
+        cfg = _make_config(
+            fit_method="kspace_linear",
+            kspace_shape="gaussian",
+            kspace_floor="coloured",
+        )
+        valid, errors, warnings = validate_ensemble_config(cfg)
+        assert not valid
+        assert any("kspace_floor" in e for e in errors)
+
+    def test_flat_floor_fine_with_linear_fitter(self):
+        """The legacy flat floor never conflicts with kspace_linear."""
+        cfg = _make_config(
+            fit_method="kspace_linear",
+            kspace_shape="gaussian",
+            kspace_floor="flat",
+        )
         valid, errors, warnings = validate_ensemble_config(cfg)
         assert valid, errors
 
@@ -348,13 +401,28 @@ def _window_config(
     ensemble_enabled=False,
     ensemble_types=None,
     sum_window=None,
+    ensemble_type_error=None,
 ):
-    """Minimal mock Config exposing only what validate_window_sizes reads."""
+    """Minimal mock Config exposing only what validate_window_sizes reads.
+
+    ``ensemble_type`` mirrors the real property: it defaults to all-'std' with
+    one entry per pass, and raises ValueError on a bad/mismatched type list.
+    Pass ``ensemble_type_error`` to simulate that raise.
+    """
     cfg = MagicMock()
+    ensemble_sizes = ensemble if ensemble is not None else instantaneous
     type(cfg).window_sizes = PropertyMock(return_value=instantaneous)
-    type(cfg).ensemble_window_sizes = PropertyMock(
-        return_value=ensemble if ensemble is not None else instantaneous
-    )
+    type(cfg).ensemble_window_sizes = PropertyMock(return_value=ensemble_sizes)
+    if ensemble_type_error is not None:
+        type(cfg).ensemble_type = PropertyMock(
+            side_effect=ValueError(ensemble_type_error)
+        )
+    else:
+        type(cfg).ensemble_type = PropertyMock(
+            return_value=ensemble_types
+            if ensemble_types is not None
+            else ["std"] * len(ensemble_sizes or [])
+        )
     data = {"processing": {"ensemble": ensemble_enabled}}
     ensemble_piv = {}
     if ensemble_types is not None:
@@ -458,3 +526,244 @@ class TestValidateWindowSizes:
             sum_window=[20, 20],
         )
         assert validate_window_sizes(cfg) == []
+
+
+class TestSingleModeFrameASizes:
+    """A single-mode pass's window_size is the Frame-A mask, not an FFT length.
+
+    It therefore additionally admits SINGLE_MODE_A_SIZES, while std passes,
+    the instantaneous schedule and sum_window stay restricted to built sizes.
+    """
+
+    @pytest.mark.parametrize("size", SINGLE_MODE_A_SIZES)
+    def test_frame_a_size_accepted_on_single_pass(self, size):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[size, size]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[48, 48],
+        )
+        assert validate_window_sizes(cfg) == []
+
+    def test_rectangular_frame_a_accepted(self):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[4, 6]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[48, 48],
+        )
+        assert validate_window_sizes(cfg) == []
+
+    def test_frame_a_size_mixed_with_built_size_accepted(self):
+        # 6 rows in a 48-row sum window, 16 cols: both legal for single mode
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[6, 16]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[48, 48],
+        )
+        assert validate_window_sizes(cfg) == []
+
+    @pytest.mark.parametrize("size", [1, 2, 3, 5, 7, 100])
+    def test_other_small_sizes_still_rejected_on_single_pass(self, size):
+        # Only 4 and 6 were vetted. 2 and 1 cost 64x / 256x the plane memory of
+        # a 16 px window and their AB peak has almost no correlated support, so
+        # they must still fail loud. (They are NOT mathematically degenerate --
+        # AA/BB use the full sum-window mask regardless of this size.)
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[size, size]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[48, 48],
+        )
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.window_size pass 1" in e for e in errors)
+        assert any(str(size) in e for e in errors)
+
+    def test_single_mode_error_does_not_claim_fft_constraint(self):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[5, 5]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[48, 48],
+        )
+        errors = validate_window_sizes(cfg)
+        assert len(errors) == 1
+        assert "FFT engine" not in errors[0]
+        assert "Frame-A mask support" in errors[0]
+
+    @pytest.mark.parametrize("size", SINGLE_MODE_A_SIZES)
+    def test_frame_a_size_rejected_on_std_pass(self, size):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[size, size]],
+            ensemble_enabled=True,
+            ensemble_types=["std"],
+        )
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.window_size" in e for e in errors)
+        # The error must point at the fix, not just list the FFT sizes
+        assert any("ensemble_piv.type: single" in e for e in errors)
+
+    @pytest.mark.parametrize("size", SINGLE_MODE_A_SIZES)
+    def test_frame_a_size_rejected_on_instantaneous(self, size):
+        cfg = _window_config([[64, 64], [size, size]])
+        errors = validate_window_sizes(cfg)
+        assert any("instantaneous_piv.window_size pass 2" in e for e in errors)
+
+    def test_frame_a_size_rejected_as_sum_window(self):
+        # sum_window IS the FFT size in single mode -> 4 is not legal there
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[4, 4]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[4, 4],
+        )
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.sum_window" in e for e in errors)
+        assert not any("ensemble_piv.window_size" in e for e in errors)
+
+    def test_mixed_schedule_judged_per_pass(self):
+        # pass 1 std 32 (ok), pass 2 single 4 (ok), pass 3 std 4 (error)
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[32, 32], [4, 4], [4, 4]],
+            ensemble_enabled=True,
+            ensemble_types=["std", "single", "std"],
+            sum_window=[48, 48],
+        )
+        errors = validate_window_sizes(cfg)
+        assert len(errors) == 1
+        assert "ensemble_piv.window_size pass 3" in errors[0]
+
+    def test_pass_numbering_reflects_schedule_position(self):
+        # The offending pass is 2nd in the schedule -> must be reported as 2
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[4, 4], [5, 5]],
+            ensemble_enabled=True,
+            ensemble_types=["single", "single"],
+            sum_window=[48, 48],
+        )
+        errors = validate_window_sizes(cfg)
+        assert len(errors) == 1
+        assert "ensemble_piv.window_size pass 2" in errors[0]
+
+    def test_standard_alias_treated_as_std(self):
+        # config.ensemble_type normalizes 'standard' -> 'std' before we see it
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[4, 4]],
+            ensemble_enabled=True,
+            ensemble_types=["std"],  # property already normalized the alias
+        )
+        assert any("ensemble_piv.window_size" in e for e in validate_window_sizes(cfg))
+
+    def test_malformed_type_list_is_collected_not_raised(self):
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[16, 16], [16, 16]],
+            ensemble_enabled=True,
+            ensemble_type_error="ensemble_type list length (1) must match number of ensemble passes (2)",
+        )
+        errors = validate_window_sizes(cfg)
+        assert len(errors) == 1
+        assert "ensemble_piv.type" in errors[0]
+
+    def test_existing_16_at_48_config_unchanged(self):
+        # The production single-mode config must validate exactly as before
+        cfg = _window_config(
+            instantaneous=[[64, 64]],
+            ensemble=[[16, 16]],
+            ensemble_enabled=True,
+            ensemble_types=["single"],
+            sum_window=[48, 48],
+        )
+        assert validate_window_sizes(cfg) == []
+
+
+class TestSingleModeSizesOnRealCliConfig:
+    """End-to-end over the CLI's own template with a real Config object.
+
+    The mock-based tests above could drift from the real property behaviour, and
+    this also proves the template YAML still parses after the size comments were
+    added to it.
+    """
+
+    @staticmethod
+    def _cli_config(tmp_path, window_size, pass_type):
+        from pivtools_cli.cli import create_default_config
+        from pivtools_core.config import Config
+
+        path = tmp_path / "config.yaml"
+        create_default_config(str(path))
+        cfg = Config(str(path))
+        cfg.data["processing"]["ensemble"] = True
+        # Template ships 3 std passes; flip the last one.
+        cfg.data["ensemble_piv"]["window_size"][2] = list(window_size)
+        cfg.data["ensemble_piv"]["type"][2] = pass_type
+        cfg.data["ensemble_piv"]["sum_window"] = [48, 48]
+        return cfg
+
+    def test_template_parses_and_defaults_validate(self, tmp_path):
+        from pivtools_cli.cli import create_default_config
+        from pivtools_core.config import Config
+
+        path = tmp_path / "config.yaml"
+        create_default_config(str(path))
+        cfg = Config(str(path))
+        cfg.data["processing"]["ensemble"] = True
+        assert cfg.data["ensemble_piv"]["type"] == ["std", "std", "std"]
+        assert validate_window_sizes(cfg) == []
+
+    @pytest.mark.parametrize("size", SINGLE_MODE_A_SIZES)
+    def test_frame_a_size_accepted_on_real_single_pass(self, tmp_path, size):
+        cfg = self._cli_config(tmp_path, (size, size), "single")
+        assert validate_window_sizes(cfg) == []
+
+    @pytest.mark.parametrize("size", SINGLE_MODE_A_SIZES)
+    def test_frame_a_size_rejected_on_real_std_pass(self, tmp_path, size):
+        cfg = self._cli_config(tmp_path, (size, size), "std")
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.window_size pass 3" in e for e in errors)
+
+    def test_standard_alias_normalized_by_real_property(self, tmp_path):
+        # 'standard' is an accepted alias for 'std' -> must NOT admit size 4
+        cfg = self._cli_config(tmp_path, (4, 4), "standard")
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.window_size pass 3" in e for e in errors)
+
+    def test_real_type_length_mismatch_is_collected(self, tmp_path):
+        cfg = self._cli_config(tmp_path, (4, 4), "single")
+        cfg.data["ensemble_piv"]["type"] = ["single"]  # 1 type, 3 passes
+        errors = validate_window_sizes(cfg)
+        assert len(errors) == 1
+        assert "ensemble_piv.type" in errors[0]
+
+    def test_size_1_rejected_on_real_single_pass(self, tmp_path):
+        cfg = self._cli_config(tmp_path, (1, 1), "single")
+        errors = validate_window_sizes(cfg)
+        assert any("ensemble_piv.window_size pass 3" in e for e in errors)
+
+
+class TestSingleModeSizeConstants:
+    def test_single_mode_set_is_superset_of_built(self):
+        assert set(BUILT_FFT_SIZES) <= set(SINGLE_MODE_WINDOW_SIZES)
+
+    def test_frame_a_sizes_are_not_fft_sizes(self):
+        assert not set(SINGLE_MODE_A_SIZES) & set(BUILT_FFT_SIZES)
+
+    def test_unvetted_small_sizes_excluded(self):
+        # Both dropped on plane-memory cost and negligible AB correlated
+        # support, not on a degeneracy -- see SINGLE_MODE_A_SIZES docstring.
+        assert 1 not in SINGLE_MODE_WINDOW_SIZES
+        assert 2 not in SINGLE_MODE_WINDOW_SIZES
+
+    def test_sorted(self):
+        assert list(SINGLE_MODE_WINDOW_SIZES) == sorted(SINGLE_MODE_WINDOW_SIZES)

@@ -39,6 +39,14 @@ from pivtools_cli.piv.piv_backend.outlier_detection import apply_outlier_detecti
 from pivtools_cli.piv.piv_result import PIVEnsemblePassResult, PIVEnsembleResult
 from pivtools_core.config import Config
 
+# Three float32 correlation-plane sums (AA, BB, AB) are held for the whole pass,
+# sized n_windows x corr_size. Window count grows as 1/spacing^2, and in single
+# mode spacing follows the small Frame-A window, so a 4 px A window costs 16x
+# the planes of a 16 px one at equal overlap. Warn rather than fail: a large
+# request can be legitimate on a big-memory node, but it must never be silent.
+PLANE_MEMORY_WARN_BYTES = 8 * 1024**3
+"""Per-pass correlation-plane footprint above which a warning is emitted."""
+
 
 def _linear_pair_envelope(
     weight_a: np.ndarray, weight_b: np.ndarray, corr_size: tuple[int, int]
@@ -164,6 +172,27 @@ class SinglePassAccumulator:
             n_win_y = result.n_win_y
             n_win_x = result.n_win_x
             plane_size = n_win_y * n_win_x * corr_size[0] * corr_size[1]
+
+            # Pre-flight footprint. Reported before the allocation so an
+            # over-large grid is visible up front rather than as a MemoryError
+            # from inside a worker part-way through a run.
+            plane_bytes = 3 * plane_size * np.dtype(np.float32).itemsize
+            plane_msg = (
+                f"Pass {pass_idx + 1} ({runtype}): {n_win_y} x {n_win_x} = "
+                f"{n_win_y * n_win_x} windows at {corr_size[0]}x{corr_size[1]} "
+                f"-> {plane_bytes / 1024**3:.2f} GiB of correlation-plane sums "
+                f"(AA+BB+AB, float32)"
+            )
+            if plane_bytes > PLANE_MEMORY_WARN_BYTES:
+                logging.warning(
+                    f"{plane_msg}. This exceeds "
+                    f"{PLANE_MEMORY_WARN_BYTES / 1024**3:.0f} GiB. In single mode "
+                    f"grid spacing follows window_size {tuple(win_size)}, so "
+                    f"reduce the ROI, raise window_size, lower the overlap, or "
+                    f"shrink sum_fitting_window."
+                )
+            else:
+                logging.info(plane_msg)
 
             self.passes_data.append(
                 {
@@ -659,20 +688,23 @@ class SinglePassAccumulator:
             # Reshape for broadcasting: (n_windows, 1, 1)
             norm_factors_3d = norm_factors[:, np.newaxis, np.newaxis]
 
-            # For single mode, apply asymmetric window correction to AB
-            # AA/BB use weight_B (full sum_window) on both sides, so they scale with sum_window^2
-            # AB uses weight_A (particle window) × weight_B (sum_window), so it scales with
-            # particle_window × sum_window. The normalization by sqrt(AA*BB) over-corrects AB.
-            # We need to scale AB up by sqrt(sum_window_area / particle_window_area) to compensate.
+            # For single mode, apply asymmetric window correction to AB.
+            # AA/BB use weight_B (full sum_window) on both sides → peaks scale with
+            # sum_area. AB uses weight_A (particle window) × weight_B, and the
+            # correlated overlap is the A support → peak scales with particle_area.
+            # sqrt(AA·BB) therefore over-corrects AB by sum_area/particle_area.
             runtype = self.config.ensemble_type[pass_idx]
             if runtype == "single":
                 sum_window = self.config.ensemble_sum_window
                 particle_window = win_size
                 sum_area = sum_window[0] * sum_window[1]
                 particle_area = particle_window[0] * particle_window[1]
-                # AB scales as sqrt(particle × sum), but norm_factors assumes sqrt(sum × sum)
-                # Correction factor: sqrt(sum_area / particle_area)
-                ab_scale_correction = np.sqrt(sum_area / particle_area)
+                # The AB peak scales with the correlated overlap = particle_area (N_A),
+                # while norm_factors = sqrt(AA·BB) scales with sum_area (N_sum), so the
+                # correction is the full ratio N_sum/N_A. The zero-displacement null
+                # (single_mode_T_null.py, 2026-07-22) measured the sqrt version's
+                # residual plateau at exactly sqrt(particle_area/sum_area).
+                ab_scale_correction = sum_area / particle_area
                 logging.debug(
                     f"Pass {pass_idx + 1}: Single mode AB scale correction = {ab_scale_correction:.3f} "
                     f"(sum_window={sum_window}, particle_window={particle_window})"
@@ -702,6 +734,82 @@ class SinglePassAccumulator:
             f"R_AA: {R_AA_ensemble.size}, R_BB: {R_BB_ensemble.size}, R_AB: {R_AB_ensemble.size}, "
             f"expected: {expected_size} ({total_windows} windows × {corr_size[0]}×{corr_size[1]})"
         )
+
+        # Step 5c: Coloured noise floor — analytic P(k; fx, fy) per window.
+        # White sensor noise reaches F_ref coloured by the pipeline (warp-kernel
+        # taps x window-mean hole x envelope divide); the fitter consumes P as
+        # att = 1 - N0*P/F_ref. Built here because the envelope, the correlation
+        # weight and the pass predictor all live at this level; the fitter only
+        # ever sees the finished per-window regressor.
+        kspace_floor = self.config.ensemble_kspace_floor
+        P_win_flat = None
+        floor_meta: dict = {}
+        if kspace_floor == "coloured":
+            with self._profile_section(pass_idx, "floor_psd"):
+                from pivtools_cli.piv.piv_backend.interpolation_noise_psd import (
+                    frac_distance,
+                )
+                from pivtools_cli.piv.piv_backend.kspace_floor_psd import (
+                    build_P_grid,
+                    interp_P,
+                )
+
+                # key only exists when a batch carried a predictor (pass > 0) —
+                # same membership convention as the velocity add-back below
+                smoothed_predictor = pass_data.get("smoothed_predictor")
+                if smoothed_predictor is None:
+                    # pass 0: no warp yet, integer (zero) shift everywhere
+                    fx = np.zeros(total_windows)
+                    fy = np.zeros(total_windows)
+                else:
+                    if smoothed_predictor.shape != (n_win_y, n_win_x, 2):
+                        raise ValueError(
+                            f"smoothed_predictor shape {smoothed_predictor.shape} "
+                            f"!= pass grid ({n_win_y}, {n_win_x}, 2)"
+                        )
+                    if not np.all(np.isfinite(smoothed_predictor)):
+                        raise ValueError(
+                            f"Pass {pass_idx + 1}: non-finite smoothed_predictor — "
+                            "cannot derive the coloured-floor fractions"
+                        )
+                    # component order per cpu_ensemble warp: [..., 0] = dy, [..., 1] = dx
+                    fx = frac_distance(smoothed_predictor[:, :, 1].ravel() / 2.0)
+                    fy = frac_distance(smoothed_predictor[:, :, 0].ravel() / 2.0)
+                    if self.config.ensemble_predictor_rounding and (
+                        max(fx.max(), fy.max()) > 1e-9
+                    ):
+                        raise ValueError(
+                            f"Pass {pass_idx + 1}: predictor_rounding is on but "
+                            f"the stored predictor has fractional half-shifts "
+                            f"(max {max(fx.max(), fy.max()):.3e}) — the "
+                            "post-rounding predictor assumption is broken"
+                        )
+                hole = "window_mean" in bg_method
+                warp_kernel = self.config.ensemble_image_warp_interpolation
+                weight_B = env_weight_b if runtype == "single" else env_weight
+                # f = 0 everywhere (pass 0 / predictor_rounding): a 2-node grid
+                # is node-exact at (0, 0) and skips 437 unused grid cells
+                n_fracs = 2 if max(fx.max(), fy.max()) == 0.0 else 21
+                fs_grid, P_grid = build_P_grid(
+                    env_auto, warp_kernel, hole, weight_B, n_fracs=n_fracs
+                )
+                P_win_flat = (
+                    interp_P(fs_grid, P_grid, fx, fy)
+                    .astype(np.float32)
+                    .reshape(-1)
+                )
+                floor_meta = {
+                    "f_frac_x": fx.reshape(n_win_y, n_win_x),
+                    "f_frac_y": fy.reshape(n_win_y, n_win_x),
+                    "warp_kernel": warp_kernel,
+                    "window_mean_hole": int(hole),
+                }
+                logging.info(
+                    f"Pass {pass_idx + 1}: Coloured floor P built "
+                    f"({runtype} chain, kernel={warp_kernel}, "
+                    f"window_mean_hole={hole}, f grid {n_fracs}x{n_fracs}, "
+                    f"fx max {fx.max():.3f}, fy max {fy.max():.3f})"
+                )
 
         # Step 6: Perform distributed k-space fitting
 
@@ -739,6 +847,7 @@ class SinglePassAccumulator:
             R_BB_futures = []
             R_AB_futures = []
             mask_flat_futures = []
+            P_win_futures = []
             for worker_idx in range(n_workers):
                 # Use corr_size (not win_size) for slicing - correlation planes are sized at SumWindow
                 start_idx = (
@@ -778,6 +887,15 @@ class SinglePassAccumulator:
                         broadcast=False,
                     )
                 )
+                if P_win_flat is not None:
+                    # per-window coloured-floor shape: same plane-element
+                    # slicing as the correlation arrays (one plane's size)
+                    P_win_futures.append(
+                        client.scatter(
+                            P_win_flat[start_idx:end_idx],
+                            broadcast=False,
+                        )
+                    )
 
         # K-space fit, dispatched across Dask workers. 'kspace' — the only
         # production method — is the one-stage 7-param joint LM fit of the raw
@@ -804,6 +922,7 @@ class SinglePassAccumulator:
                     pass_idx,
                     self.config.debug,  # diagnostics when debug=True
                     save_fit_diagnostics,  # return per-window diag dict
+                    P_win=(P_win_futures[i] if P_win_flat is not None else None),
                 )
                 for i in range(len(R_AA_futures))
             ]
@@ -832,6 +951,9 @@ class SinglePassAccumulator:
                 self.config.ensemble_per_pair_normalization
             )
             fit_diag["kspace_shape"] = self.config.ensemble_kspace_shape
+            fit_diag["kspace_floor"] = kspace_floor
+            # coloured-floor provenance: per-window fractions + P chain inputs
+            fit_diag.update(floor_meta)
             diag_outdir = Path(output_path) if output_path else Path(os.getcwd())
             diag_outdir.mkdir(parents=True, exist_ok=True)
             savemat(

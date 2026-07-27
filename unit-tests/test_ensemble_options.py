@@ -357,6 +357,7 @@ class TestFitterSelectionAndValidation:
             ensemble_sum_fitting_window = None
             ensemble_fit_method = "kspace"
             ensemble_kspace_shape = "gaussian"
+            ensemble_kspace_floor = "coloured"
             ensemble_background_subtraction_method = "correlation"
             ensemble_per_pair_normalization = True
             ensemble_resume_from_pass = 0
@@ -385,6 +386,7 @@ class TestFitterSelectionAndValidation:
             ensemble_sum_fitting_window = None
             ensemble_fit_method = "kspace"
             ensemble_kspace_shape = "gaussian"
+            ensemble_kspace_floor = "coloured"
             ensemble_background_subtraction_method = "correlation+window_mean"
             ensemble_per_pair_normalization = True
             ensemble_resume_from_pass = 0
@@ -459,6 +461,31 @@ class TestKspaceShapeConfig:
         cfg = self._cfg(kspace_shape="ky4+kx4")
         with pytest.raises(ValueError, match="kspace_shape"):
             cfg.ensemble_kspace_shape
+
+
+# ---------------------------------------------------------------------------
+# Coloured noise floor (kspace_floor): config surface
+# ---------------------------------------------------------------------------
+class TestKspaceFloorConfig:
+    @staticmethod
+    def _cfg(**ensemble_keys):
+        from pivtools_core.config import Config
+
+        cfg = Config.__new__(Config)
+        cfg.data = {"ensemble_piv": ensemble_keys}
+        return cfg
+
+    def test_enum_values(self):
+        for floor in ("coloured", "flat"):
+            assert self._cfg(kspace_floor=floor).ensemble_kspace_floor == floor
+
+    def test_default_is_coloured(self):
+        assert self._cfg().ensemble_kspace_floor == "coloured"
+
+    def test_invalid_value_rejected(self):
+        cfg = self._cfg(kspace_floor="colored")  # US spelling is not valid
+        with pytest.raises(ValueError, match="kspace_floor"):
+            cfg.ensemble_kspace_floor
 
 
 # ---------------------------------------------------------------------------

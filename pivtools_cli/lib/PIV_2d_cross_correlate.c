@@ -666,11 +666,11 @@ unsigned char bulkxcorr2d_accumulate_triple(
     /* Window element count. */
     int numel = nWindowSize[0] * nWindowSize[1];
 
-    /* Weight sums for the weighted means (constant across windows/images). */
-    float fSumW_AB_A = 0.0f, fSumW_AB_B = 0.0f, fSumW_auto_A = 0.0f, fSumW_auto_B = 0.0f;
+    /* Weight sums for the weighted means (constant across windows/images).
+     * No AB A-side sum: the AB A-window uses the auto-support (matched) mean. */
+    float fSumW_AB_B = 0.0f, fSumW_auto_A = 0.0f, fSumW_auto_B = 0.0f;
     if (bMeanSubtract) {
         for (int i = 0; i < numel; ++i) {
-            fSumW_AB_A  += fWindowWeightA_AB[i];
             fSumW_AB_B  += fWindowWeightB_AB[i];
             fSumW_auto_A += fAutoWeightA[i];
             fSumW_auto_B += fAutoWeightB[i];
@@ -694,7 +694,7 @@ unsigned char bulkxcorr2d_accumulate_triple(
                nPxPerWindow, nWindowsTotal, nImagePixels, numel, \
                out_h, out_w, nPxPerOutput, start_y, start_x, \
                bMeanSubtract, bPerPairNorm, \
-               fSumW_AB_A, fSumW_AB_B, fSumW_auto_A, fSumW_auto_B) \
+               fSumW_AB_B, fSumW_auto_A, fSumW_auto_B) \
         reduction(|:uError)
     {
         const int LANES = codelet_lanes();
@@ -757,19 +757,22 @@ unsigned char bulkxcorr2d_accumulate_triple(
 
                 /* Weighted means per buffer support (window_mean pedestal
                  * removal): mean_W = sum(W*X)/sum(W). For flat square weights
-                 * this is the plain window mean (Westerweel's mean2); for the
-                 * asymmetric single-mode weights each weighted window becomes
-                 * zero-mean under its own support. */
-                float mAB_A = 0.0f, mAB_B = 0.0f, mAuto_A = 0.0f, mAuto_B = 0.0f;
+                 * this is the plain window mean (Westerweel's mean2). The AB
+                 * A-side uses the AUTO-support mean (matched-mean): removing
+                 * the mean over the small singlepix support carves a spectral
+                 * hole of width ~1/A-rows into T = AB/sqrt(AA*BB) while the
+                 * autos carve only ~1/sum-rows — the mismatch suppresses ring-1
+                 * bins and biases the k-space fit (Syy under-read). Matching
+                 * the supports (identical weights in std mode, so bit-identical
+                 * there) leaves only the A-window's own Fejer leakage. */
+                float mAB_B = 0.0f, mAuto_A = 0.0f, mAuto_B = 0.0f;
                 if (bMeanSubtract) {
-                    float sAB_A = 0.0f, sAB_B = 0.0f, sAuto_A = 0.0f, sAuto_B = 0.0f;
+                    float sAB_B = 0.0f, sAuto_A = 0.0f, sAuto_B = 0.0f;
                     for (int i = 0; i < numel; ++i) {
-                        sAB_A  += fRawA[i] * fWindowWeightA_AB[i];
                         sAB_B  += fRawB[i] * fWindowWeightB_AB[i];
                         sAuto_A += fRawA[i] * fAutoWeightA[i];
                         sAuto_B += fRawB[i] * fAutoWeightB[i];
                     }
-                    mAB_A  = (fSumW_AB_A  > 0.0f) ? sAB_A  / fSumW_AB_A  : 0.0f;
                     mAB_B  = (fSumW_AB_B  > 0.0f) ? sAB_B  / fSumW_AB_B  : 0.0f;
                     mAuto_A = (fSumW_auto_A > 0.0f) ? sAuto_A / fSumW_auto_A : 0.0f;
                     mAuto_B = (fSumW_auto_B > 0.0f) ? sAuto_B / fSumW_auto_B : 0.0f;
@@ -785,7 +788,7 @@ unsigned char bulkxcorr2d_accumulate_triple(
                 float eAA = 0.0f, eBB = 0.0f;
                 for (int i = 0; i < numel; ++i) {
                     pAB_B[i] = (fRawB[i] - mAB_B) * fWindowWeightB_AB[i];
-                    pAB_A[i] = (fRawA[i] - mAB_A) * fWindowWeightA_AB[i];
+                    pAB_A[i] = (fRawA[i] - mAuto_A) * fWindowWeightA_AB[i];
                     pAA_A[i] = (fRawA[i] - mAuto_A) * fAutoWeightA[i];
                     pBB_B[i] = (fRawB[i] - mAuto_B) * fAutoWeightB[i];
                     eAA += pAA_A[i] * pAA_A[i];

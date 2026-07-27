@@ -25,7 +25,7 @@ from loguru import logger
 # but is NOT registered as a Flask blueprint - the frontend uses the plotting transform API
 from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
 from pivtools_core.config import Config, get_config, reload_config
-from pivtools_core.fft_sizes import BUILT_FFT_SIZES
+from pivtools_core.fft_sizes import BUILT_FFT_SIZES, SINGLE_MODE_WINDOW_SIZES
 from pivtools_core.image_handling.load_images import (
     create_piv_frame_reader,
     load_mask_for_camera,
@@ -1380,10 +1380,19 @@ def config_endpoint():
 def fft_sizes_endpoint():
     """Window axis lengths the codelet FFT engine was built for.
 
-    Single source of truth is ``pivtools_core.fft_sizes.BUILT_FFT_SIZES``; the GUI
-    consumes this so the frontend need not hardcode a copy that could drift.
+    Single source of truth is ``pivtools_core.fft_sizes``; the GUI consumes this
+    so the frontend need not hardcode a copy that could drift.
+
+    ``single_mode_sizes`` is the superset accepted for an ensemble ``single``
+    pass, whose ``window_size`` is the Frame-A mask support rather than an FFT
+    length. Sum-window dropdowns must keep using ``sizes``.
     """
-    return jsonify({"sizes": list(BUILT_FFT_SIZES)})
+    return jsonify(
+        {
+            "sizes": list(BUILT_FFT_SIZES),
+            "single_mode_sizes": list(SINGLE_MODE_WINDOW_SIZES),
+        }
+    )
 
 
 @api_bp.route("/preview_frame_pairs", methods=["GET"])

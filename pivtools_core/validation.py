@@ -10,7 +10,11 @@ import re
 from typing import List, Tuple
 
 from pivtools_core.config import Config
-from pivtools_core.fft_sizes import BUILT_FFT_SIZES
+from pivtools_core.fft_sizes import (
+    BUILT_FFT_SIZES,
+    SINGLE_MODE_A_SIZES,
+    SINGLE_MODE_WINDOW_SIZES,
+)
 from pivtools_core.image_handling.load_images import create_piv_frame_reader
 from pivtools_core.image_handling.path_utils import (
     format_to_glob,
@@ -164,21 +168,76 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
     return True, "", warnings
 
 
-def _check_built_sizes(window_sizes, label: str) -> List[str]:
-    """Return an error per [h, w] pass whose axes are not built codelet sizes."""
+def _check_pass_size(
+    wh,
+    label: str,
+    pass_number: int,
+    allowed: Tuple[int, ...] = BUILT_FFT_SIZES,
+    is_fft: bool = True,
+) -> List[str]:
+    """Return errors for one ``[h, w]`` pass whose axes are not permitted.
+
+    Split out of :func:`_check_built_sizes` because the ensemble schedule needs
+    a per-pass ``allowed`` set (single-mode passes admit the Frame-A sizes)
+    while still reporting the pass's true position in the schedule.
+
+    Parameters
+    ----------
+    wh
+        One ``[height, width]`` pair.
+    label
+        Config key being checked, used verbatim in the error message.
+    pass_number
+        1-based pass index as it appears in the config.
+    allowed
+        Permitted axis lengths. Defaults to the built codelet sizes.
+    is_fft
+        True when ``allowed`` is a genuine FFT constraint (the axis length
+        reaches the codelet engine). False for an ensemble ``single`` pass,
+        where ``window_size`` is only the Frame-A mask support. Controls the
+        wording so the message never claims a non-FFT length is an FFT one.
+    """
+    try:
+        h, w = int(wh[0]), int(wh[1])
+    except (TypeError, ValueError, IndexError):
+        return [f"{label} pass {pass_number}: malformed window size {wh!r}"]
+
+    bad = [v for v in (h, w) if v not in allowed]
+    if not bad:
+        return []
+
+    if is_fft:
+        reason = f"The FFT engine only supports {list(allowed)}."
+        # Most likely mistake: a small Frame-A size used on a pass that is not
+        # single mode. Say so rather than just listing the FFT sizes.
+        if any(v in SINGLE_MODE_A_SIZES for v in bad):
+            reason += (
+                f" Sizes {list(SINGLE_MODE_A_SIZES)} are legal only on an "
+                f"ensemble single-mode pass (ensemble_piv.type: single)."
+            )
+    else:
+        reason = (
+            f"A single-mode pass supports {list(allowed)} "
+            f"(window_size is the Frame-A mask support, not an FFT size)."
+        )
+    return [
+        f"{label} pass {pass_number}: window size [{h}, {w}] uses unsupported "
+        f"size(s) {bad}. {reason}"
+    ]
+
+
+def _check_built_sizes(
+    window_sizes,
+    label: str,
+    allowed: Tuple[int, ...] = BUILT_FFT_SIZES,
+    is_fft: bool = True,
+) -> List[str]:
+    """Return an error per [h, w] pass whose axes are not permitted sizes."""
     errors = []
     for pass_idx, wh in enumerate(window_sizes or []):
-        try:
-            h, w = int(wh[0]), int(wh[1])
-        except (TypeError, ValueError, IndexError):
-            errors.append(f"{label} pass {pass_idx + 1}: malformed window size {wh!r}")
-            continue
-        bad = [v for v in (h, w) if v not in BUILT_FFT_SIZES]
-        if bad:
-            errors.append(
-                f"{label} pass {pass_idx + 1}: window size [{h}, {w}] uses unsupported "
-                f"size(s) {bad}. The FFT engine only supports {list(BUILT_FFT_SIZES)}."
-            )
+        errors.extend(
+            _check_pass_size(wh, label, pass_idx + 1, allowed=allowed, is_fft=is_fft)
+        )
     return errors
 
 
@@ -193,18 +252,47 @@ def validate_window_sizes(config: Config) -> List[str]:
     so ``sum_window`` is a genuine FFT size and is checked too. Only
     ``sum_fitting_window`` is a correlation-plane crop (not an FFT), so it is
     intentionally not checked here.
+
+    The ensemble schedule is checked per pass, because a ``single`` pass's
+    ``window_size`` is not an FFT length either — it is the support of the
+    Frame-A ``singlepix`` mask inside the sum window, so it additionally admits
+    ``SINGLE_MODE_A_SIZES``. A ``std`` pass stays restricted to built sizes.
     """
     errors = _check_built_sizes(config.window_sizes, "instantaneous_piv.window_size")
-    if config.data.get("processing", {}).get("ensemble", False):
-        errors.extend(
-            _check_built_sizes(config.ensemble_window_sizes, "ensemble_piv.window_size")
-        )
-        # Read raw (not via properties) so a malformed type/sum_window still
-        # produces a clear, collected error here rather than raising mid-validation.
-        ensemble_types = config.data.get("ensemble_piv", {}).get("type", []) or []
-        if "single" in ensemble_types:
-            sum_window = config.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
-            errors.extend(_check_built_sizes([sum_window], "ensemble_piv.sum_window"))
+    if not config.data.get("processing", {}).get("ensemble", False):
+        return errors
+
+    # Use the property so the all-'std' default, the 'standard' alias and the
+    # length-vs-passes check live in config.py only. A malformed type list is
+    # collected as an error here rather than raising mid-validation.
+    try:
+        ensemble_types = config.ensemble_type
+    except ValueError as e:
+        errors.append(f"ensemble_piv.type: {e}")
+        return errors
+
+    for pass_idx, (wh, pass_type) in enumerate(
+        zip(config.ensemble_window_sizes, ensemble_types)
+    ):
+        if pass_type == "single":
+            errors.extend(
+                _check_pass_size(
+                    wh,
+                    "ensemble_piv.window_size",
+                    pass_idx + 1,
+                    allowed=SINGLE_MODE_WINDOW_SIZES,
+                    is_fft=False,
+                )
+            )
+        else:
+            errors.extend(
+                _check_pass_size(wh, "ensemble_piv.window_size", pass_idx + 1)
+            )
+
+    if "single" in ensemble_types:
+        # Read raw so a malformed sum_window is still a collected error here.
+        sum_window = config.data.get("ensemble_piv", {}).get("sum_window", [16, 16])
+        errors.extend(_check_built_sizes([sum_window], "ensemble_piv.sum_window"))
     return errors
 
 
@@ -292,6 +380,19 @@ def validate_ensemble_config(config: Config) -> Tuple[bool, List[str], List[str]
             )
     except ValueError as e:
         errors.append(f"Ensemble kspace shape: {e}")
+
+    # 7c. Validate kspace_floor (coloured analytic floor is LM-fitter-only)
+    try:
+        kspace_floor = config.ensemble_kspace_floor
+        if kspace_floor != "flat" and fit_method is not None and fit_method != "kspace":
+            errors.append(
+                f"ensemble_piv.kspace_floor '{kspace_floor}' requires "
+                f"fit_method 'kspace' (only the LM fitter carries the "
+                "coloured-floor model and would otherwise silently ignore "
+                f"it), got fit_method '{fit_method}'."
+            )
+    except ValueError as e:
+        errors.append(f"Ensemble kspace floor: {e}")
 
     # 8. Validate background subtraction / per-pair normalization consistency
     try:

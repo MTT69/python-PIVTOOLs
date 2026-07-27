@@ -337,7 +337,13 @@ flatten_for_gaussian = flatten_for_kspace
 
 
 class _MockConfig:
-    """Minimal mock config for the k-space fitters."""
+    """Minimal mock config for the k-space fitters.
+
+    ``ensemble_kspace_floor`` defaults to "flat" here (the production default
+    is "coloured"): the flat mock keeps every pre-existing fitter test on the
+    byte-identical legacy path; coloured-path tests opt in explicitly and
+    supply their own P_win.
+    """
 
     def __init__(
         self,
@@ -348,6 +354,7 @@ class _MockConfig:
         ensemble_sum_window=None,
         ensemble_sum_fitting_window=None,
         ensemble_kspace_shape="gaussian",
+        ensemble_kspace_floor="flat",
     ):
         self.ensemble_fit_method = fit_method
         self.ensemble_gradient_correction = gradient_correction
@@ -356,6 +363,7 @@ class _MockConfig:
         self.ensemble_sum_window = ensemble_sum_window or [64, 64]
         self.ensemble_sum_fitting_window = ensemble_sum_fitting_window
         self.ensemble_kspace_shape = ensemble_kspace_shape
+        self.ensemble_kspace_floor = ensemble_kspace_floor
 
 
 def make_mock_config(
@@ -366,6 +374,7 @@ def make_mock_config(
     ensemble_sum_window=None,
     ensemble_sum_fitting_window=None,
     ensemble_kspace_shape="gaussian",
+    ensemble_kspace_floor="flat",
 ):
     """Create a minimal mock config object."""
     return _MockConfig(
@@ -376,4 +385,5 @@ def make_mock_config(
         ensemble_sum_window,
         ensemble_sum_fitting_window,
         ensemble_kspace_shape,
+        ensemble_kspace_floor,
     )

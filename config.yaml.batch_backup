@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Synthetic_validation\Experimental\preprocessed_nomeansub
+  - E:\Synthetic_validation\Noisy_synthetic\kx4_flat
   source_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4_normalised
+  - E:\Synthetic\planar_noise
   active_paths:
   - 0
   camera_numbers:
@@ -23,10 +23,10 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 2100
+  num_images: 4000
   image_shape:
-  - 2736
-  - 512
+  - 2048
+  - 2048
 batches:
   size: 10
 logging:
@@ -37,9 +37,9 @@ processing:
   backend: cpu
   debug: false
   auto_compute_params: false
-  omp_threads: 4
-  dask_workers_per_node: 4
-  dask_memory_limit: 14GB
+  omp_threads: 5
+  dask_workers_per_node: 3
+  dask_memory_limit: 18GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
   dask_nanny: false
@@ -95,39 +95,45 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    vorticity: false
+    gamma1: false
     gamma2: false
+    mean_peak_height: false
     mean_divergence: false
-    inst_vorticity: false
-    fluctuating_velocity: false
-    mean_tke: false
+    mean_stresses: true
     inst_divergence: false
-    mean_velocity: true
-    inst_velocity: false
-    inst_gamma: false
+    mean_tke: false
+    inst_vorticity: false
+    divergence: false
+    tke: false
+    vorticity: false
     mean_vorticity: false
     inst_stresses: false
-    mean_peak_height: false
-    mean_stresses: true
-    tke: false
-    divergence: false
-    gamma1: false
+    mean_velocity: true
+    inst_gamma: false
+    fluctuating_velocity: false
+    inst_velocity: false
   gamma_radius: 4
   save_figures: true
   type_name: ensemble
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 8
+  - - 96
+    - 96
+  - - 32
+    - 96
+  - - 16
     - 96
   - - 8
     - 96
   overlap:
   - 50
   - 50
+  - 50
+  - 50
   runs:
-  - 1
-  - 2
+  - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -140,43 +146,38 @@ instantaneous_piv:
   dump_correlation_planes: false
 ensemble_piv:
   fit_method: kspace
-  kspace_shape: gaussian
-  kspace_floor: coloured
+  kspace_shape: kx4
+  kspace_floor: flat
   skip_background_subtraction: false
   gradient_correction: true
   persist_images: false
   predictor_smoothing: false
   image_warp_interpolation: lanczos
   mask_center_pixel: true
-  background_subtraction_method: correlation
+  background_subtraction_method: correlation+window_mean
   window_size:
-  - - 64
-    - 64
-  - - 32
-    - 32
   - - 8
-    - 8
+    - 96
+  - - 8
+    - 96
   overlap:
-  - 50
   - 50
   - 50
   type:
   - std
   - std
-  - single
   runs:
   - 1
   - 2
-  - 3
   store_planes: true
   save_diagnostics: true
   sum_window:
-  - 24
-  - 24
+  - 48
+  - 48
   sum_fitting_window_enabled: true
   sum_fitting_window:
-  - 24
-  - 24
+  - 32
+  - 32
   resume_from_pass: 0
   window_type: square
   predictor_boundary_conditions:
@@ -259,10 +260,10 @@ masking:
   enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 0
-    bottom: 300
+    bottom: 0
     left: 0
     right: 0
 merging:

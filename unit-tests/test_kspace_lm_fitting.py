@@ -442,3 +442,213 @@ class TestShapeModes:
         calls["v6"] = 0
         _fit(R_AA, R_BB, R_AB, shape="kx4+ky4")
         assert calls["quartic"] > 0 and calls["v6"] == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Coloured noise floor (kspace_floor, 2026-07-24)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _golden_windows():
+    """The six deterministic windows the flat golden was generated from.
+
+    MUST stay byte-identical to the generator that produced
+    data/kspace_floor_flat_golden.npz from the pre-promotion fitter — any
+    edit here invalidates the golden (regenerate from a flat-floor checkout).
+    """
+    shape = (32, 32)
+    triplets = [
+        _spike(*generate_correlation_triplet(
+            shape, sigma_stress_xx=0.5, sigma_stress_yy=0.5, seed=1)),
+        _spike(*generate_correlation_triplet(
+            shape, sigma_stress_xx=1.2, sigma_stress_yy=0.4,
+            sigma_stress_xy=0.15, mu_x=0.3, mu_y=-0.2, seed=2)),
+        _spike(*generate_correlation_triplet(
+            shape, sigma_stress_xx=0.05, sigma_stress_yy=0.05,
+            mu_x=2.5, mu_y=1.0, seed=3)),
+        _spike(*generate_correlation_triplet(
+            shape, sigma_stress_xx=0.8, sigma_stress_yy=0.8,
+            noise_std=1e-3, seed=4)),
+        generate_quartic_triplet(
+            shape, sigma_stress_xx=0.6, sigma_stress_yy=0.3, b4x=0.05,
+            b4y=0.03, mu_x=0.4, noise_std=1e-3, seed=5),
+        _spike(*generate_correlation_triplet(
+            shape, sigma_stress_xx=2.5, sigma_stress_yy=1.8,
+            sigma_stress_xy=-0.4, seed=6)),
+    ]
+    R_AA = np.concatenate([t[0].ravel() for t in triplets])
+    R_BB = np.concatenate([t[1].ravel() for t in triplets])
+    R_AB = np.concatenate([t[2].ravel() for t in triplets])
+    mask = np.zeros(len(triplets), dtype=bool)
+    return R_AA, R_BB, R_AB, mask, shape
+
+
+def _spike(R_AA, R_BB, R_AB):
+    """Centre-pixel white-noise pedestal, as in the golden generator."""
+    cy, cx = R_AA.shape[0] // 2, R_AA.shape[1] // 2
+    spike = _PEDESTAL * R_AA.max()
+    R_AA = R_AA.copy()
+    R_BB = R_BB.copy()
+    R_AA[cy, cx] += spike
+    R_BB[cy, cx] += spike
+    return R_AA, R_BB, R_AB
+
+
+class TestColouredFloor:
+    def test_flat_bit_identity_vs_golden(self):
+        """The flat path of the edited fitter reproduces the pre-promotion
+        golden bit-for-bit — the promotion's central no-regression guard."""
+        from pathlib import Path
+
+        golden = np.load(
+            Path(__file__).parent / "data" / "kspace_floor_flat_golden.npz"
+        )
+        R_AA, R_BB, R_AB, mask, shape = _golden_windows()
+        for kshape in ("gaussian", "kx4+ky4"):
+            cfg = make_mock_config(ensemble_kspace_shape=kshape)  # floor: flat
+            gauss, status, initial, diag = fit_windows_kspace_lm(
+                R_AA, R_BB, R_AB, mask, shape, cfg, 0, False, True
+            )
+            key = kshape.replace("+", "_")
+            assert np.array_equal(gauss, golden[f"{key}_gauss"], equal_nan=True)
+            assert np.array_equal(status, golden[f"{key}_status"])
+            assert np.array_equal(
+                initial, golden[f"{key}_initial"], equal_nan=True
+            )
+            for dk in diag:
+                assert np.array_equal(
+                    np.asarray(diag[dk]), golden[f"{key}_diag_{dk}"],
+                    equal_nan=True,
+                ), f"{kshape}/{dk}"
+
+    def test_flat_passes_none_D(self, monkeypatch):
+        """The flat floor must reach the residuals with D=None (the
+        byte-identical branch), coloured with a real D array."""
+        import pivtools_cli.piv.piv_backend.kspace_lm_fitting as klm
+
+        seen = {"D": []}
+        real_v6 = klm._resid_jac_v6
+
+        def spy_v6(*a, **kw):
+            seen["D"].append(kw.get("D"))
+            return real_v6(*a, **kw)
+
+        monkeypatch.setattr(klm, "_resid_jac_v6", spy_v6)
+
+        R_AA, R_BB, R_AB = _triplet(
+            (32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5
+        )
+        _fit(R_AA, R_BB, R_AB)
+        assert seen["D"] and all(d is None for d in seen["D"])
+
+        seen["D"] = []
+        _fit_coloured(R_AA, R_BB, R_AB, P=np.ones((1, 32 * 32)))
+        assert seen["D"] and all(
+            isinstance(d, np.ndarray) for d in seen["D"]
+        )
+
+    def test_coloured_p1_matches_flat(self):
+        """P identically 1 makes the coloured MODEL equal the flat one, so the
+        converged fits agree to solver tolerance (trajectories differ — the
+        coloured branch tail-seeds N0 — so equality is NOT bit-level)."""
+        R_AA, R_BB, R_AB = _triplet(
+            (32, 32), sigma_stress_xx=0.8, sigma_stress_yy=0.5
+        )
+        gauss_f, status_f, _, diag_f = _fit(
+            R_AA, R_BB, R_AB, return_diagnostics=True
+        )
+        gauss_c, status_c, _, diag_c = _fit_coloured(
+            R_AA, R_BB, R_AB, P=np.ones((1, 32 * 32)), return_diagnostics=True
+        )
+        assert status_f[0] == status_c[0] == 0
+        assert gauss_c[0, 9] == pytest.approx(gauss_f[0, 9], rel=1e-4)
+        assert gauss_c[0, 10] == pytest.approx(gauss_f[0, 10], rel=1e-4)
+        assert diag_c["gain"][0] == pytest.approx(diag_f["gain"][0], rel=1e-4)
+        assert diag_c["N0"][0] == pytest.approx(
+            diag_f["N0"][0], rel=1e-3, abs=1e-6
+        )
+
+    def test_coloured_pedestal_recovery(self):
+        """A coloured pedestal injected into the autos with the EXACT model
+        shape: the coloured fit recovers (Sigma, g, N0); the flat fit on the
+        same planes carries a larger Sigma error (the disease the promotion
+        cures)."""
+        from pivtools_cli.piv.piv_backend.kspace_common import _fft_planes
+        from pivtools_cli.piv.piv_backend.kspace_floor_psd import (
+            analytic_floor_single,
+        )
+        from pivtools_cli.piv.piv_backend.single_pass_accumulator import (
+            _linear_pair_envelope,
+        )
+
+        shape = (32, 32)
+        Sxx_true, Syy_true = 0.8, 0.5
+        R_AA, R_BB, R_AB = generate_correlation_triplet(
+            shape, sigma_stress_xx=Sxx_true, sigma_stress_yy=Syy_true, seed=21
+        )
+        w_B = np.ones(shape)
+        env = _linear_pair_envelope(w_B, w_B, shape)
+        P = analytic_floor_single(0.3, 0.0, env, w_B, "lanczos", True)
+        P = P / P.mean()
+
+        # inject in centred k-space: autos gain the additive floor c*P
+        F_AA = np.real(_fft_planes(R_AA[None], *shape)[0])
+        c = 0.10 * F_AA.max()
+        for R in (R_AA, R_BB):
+            F = _fft_planes(R[None], *shape)[0] + c * P
+            R[:] = np.real(
+                np.fft.fftshift(
+                    np.fft.ifft2(np.fft.ifftshift(F))
+                )
+            )
+
+        gauss_c, status_c, _, diag_c = _fit_coloured(
+            R_AA, R_BB, R_AB, P=P.reshape(1, -1), return_diagnostics=True
+        )
+        assert status_c[0] == 0
+        assert gauss_c[0, 9] == pytest.approx(Sxx_true, rel=0.05)
+        assert gauss_c[0, 10] == pytest.approx(Syy_true, rel=0.05)
+        assert diag_c["N0"][0] == pytest.approx(c, rel=0.10)
+
+        gauss_f, status_f, _, _ = _fit(
+            R_AA, R_BB, R_AB, return_diagnostics=True
+        )
+        err_c = abs(gauss_c[0, 10] - Syy_true) / Syy_true
+        err_f = abs(gauss_f[0, 10] - Syy_true) / Syy_true
+        assert err_f > err_c
+
+    def test_error_surface(self):
+        """Wiring-bug guards: coloured-without-P, flat-with-P, wrong size."""
+        R_AA, R_BB, R_AB = _triplet(
+            (32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5
+        )
+        R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(R_AA, R_BB, R_AB)
+        cfg_col = make_mock_config(ensemble_kspace_floor="coloured")
+        cfg_flat = make_mock_config()
+        with pytest.raises(ValueError, match="requires P_win"):
+            fit_windows_kspace_lm(
+                R_AA_f, R_BB_f, R_AB_f, mask, cs, cfg_col, 0, False
+            )
+        with pytest.raises(ValueError, match="wiring bug"):
+            fit_windows_kspace_lm(
+                R_AA_f, R_BB_f, R_AB_f, mask, cs, cfg_flat, 0, False,
+                P_win=np.ones((1, 32 * 32)),
+            )
+        with pytest.raises(ValueError, match="P_win size"):
+            fit_windows_kspace_lm(
+                R_AA_f, R_BB_f, R_AB_f, mask, cs, cfg_col, 0, False,
+                P_win=np.ones((1, 16 * 16)),
+            )
+
+
+def _fit_coloured(R_AA, R_BB, R_AB, P, n_windows=1, shape="gaussian", **kw):
+    """Run the LM fitter on the coloured-floor path with an explicit P."""
+    R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(
+        R_AA, R_BB, R_AB, n_windows=n_windows
+    )
+    cfg = make_mock_config(
+        ensemble_kspace_shape=shape, ensemble_kspace_floor="coloured"
+    )
+    return fit_windows_kspace_lm(
+        R_AA_f, R_BB_f, R_AB_f, mask, cs, cfg, 0, False, P_win=P, **kw
+    )

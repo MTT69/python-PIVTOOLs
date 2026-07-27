@@ -2436,6 +2436,40 @@ class Config:
         return shape
 
     @property
+    def ensemble_kspace_floor(self) -> str:
+        """Noise-floor model for the 'kspace' LM ensemble fitter.
+
+        White sensor noise does not reach the transfer ratio flat: the
+        image-deformation pipeline colours it (warp-kernel fractional-shift
+        filtering x per-pair window-mean removal x envelope divide). The
+        coloured floor fits att = 1 - N0 * P(k;fx,fy)/F_ref with P the
+        ANALYTIC pipeline colour (kspace_floor_psd, no simulation), evaluated
+        per window at (fx, fy) = frac(predictor/2); N0 stays the free
+        per-window level. The flat assumption inflated noisy vv+ 1.37x and
+        centre uu+ 1.77x of DNS (ky ring-1 floor +30-65 % at all f); the
+        coloured floor lands both on DNS with the clean control unchanged.
+
+        Options:
+        - 'coloured' (default): att = 1 - N0*P(k;fx,fy)/F_ref, N0 in [0, 10],
+          tail-seeded. Correct for every background method (the window-mean
+          DC hole is included exactly when the bg method contains
+          'window_mean') and both correlation chains (std and single).
+        - 'flat': the pre-2026-07-24 model att = 1 - N0/F_ref on a
+          byte-identical code path — for reproducing older runs only.
+
+        Derivation + validation:
+        wiki/sessions/2026-07-22-noise-floor-colouring-psim.md.
+        """
+        floor = self.data.get("ensemble_piv", {}).get("kspace_floor", "coloured")
+        valid_floors = {"coloured", "flat"}
+        if floor not in valid_floors:
+            raise ValueError(
+                f"Invalid ensemble_kspace_floor '{floor}'. Must be one of "
+                f"{valid_floors}."
+            )
+        return floor
+
+    @property
     def ensemble_image_warp_interpolation(self) -> str:
         """Return interpolation method for image warping in ensemble PIV.
 
