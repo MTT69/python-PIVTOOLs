@@ -397,6 +397,59 @@ class BuildCLibraries(build):
             raise RuntimeError(f"Build failed: libfusedwarp{lib_ext} not created")
         print(f"Successfully built libfusedwarp{lib_ext}")
 
+        # --- Build libkspacefit (no external deps — only OpenMP + math) ---
+        # The k-space transfer-function LM ensemble fitter. Kept OUT of
+        # libbulkxcorr2d deliberately: that library is compiled with /arch AVX2+
+        # and gates on it at load (require_cpu_supported), whereas this one is
+        # scalar float64 with no ISA floor at all, and its flags must not drift
+        # with the correlator's throughput tuning.
+        #
+        # NO arch/SIMD flags, and fp contraction OFF — the same reasoning as
+        # peak_locate_lm.c above. This is a Levenberg-Marquardt kernel whose
+        # accept/reject decisions on marginal steps are sensitive to FMA fusion,
+        # and it is gated against a float64 NumPy oracle. These are exactly the
+        # flags the parity gates were proven under.
+        self._generate_double_codelets()
+        if self.use_clang_cl:
+            kspace_fp_flags = ["/clang:-ffp-contract=off"]
+        elif use_msvc:  # plain cl — /fp:precise disables contraction
+            kspace_fp_flags = ["/fp:precise"]
+        else:
+            kspace_fp_flags = ["-ffp-contract=off"]
+
+        if use_msvc:
+            output_file = build_dir / f"libkspacefit{lib_ext}"
+            cmd_ks = [
+                compiler,
+                *self.extra_compile,
+                *kspace_fp_flags,
+                shared_flag,
+                f"/Fo{build_dir}/",
+                str(src_dir / "kspace_lm_fit.c"),
+                f"/I{src_dir}",
+                f"/Fe{output_file}",
+            ]
+        else:
+            cmd_ks = [
+                compiler,
+                *self.extra_compile,
+                *kspace_fp_flags,
+                shared_flag,
+                str(src_dir / "kspace_lm_fit.c"),
+                f"-I{src_dir}",
+                "-o",
+                str(build_dir / f"libkspacefit{lib_ext}"),
+                *bulk_link,
+            ]
+        print(
+            f"libkspacefit flags: {' '.join(kspace_fp_flags)}  "
+            "(no /arch -- LM stability)"
+        )
+        self._run(cmd_ks)
+        if not (build_dir / f"libkspacefit{lib_ext}").exists():
+            raise RuntimeError(f"Build failed: libkspacefit{lib_ext} not created")
+        print(f"Successfully built libkspacefit{lib_ext}")
+
         self._cleanup_intermediates(build_dir)
 
         # --- Stage the OpenMP runtime for clang-cl ---
@@ -614,6 +667,45 @@ class BuildCLibraries(build):
             *renders,
         ]
         print(f">>> [PIVTOOLS_FFT] codegen renders: {renders}")
+        self._run(cmd)
+        if not out_hdr.exists():
+            raise RuntimeError(f"codelet generation failed: {out_hdr} not created")
+
+    def _generate_double_codelets(self):
+        """Generate codelets_double_gen.h for libkspacefit.
+
+        The same validated mixed-radix IR as codelets_gen.h, rendered to
+        `double` (--isa scalar_d). The k-space fitter's output is Sigma, gated
+        against a float64 oracle at |dSigma| < 1e-8, which the float32 render
+        cannot reach; and codelet_fft.h exposes no spectrum at all (only
+        lag-space correlation surfaces), so its compiled path cannot serve the
+        fitter regardless of precision.
+
+        Only cfft is emitted — the fitter never needs the real-input or inverse
+        transforms — which keeps the header near 15k lines instead of ~100k.
+        192/256 are NOT appended: those exist solely for convolve()'s 2N padding
+        in the correlator and are never correlation-plane axis lengths.
+        """
+        import sys
+
+        sizes = [str(n) for n in self._built_fft_sizes()]
+        gen = self.src_dir / "codelet_gen" / "gen_codelet.py"
+        out_hdr = self.src_dir / "codelets_double_gen.h"
+        if not gen.exists():
+            raise RuntimeError(f"codelet generator not found: {gen}")
+        cmd = [
+            sys.executable,
+            str(gen),
+            "--emit",
+            str(out_hdr),
+            "--sizes",
+            *sizes,
+            "--isa",
+            "scalar_d",
+            "--transforms",
+            "cfft",
+        ]
+        print(">>> [PIVTOOLS_FFT] codegen renders: ['scalar_d'] (cfft only, libkspacefit)")
         self._run(cmd)
         if not out_hdr.exists():
             raise RuntimeError(f"codelet generation failed: {out_hdr} not created")

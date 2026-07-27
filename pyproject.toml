@@ -90,8 +90,11 @@ exclude = ["tests*", "manual_tools*", "logs*", "env*"]
     "lib/common.h",
     "lib/fused_warp.c",
     "lib/fused_warp.h",
+    "lib/kspace_lm_fit.c",
+    "lib/kspace_lm_fit.h",
     "lib/libbulkxcorr2d.*",
     "lib/libfusedwarp.*",
+    "lib/libkspacefit.*",
     "lib/*.dll"
 ]
 pivtools_gui = ["static/**/*", "templates/**/*"]

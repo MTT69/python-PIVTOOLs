@@ -355,6 +355,7 @@ class _MockConfig:
         ensemble_sum_fitting_window=None,
         ensemble_kspace_shape="gaussian",
         ensemble_kspace_floor="flat",
+        omp_threads="2",
     ):
         self.ensemble_fit_method = fit_method
         self.ensemble_gradient_correction = gradient_correction
@@ -364,6 +365,11 @@ class _MockConfig:
         self.ensemble_sum_fitting_window = ensemble_sum_fitting_window
         self.ensemble_kspace_shape = ensemble_kspace_shape
         self.ensemble_kspace_floor = ensemble_kspace_floor
+        # str, mirroring Config.omp_threads (the real property returns str).
+        # The C fitter is deterministic in the thread count — windows are
+        # independent and no reduction crosses them — so this does not affect
+        # any expected value; 2 exercises the parallel region.
+        self.omp_threads = omp_threads
 
 
 def make_mock_config(
@@ -375,6 +381,7 @@ def make_mock_config(
     ensemble_sum_fitting_window=None,
     ensemble_kspace_shape="gaussian",
     ensemble_kspace_floor="flat",
+    omp_threads="2",
 ):
     """Create a minimal mock config object."""
     return _MockConfig(
@@ -386,4 +393,5 @@ def make_mock_config(
         ensemble_sum_fitting_window,
         ensemble_kspace_shape,
         ensemble_kspace_floor,
+        omp_threads,
     )

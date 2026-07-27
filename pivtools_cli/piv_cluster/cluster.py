@@ -218,10 +218,17 @@ def set_worker_omp_threads(omp_threads: str):
 
     Each Dask worker already runs one task at a time (threads_per_worker=1), so
     every native pool a worker opens multiplies against the worker count. Pinning
-    them all to the same value keeps total threads bounded by the worker count
-    and avoids core oversubscription (the pure-NumPy k-space fitter's FFT/solves
-    are additionally capped via threadpoolctl, but these env vars are the
-    defence-in-depth set, honoured by libraries that read them at import).
+    them all to the same value keeps the total bounded at
+    ``dask_workers_per_node * omp_threads``.
+
+    This is load-bearing, not defence in depth: ``libbulkxcorr2d`` and
+    ``libfusedwarp`` carry no ``num_threads()`` clause, so without
+    ``OMP_NUM_THREADS`` set here OpenMP defaults to EVERY core, in each of N
+    worker processes. Both the instantaneous and ensemble entry points now pass
+    ``worker_omp_threads`` (ensemble since 2026-07-27; it previously relied on
+    workers inheriting the client's environment). The k-space LM fitter is the
+    exception — it takes an explicit thread count as a C argument and ignores
+    these variables.
     """
     for var in (
         "OMP_NUM_THREADS",

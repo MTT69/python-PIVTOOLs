@@ -742,7 +742,7 @@ def main():
 
     # Set up environment
     os.environ["MALLOC_TRIM_THRESHOLD_"] = "0"
-    str(config.omp_threads)
+    worker_omp_threads = str(config.omp_threads)
 
     global _client, _cluster
 
@@ -750,10 +750,14 @@ def main():
         # Start Dask cluster
         logger.info("Starting Dask cluster...")
         cluster, client = start_cluster(
-            # n_workers_per_node=config.dask_workers_per_node,
-            # memory_limit=config.dask_memory_limit,
             config=config,
-            # worker_omp_threads=worker_omp_threads,
+            # Pin OMP/BLAS/MKL/NumExpr inside every worker from the config,
+            # matching instantaneous.py. libbulkxcorr2d and libfusedwarp carry
+            # no num_threads() clause, so without this they fall back to
+            # OpenMP's default of ALL cores in each of N worker processes —
+            # previously avoided only by workers inheriting the client's
+            # environment, which is not guaranteed.
+            worker_omp_threads=worker_omp_threads,
         )
         _cluster = cluster
         _client = client

@@ -30,6 +30,7 @@ from synthetic_correlations import (
 
 from pivtools_cli.piv.piv_backend.kspace_lm_fitting import (
     fit_windows_kspace_lm,
+    fit_windows_kspace_lm_numpy,
 )
 
 # Relative height of the white-noise pedestal injected into the auto planes.
@@ -42,12 +43,22 @@ def _cfg(shape="gaussian"):
     return make_mock_config(ensemble_kspace_shape=shape)
 
 
-def _fit(R_AA, R_BB, R_AB, n_windows=1, shape="gaussian", **kw):
-    """Run the LM fitter with the production call-site argument pattern."""
+def _fit(
+    R_AA, R_BB, R_AB, n_windows=1, shape="gaussian",
+    fitter=fit_windows_kspace_lm, **kw
+):
+    """Run the LM fitter with the production call-site argument pattern.
+
+    ``fitter`` selects the implementation. It defaults to the production C
+    entry point; tests that inspect NumPy internals (monkeypatched residual
+    spies) or assert bit-identity must pass
+    ``fitter=fit_windows_kspace_lm_numpy``, since those properties belong to
+    the reference implementation, not the C.
+    """
     R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(
         R_AA, R_BB, R_AB, n_windows=n_windows
     )
-    return fit_windows_kspace_lm(
+    return fitter(
         R_AA_f,
         R_BB_f,
         R_AB_f,
@@ -417,7 +428,12 @@ class TestShapeModes:
         assert diag["b4y"][0] == pytest.approx(b4y, rel=0.15)
 
     def test_gaussian_shape_uses_v6_residual(self, monkeypatch):
-        """The default shape must run the untouched v6 residual (bit-exact path)."""
+        """The default shape must run the untouched v6 residual (bit-exact path).
+
+        Reference-implementation sentinel: the C fitter selects its residual by
+        the same use_kx4/use_ky4 flags but in compiled code, so this spy can
+        only observe the NumPy path.
+        """
         import pivtools_cli.piv.piv_backend.kspace_lm_fitting as klm
 
         calls = {"v6": 0, "quartic": 0}
@@ -436,11 +452,17 @@ class TestShapeModes:
         monkeypatch.setattr(klm, "_resid_jac_quartic", spy_q)
 
         R_AA, R_BB, R_AB = _triplet((32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5)
-        _fit(R_AA, R_BB, R_AB, shape="gaussian")
+        _fit(
+            R_AA, R_BB, R_AB, shape="gaussian",
+            fitter=fit_windows_kspace_lm_numpy,
+        )
         assert calls["v6"] > 0 and calls["quartic"] == 0
 
         calls["v6"] = 0
-        _fit(R_AA, R_BB, R_AB, shape="kx4+ky4")
+        _fit(
+            R_AA, R_BB, R_AB, shape="kx4+ky4",
+            fitter=fit_windows_kspace_lm_numpy,
+        )
         assert calls["quartic"] > 0 and calls["v6"] == 0
 
 
@@ -496,8 +518,14 @@ def _spike(R_AA, R_BB, R_AB):
 
 class TestColouredFloor:
     def test_flat_bit_identity_vs_golden(self):
-        """The flat path of the edited fitter reproduces the pre-promotion
-        golden bit-for-bit — the promotion's central no-regression guard."""
+        """The flat path of the reference fitter reproduces the pre-promotion
+        golden bit-for-bit — the no-regression guard on the ORACLE.
+
+        Deliberately not run against the C: that path is tolerance-gated by
+        design (libm vs NumPy last-ulp, and a reciprocal-multiply where this
+        divides), and is covered by test_kspace_c_fit.py. Bit-identity here is
+        what keeps the oracle trustworthy as the thing C is measured against.
+        """
         from pathlib import Path
 
         golden = np.load(
@@ -506,7 +534,7 @@ class TestColouredFloor:
         R_AA, R_BB, R_AB, mask, shape = _golden_windows()
         for kshape in ("gaussian", "kx4+ky4"):
             cfg = make_mock_config(ensemble_kspace_shape=kshape)  # floor: flat
-            gauss, status, initial, diag = fit_windows_kspace_lm(
+            gauss, status, initial, diag = fit_windows_kspace_lm_numpy(
                 R_AA, R_BB, R_AB, mask, shape, cfg, 0, False, True
             )
             key = kshape.replace("+", "_")
@@ -523,7 +551,11 @@ class TestColouredFloor:
 
     def test_flat_passes_none_D(self, monkeypatch):
         """The flat floor must reach the residuals with D=None (the
-        byte-identical branch), coloured with a real D array."""
+        byte-identical branch), coloured with a real D array.
+
+        Reference-implementation sentinel — the C unifies both floors behind one
+        Dv buffer instead, so there is no D=None to observe there.
+        """
         import pivtools_cli.piv.piv_backend.kspace_lm_fitting as klm
 
         seen = {"D": []}
@@ -538,11 +570,14 @@ class TestColouredFloor:
         R_AA, R_BB, R_AB = _triplet(
             (32, 32), sigma_stress_xx=0.5, sigma_stress_yy=0.5
         )
-        _fit(R_AA, R_BB, R_AB)
+        _fit(R_AA, R_BB, R_AB, fitter=fit_windows_kspace_lm_numpy)
         assert seen["D"] and all(d is None for d in seen["D"])
 
         seen["D"] = []
-        _fit_coloured(R_AA, R_BB, R_AB, P=np.ones((1, 32 * 32)))
+        _fit_coloured(
+            R_AA, R_BB, R_AB, P=np.ones((1, 32 * 32)),
+            fitter=fit_windows_kspace_lm_numpy,
+        )
         assert seen["D"] and all(
             isinstance(d, np.ndarray) for d in seen["D"]
         )
@@ -641,14 +676,20 @@ class TestColouredFloor:
             )
 
 
-def _fit_coloured(R_AA, R_BB, R_AB, P, n_windows=1, shape="gaussian", **kw):
-    """Run the LM fitter on the coloured-floor path with an explicit P."""
+def _fit_coloured(
+    R_AA, R_BB, R_AB, P, n_windows=1, shape="gaussian",
+    fitter=fit_windows_kspace_lm, **kw
+):
+    """Run the LM fitter on the coloured-floor path with an explicit P.
+
+    ``fitter`` as in :func:`_fit`.
+    """
     R_AA_f, R_BB_f, R_AB_f, mask, cs = flatten_for_kspace(
         R_AA, R_BB, R_AB, n_windows=n_windows
     )
     cfg = make_mock_config(
         ensemble_kspace_shape=shape, ensemble_kspace_floor="coloured"
     )
-    return fit_windows_kspace_lm(
+    return fitter(
         R_AA_f, R_BB_f, R_AB_f, mask, cs, cfg, 0, False, P_win=P, **kw
     )

@@ -105,7 +105,9 @@ white-noise null through the exact pipeline showed the ky ring-1 colour is real
 and vv-critical — hence ``kspace_floor``.
 """
 
+import ctypes
 import logging
+import os
 
 import numpy as np
 
@@ -161,6 +163,100 @@ STATUS_BIG_DISP = 3
 STATUS_NEG_VAR = 5  # kept for contract parity (defined but never set, as in the C)
 
 _TWO_PI = 2.0 * np.pi
+
+# --- libkspacefit binding ------------------------------------------------------------------
+# Loaded once per process (each Dask worker is a process, so each pays it once).
+# There is no config knob and no NumPy fallback: a missing or stale library is a
+# build error, not a reason to silently run a different implementation.
+_KSPACE_LIB = None
+
+_KSPACE_ERRORS = {
+    -1: (
+        "correlation-plane axis length outside BUILT_FFT_SIZES — no FFT codelet "
+        "was generated for it"
+    ),
+    -2: "scratch allocation failure in the C fitter",
+    -3: (
+        "coloured floor requested but no |k| >= COLOURED_SEED_KR_MIN bin exists "
+        "to seed N0 from"
+    ),
+}
+
+
+def _load_kspace_lib():
+    """Bind libkspacefit. Raises rather than degrading — see module note above."""
+    global _KSPACE_LIB
+    if _KSPACE_LIB is not None:
+        return _KSPACE_LIB
+
+    lib_ext = ".dll" if os.name == "nt" else ".so"  # macOS emits .so too
+    lib_path = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "../..", "lib", f"libkspacefit{lib_ext}"
+        )
+    )
+    if not os.path.isfile(lib_path):
+        raise FileNotFoundError(
+            f"libkspacefit{lib_ext} not found at {lib_path}. The ensemble k-space "
+            "fitter is a C extension — build it with `python setup.py build` "
+            "before running ensemble PIV. (`pip install -e .` will NOT build it: "
+            "PEP 660 editable installs skip the custom build command.)"
+        )
+
+    # Staleness guard. The sources are tracked; the library is gitignored. Pull a
+    # commit that changes the model, skip the rebuild, and the old binary still
+    # loads, still exports the symbol and still has the right signature — it just
+    # computes the previous version of the maths. That is the silent-wrong-number
+    # failure this module exists to make impossible, so check it explicitly.
+    # Sources are absent in an installed wheel, where the check is meaningless.
+    lib_dir = os.path.dirname(lib_path)
+    lib_mtime = os.path.getmtime(lib_path)
+    for src in ("kspace_lm_fit.c", "kspace_lm_fit.h"):
+        src_path = os.path.join(lib_dir, src)
+        if os.path.isfile(src_path) and os.path.getmtime(src_path) > lib_mtime:
+            raise RuntimeError(
+                f"{src} is newer than {os.path.basename(lib_path)} — the built "
+                "library does not match the source and would silently compute the "
+                "previous model. Rebuild with `python setup.py build`."
+            )
+
+    lib = ctypes.CDLL(lib_path)
+    if not hasattr(lib, "kspace_lm_fit_batch"):
+        raise RuntimeError(
+            f"{lib_path} loaded but kspace_lm_fit_batch is missing from its export "
+            "table — stale build. Rebuild with `python setup.py build`."
+        )
+
+    f64 = np.ctypeslib.ndpointer(dtype=np.float64, flags="C_CONTIGUOUS")
+    i32 = np.ctypeslib.ndpointer(dtype=np.int32, flags="C_CONTIGUOUS")
+    u8 = np.ctypeslib.ndpointer(dtype=np.uint8, flags="C_CONTIGUOUS")
+    lib.kspace_lm_fit_batch.restype = ctypes.c_int
+    lib.kspace_lm_fit_batch.argtypes = [
+        f64, f64, f64,  # R_AA, R_BB, R_AB
+        u8,  # mask_flat
+        ctypes.c_void_p,  # P_win — NULL selects the flat floor
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,  # n_windows, corr_h, corr_w
+        ctypes.c_int, ctypes.c_int,  # use_kx4, use_ky4
+        ctypes.c_int,  # n_threads
+        f64, i32, f64,  # gauss_flat, status_flat, initial_guess_flat
+        f64, f64, f64, f64,  # diag: gain, N0, b4x, b4y
+        f64, i32, i32, u8,  # diag: cost_per_pt, n_valid, iter, conv
+    ]
+    lib.kspace_lm_fit_max_threads.restype = ctypes.c_int
+
+    # Actually call it. ctypes.CDLL binds lazily on Linux/macOS, so a library
+    # built against an unresolvable libomp loads fine here and would instead die
+    # on the first kspace_lm_fit_batch — inside a Dask worker, mid-run, after
+    # hours of accumulation. One call forces the resolution now.
+    max_threads = lib.kspace_lm_fit_max_threads()
+    logger.debug(
+        "libkspacefit loaded from %s (OpenMP max threads %d)", lib_path, max_threads
+    )
+
+    _KSPACE_LIB = lib
+    return lib
+
+
 _TWO_PI2 = 2.0 * np.pi**2
 
 # Sxy is unbounded (MAIN_LO/HI), so an LM trial step can drive Sxy^2 > Sxx*Syy, making
@@ -610,37 +706,16 @@ def _run_fit(prep, use_kx4=False, use_ky4=False):
 # ==========================================================================================
 # Public entry point — same 16-column contract as the dormant fit_windows_kspace_linear
 # ==========================================================================================
-def fit_windows_kspace_lm(
-    R_AA: np.ndarray,
-    R_BB: np.ndarray,
-    R_AB: np.ndarray,
-    mask_flat: np.ndarray,
-    corr_size: tuple,
-    config,
-    pass_idx: int,
-    debug: bool = False,
-    return_diagnostics: bool = False,
-    *,
-    P_win: np.ndarray | None = None,
-):
-    """One-stage joint LM fit (see module docstring for the model).
+def _validate_inputs(R_AA, R_BB, R_AB, mask_flat, corr_size, config, P_win):
+    """Validate and normalise the fitter inputs.
 
-    7 parameters for the default ``gaussian`` shape; ``config.ensemble_kspace_shape``
-    (``kx4`` | ``ky4`` | ``kx4+ky4``) appends free-signed quartic exponent
-    coefficients (8/8/9 parameters) that absorb displacement-PDF kurtosis.
+    Shared by the production C entry point and the NumPy oracle so that a parity
+    gate compares the two *fits*, not two input-handling paths.
 
-    ``config.ensemble_kspace_floor`` selects the floor model: ``flat`` is the
-    pre-2026-07 behaviour (scalar N0 on 1/F_ref, byte-identical code path);
-    ``coloured`` switches to att = 1 - N0*P(k;fx,fy)/F_ref and REQUIRES
-    ``P_win`` — the per-window analytic floor shape (n_windows, h*w) from
-    ``kspace_floor_psd`` (built and interpolated by the caller, which holds
-    the envelope/weights/predictor). Passing P_win with the flat floor raises
-    (wiring-bug guard).
-
-    Returns ``(gauss_flat[n,16], status_flat[n], initial_guess_flat[n,16])`` and, when
-    ``return_diagnostics=True``, a fourth element: a dict of per-window arrays
-    (gain = fitted peak gain g, N0 = fitted noise floor in F_ref units, cost_per_pt,
-    n_valid, conv, iter, plus b4x/b4y when the shape enables them).
+    Returns ``(shape, use_kx4, use_ky4, floor, corr_h, corr_w, n_windows,
+    R_AA, R_BB, R_AB, mask, P_win)`` with the planes reshaped to
+    ``(n_windows, corr_h, corr_w)`` float64 C-contiguous and ``P_win`` to
+    ``(n_windows, corr_h*corr_w)`` or ``None``.
     """
     shape = config.ensemble_kspace_shape
     use_kx4, use_ky4 = _KSPACE_SHAPES[shape]
@@ -684,6 +759,184 @@ def fit_windows_kspace_lm(
         n_windows, corr_h, corr_w
     )
     mask = np.asarray(mask_flat, dtype=bool)
+    return (
+        shape, use_kx4, use_ky4, floor, corr_h, corr_w, n_windows,
+        R_AA, R_BB, R_AB, mask, P_win,
+    )
+
+
+def fit_windows_kspace_lm(
+    R_AA: np.ndarray,
+    R_BB: np.ndarray,
+    R_AB: np.ndarray,
+    mask_flat: np.ndarray,
+    corr_size: tuple,
+    config,
+    pass_idx: int,
+    debug: bool = False,
+    return_diagnostics: bool = False,
+    *,
+    P_win: np.ndarray | None = None,
+):
+    """One-stage joint LM fit (see module docstring for the model).
+
+    The fit itself runs in C (``libkspacefit``, one LM per window, OpenMP over
+    windows). This function owns validation, logging and output assembly; the
+    C owns the maths. ``fit_windows_kspace_lm_numpy`` below is the reference
+    implementation it is gated against and is not on any production path.
+
+    7 parameters for the default ``gaussian`` shape; ``config.ensemble_kspace_shape``
+    (``kx4`` | ``ky4`` | ``kx4+ky4``) appends free-signed quartic exponent
+    coefficients (8/8/9 parameters) that absorb displacement-PDF kurtosis.
+
+    ``config.ensemble_kspace_floor`` selects the floor model: ``flat`` is the
+    pre-2026-07 behaviour (scalar N0 on 1/F_ref); ``coloured`` switches to
+    att = 1 - N0*P(k;fx,fy)/F_ref and REQUIRES ``P_win`` — the per-window
+    analytic floor shape (n_windows, h*w) from ``kspace_floor_psd`` (built and
+    interpolated by the caller, which holds the envelope/weights/predictor).
+    Passing P_win with the flat floor raises (wiring-bug guard).
+
+    ``P_win`` is handed to C in the CENTRED k-layout it arrives in; the C
+    applies the ifftshift mapping internally.
+
+    OpenMP width is ``config.omp_threads``, passed explicitly as a C argument and
+    applied through a ``num_threads()`` clause. That clause takes precedence over
+    the ``nthreads-var`` ICV, so this fitter is immune to a surrounding
+    ``threadpool_limits`` context — unlike ``libbulkxcorr2d`` and
+    ``libfusedwarp``, which carry no clause and would be clamped to one thread by
+    one. It is also why the width is not left to ``OMP_NUM_THREADS``.
+
+    Returns ``(gauss_flat[n,16], status_flat[n], initial_guess_flat[n,16])`` and, when
+    ``return_diagnostics=True``, a fourth element: a dict of per-window arrays
+    (gain = fitted peak gain g, N0 = fitted noise floor in F_ref units, cost_per_pt,
+    n_valid, conv, iter, plus b4x/b4y when the shape enables them).
+    """
+    (
+        shape, use_kx4, use_ky4, floor, corr_h, corr_w, n_windows,
+        R_AA, R_BB, R_AB, mask, P_win,
+    ) = _validate_inputs(
+        R_AA, R_BB, R_AB, mask_flat, corr_size, config, P_win
+    )
+
+    lib = _load_kspace_lib()
+    n_threads = max(1, int(config.omp_threads))
+
+    # P_win crosses as a raw address (c_void_p, because NULL selects the flat
+    # floor), so it is the one argument ndpointer does not police. Check what
+    # ndpointer would have checked.
+    if P_win is not None and not (
+        P_win.flags["C_CONTIGUOUS"] and P_win.dtype == np.float64
+    ):
+        raise ValueError(
+            f"P_win must be C-contiguous float64, got dtype={P_win.dtype} "
+            f"contiguous={P_win.flags['C_CONTIGUOUS']}"
+        )
+
+    mask_u8 = np.ascontiguousarray(mask, dtype=np.uint8)
+    gauss_flat = np.zeros((n_windows, 16), dtype=np.float64)
+    status_flat = np.full(n_windows, STATUS_MASKED, dtype=np.int32)
+    initial_guess_flat = np.zeros((n_windows, 16), dtype=np.float64)
+    # b4x/b4y are always allocated: the C fills them unconditionally and will
+    # not accept NULL, even when the shape leaves them unused.
+    d_gain = np.full(n_windows, np.nan)
+    d_N0 = np.full(n_windows, np.nan)
+    d_b4x = np.full(n_windows, np.nan)
+    d_b4y = np.full(n_windows, np.nan)
+    d_cpp = np.full(n_windows, np.nan)
+    d_nvalid = np.zeros(n_windows, dtype=np.int32)
+    d_iter = np.zeros(n_windows, dtype=np.int32)
+    d_conv = np.zeros(n_windows, dtype=np.uint8)
+
+    ret = lib.kspace_lm_fit_batch(
+        R_AA, R_BB, R_AB,
+        mask_u8,
+        P_win.ctypes.data if P_win is not None else None,
+        # int() on the sizes: corr_size arrives as numpy integers when it comes
+        # from a .mat, and ctypes' c_int conversion of those is incidental
+        # rather than guaranteed.
+        int(n_windows), int(corr_h), int(corr_w),
+        int(use_kx4), int(use_ky4),
+        int(n_threads),
+        gauss_flat, status_flat, initial_guess_flat,
+        d_gain, d_N0, d_b4x, d_b4y,
+        d_cpp, d_nvalid, d_iter, d_conv,
+    )
+    if ret != 0:
+        raise RuntimeError(
+            f"libkspacefit kspace_lm_fit_batch failed (ret={ret}): "
+            f"{_KSPACE_ERRORS.get(ret, 'unknown error code')} "
+            f"[corr_size={corr_size}, shape={shape}, floor={floor}]"
+        )
+
+    diag = {
+        "gain": d_gain,
+        "N0": d_N0,
+        "cost_per_pt": d_cpp,
+        "n_valid": d_nvalid,
+        "iter": d_iter,
+        "conv": d_conv.astype(bool),
+    }
+    if use_kx4:
+        diag["b4x"] = d_b4x
+    if use_ky4:
+        diag["b4y"] = d_b4y
+
+    n_proc = n_windows - int(mask.sum())
+    if n_proc == 0:
+        logger.info(f"Pass {pass_idx + 1}: k-space-LM, all {n_windows} windows masked")
+    else:
+        n_ok = int(np.sum(status_flat == STATUS_SUCCESS))
+        logger.info(
+            f"Pass {pass_idx + 1}: k-space-LM joint fit ({shape}, {floor} floor) "
+            f"{n_ok}/{n_proc} ok [C, {n_threads} threads]"
+        )
+        if debug and n_ok:
+            ok = status_flat == STATUS_SUCCESS
+            logger.info(
+                f"  Sigma_xx median={np.nanmedian(gauss_flat[ok, 9]):.4f} "
+                f"Sigma_yy median={np.nanmedian(gauss_flat[ok, 10]):.4f} "
+                f"gain median={np.nanmedian(diag['gain'][ok]):.3f} "
+                f"N0 median={np.nanmedian(diag['N0'][ok]):.3f}"
+            )
+
+    if return_diagnostics:
+        return gauss_flat, status_flat, initial_guess_flat, diag
+    return gauss_flat, status_flat, initial_guess_flat
+
+
+def fit_windows_kspace_lm_numpy(
+    R_AA: np.ndarray,
+    R_BB: np.ndarray,
+    R_AB: np.ndarray,
+    mask_flat: np.ndarray,
+    corr_size: tuple,
+    config,
+    pass_idx: int,
+    debug: bool = False,
+    return_diagnostics: bool = False,
+    *,
+    P_win: np.ndarray | None = None,
+):
+    """Reference (oracle) implementation of :func:`fit_windows_kspace_lm`.
+
+    NOT on any production path — ``fit_windows_kspace_lm`` dispatches to C. This
+    is retained because it is the oracle every C parity gate scores against, and
+    because it is the readable statement of the algorithm. Same precedent as
+    ``kspace_linear_fitting`` (retired from production selection 2026-07-21,
+    module and tests kept).
+
+    Identical signature and return contract. Differences from the C are limited
+    to floating-point last-ulp effects: libm exp/cos/sin differ from NumPy's in
+    the last ulp, so per-window LM paths can diverge on marginal accept/reject
+    steps, and the flat floor's attenuation is a true division here against a
+    reciprocal-multiply in C (<=1 ulp).
+    """
+    (
+        shape, use_kx4, use_ky4, floor, corr_h, corr_w, n_windows,
+        R_AA, R_BB, R_AB, mask, P_win,
+    ) = _validate_inputs(
+        R_AA, R_BB, R_AB, mask_flat, corr_size, config, P_win
+    )
 
     KX, KY, _ = _kgrids(corr_h, corr_w)
     cy, cx = corr_h // 2, corr_w // 2
@@ -774,7 +1027,7 @@ def fit_windows_kspace_lm(
     n_ok = int(np.sum(status_flat == STATUS_SUCCESS))
     logger.info(
         f"Pass {pass_idx + 1}: k-space-LM joint fit ({shape}, {floor} floor) "
-        f"{n_ok}/{proc.size} ok"
+        f"{n_ok}/{proc.size} ok [numpy reference]"
     )
     if debug and n_ok:
         ok = status_flat == STATUS_SUCCESS

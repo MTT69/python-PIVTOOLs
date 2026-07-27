@@ -6,6 +6,7 @@ Used by both instantaneous.py and ensemble.py entry points.
 """
 
 import logging
+import os
 import re
 from typing import List, Tuple
 
@@ -156,6 +157,33 @@ def validate_config(config: Config) -> Tuple[bool, str, List[str]]:
     memory_warning = validate_memory_for_images(config)
     if memory_warning:
         warnings.append(memory_warning)
+
+    # Native-thread budget. Every Dask worker is its own process and each opens
+    # native threadpools sized to omp_threads, so the machine spends
+    # workers * omp_threads threads at once. The C kernels (correlation, warp,
+    # and the k-space LM fitter) honour omp_threads directly, so an
+    # over-committed product shows up as contention, not as an error.
+    n_cores = os.cpu_count()
+    if n_cores:
+        # omp_threads is a str property with no coercion, so a YAML value like
+        # "auto" would make int() raise here — and validate_config is contracted
+        # to RETURN (False, msg, warnings), never to raise.
+        try:
+            budget = int(config.dask_workers_per_node) * int(config.omp_threads)
+        except (TypeError, ValueError):
+            errors.append(
+                f"processing.omp_threads / dask_workers_per_node must be "
+                f"integers, got omp_threads={config.omp_threads!r} "
+                f"dask_workers_per_node={config.dask_workers_per_node!r}"
+            )
+            return False, "\n".join(errors), warnings
+        if budget > n_cores:
+            warnings.append(
+                f"Thread budget {budget} exceeds {n_cores} cores "
+                f"(dask_workers_per_node={config.dask_workers_per_node} x "
+                f"omp_threads={config.omp_threads}). Native threadpools will "
+                f"contend; reduce either knob in processing:."
+            )
 
     # Ensemble-specific validation (when ensemble processing is enabled)
     if config.data.get("processing", {}).get("ensemble", False):

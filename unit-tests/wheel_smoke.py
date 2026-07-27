@@ -30,7 +30,7 @@ print(f"versions: core={pivtools_core.__version__} cli={pivtools_cli.__version__
 # --- 2. + 3. ctypes loads + ISA floor --------------------------------------
 lib_dir = os.path.join(os.path.dirname(pivtools_cli.__file__), "lib")
 ext = ".dll" if os.name == "nt" else ".so"
-for name in ("libbulkxcorr2d", "libfusedwarp"):
+for name in ("libbulkxcorr2d", "libfusedwarp", "libkspacefit"):
     lib_path = os.path.join(lib_dir, name + ext)
     if not os.path.isfile(lib_path):
         raise SystemExit(
@@ -47,6 +47,15 @@ for name in ("libbulkxcorr2d", "libfusedwarp"):
         if lib.pivtools_cpu_supported() != 1:
             raise SystemExit(f"FAIL: pivtools_cpu_supported() == 0 in {name}")
         print(f"CPU ISA floor OK ({name})")
+    if name == "libkspacefit":
+        # Export-table probe. On Windows a symbol declared without
+        # __declspec(dllexport) loads fine as a library but is absent from the
+        # export table, so the DLL is useless to ctypes — catch that here
+        # rather than at the first ensemble run.
+        if not hasattr(lib, "kspace_lm_fit_batch"):
+            raise SystemExit(f"FAIL: kspace_lm_fit_batch symbol missing from {name}")
+        lib.kspace_lm_fit_max_threads.restype = ctypes.c_int
+        print(f"OpenMP max threads = {lib.kspace_lm_fit_max_threads()} ({name})")
 
 # --- 4. config round-trip ---------------------------------------------------
 from pivtools_core.config import Config  # noqa: E402

@@ -1942,14 +1942,23 @@ class Config:
 
     def _get_auto_compute_params(self):
         """
-        Auto-detect optimal compute parameters based on system resources.
+        Auto-detect the Dask per-worker memory limit from system resources.
         Results are cached to avoid repeated detection.
+
+        Scope note (2026-07-27): this used to derive ``dask_workers_per_node``
+        from ``os.cpu_count()`` and pin ``omp_threads`` to 2. It no longer
+        touches either — both now always come from ``processing:`` in the
+        config. The thread budget a run spends is ``dask_workers_per_node *
+        omp_threads``, and deriving one factor from the core count while the
+        other stayed configured made that product unpredictable: on a 20-core
+        machine it silently became 20 * 2 = 40 threads. Those two knobs are a
+        tuning decision, not something to infer. Memory per worker genuinely
+        does depend on the machine, so it stays here.
 
         Returns
         -------
         dict
-            Dictionary with keys: omp_threads, dask_workers_per_node,
-            dask_memory_limit
+            Dictionary with key: dask_memory_limit
         """
         # Return cached result if available
         if self._auto_compute_cache is not None:
@@ -1957,35 +1966,35 @@ class Config:
 
         import psutil
 
-        # Get number of CPU cores
-        cpu_count = os.cpu_count() or 4
-
         # Get total system memory in GB
         total_memory_gb = psutil.virtual_memory().total / (1024**3)
 
-        # Workers per node = number of CPUs
-        workers_per_node = cpu_count
+        # Divide by the CONFIGURED worker count — these processes are what
+        # actually hold memory, and it is no longer cpu_count.
+        workers = max(1, int(self.dask_workers_per_node))
 
-        # OMP threads = 2 (as requested)
-        omp_threads = 2
-
-        # Dask memory = (total memory - 10%) / cpu_count
+        # Dask memory = (total memory - 10%) / workers
         # Reserve 10% for system overhead
         available_memory_gb = total_memory_gb * 0.9
-        memory_per_worker_gb = available_memory_gb / cpu_count
+        memory_per_worker_gb = available_memory_gb / workers
         dask_memory_limit = f"{memory_per_worker_gb:.2f}GB"
 
+        logging.warning(
+            "auto_compute_params now sizes dask_memory_limit ONLY (changed "
+            "2026-07-27). dask_workers_per_node and omp_threads come from "
+            "processing: — if this config relied on them being auto-detected, "
+            "set them explicitly, or the run uses the defaults (%d worker(s), "
+            "%s threads).",
+            workers,
+            self.omp_threads,
+        )
         logging.info("Auto-detected compute parameters:")
-        logging.info("  CPU cores: %d", cpu_count)
         logging.info("  Total memory: %.2f GB", total_memory_gb)
-        logging.info("  Workers per node: %d", workers_per_node)
-        logging.info("  OMP threads: %d", omp_threads)
+        logging.info("  Workers per node (from config): %d", workers)
         logging.info("  Memory per worker: %s", dask_memory_limit)
 
         # Cache the result
         self._auto_compute_cache = {
-            "omp_threads": omp_threads,
-            "dask_workers_per_node": workers_per_node,
             "dask_memory_limit": dask_memory_limit,
         }
 
@@ -1993,16 +2002,20 @@ class Config:
 
     @property
     def omp_threads(self):
-        """Return number of OMP threads as string."""
-        if self.auto_compute_params:
-            return str(self._get_auto_compute_params()["omp_threads"])
+        """Return number of OMP threads as string.
+
+        Always from ``processing.omp_threads`` — see ``_get_auto_compute_params``
+        for why ``auto_compute_params`` no longer overrides this.
+        """
         return str(self.data.get("processing", {}).get("omp_threads", 4))
 
     @property
     def dask_workers_per_node(self):
-        """Return number of Dask workers per node."""
-        if self.auto_compute_params:
-            return self._get_auto_compute_params()["dask_workers_per_node"]
+        """Return number of Dask workers per node.
+
+        Always from ``processing.dask_workers_per_node`` — see
+        ``_get_auto_compute_params``.
+        """
         return self.data.get("processing", {}).get("dask_workers_per_node", 1)
 
     @property
