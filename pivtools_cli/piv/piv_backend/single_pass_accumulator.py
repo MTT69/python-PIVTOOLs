@@ -101,6 +101,22 @@ def _linear_pair_envelope(
     return env
 
 
+def _zero_plane_means(
+    flat: np.ndarray, n_windows: int, corr_size: tuple[int, int]
+) -> np.ndarray:
+    """Subtract each window's correlation-plane mean ('+dc_zero' bg variants).
+
+    Zeroes exactly the DC bin of every window's plane spectrum and touches no
+    other bin (DFT orthogonality). Must run BEFORE the envelope divide: the
+    divide is a k-space convolution that spreads any DC-bin anomaly (per-pair
+    scatter, flicker residual κ·R_bg) into the low-k fit bins — the ring/comb
+    artifacts of the 2026-07-27 bg-method investigation.
+    """
+    planes = flat.reshape(n_windows, corr_size[0], corr_size[1])
+    planes = planes - planes.mean(axis=(1, 2), keepdims=True)
+    return planes.reshape(-1).astype(flat.dtype, copy=False)
+
+
 class SinglePassAccumulator:
     """
     Accumulates correlation planes for single-pass ensemble PIV.
@@ -616,6 +632,18 @@ class SinglePassAccumulator:
                 f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance."
             )
 
+        # Step 4b: finalize-time DC-zero ('+dc_zero' bg variants) — subtract each
+        # window's plane mean so the envelope divide below has no DC-bin anomaly
+        # to spread into the low-k fit bins. Ordering is load-bearing.
+        if self.config.ensemble_dc_zero:
+            R_AA_ensemble = _zero_plane_means(R_AA_ensemble, _n_win, _cs)
+            R_BB_ensemble = _zero_plane_means(R_BB_ensemble, _n_win, _cs)
+            R_AB_ensemble = _zero_plane_means(R_AB_ensemble, _n_win, _cs)
+            logging.info(
+                f"Pass {pass_idx + 1}: DC-zero applied to AA/BB/AB planes "
+                f"({bg_method})"
+            )
+
         # Step 5: Get configuration for this pass
         win_size = pass_data["win_size"]
         corr_size = pass_data["corr_size"]
@@ -639,11 +667,13 @@ class SinglePassAccumulator:
             #   single — autos carry the sum-window envelope B ⋆ B; AB carries the
             #            asymmetric A ⋆ B trapezoid (the divide is a no-op wherever a
             #            sum-window margin puts the peak on the E = 1 plateau).
-            # Safe only because the per-pair pedestal is removed at source
-            # (window_mean) — a surviving pedestal is amplified by the divide into the
-            # 2026-07-08 "bowl" that diverges the LM fit. The weights used here must
-            # match cpu_ensemble.py (singlepix/bsingle) so E equals the actual
-            # attenuation the C correlator applied.
+            # Safe only because the pedestal is removed before this divide — either
+            # per pair at source (window_mean in C) or at finalize (the '+dc_zero'
+            # DC-bin zero in Step 4b above; ordering load-bearing). A surviving
+            # pedestal is amplified by the divide into the 2026-07-08 "bowl" that
+            # diverges the LM fit. The weights used here must match cpu_ensemble.py
+            # (singlepix/bsingle) so E equals the actual attenuation the C
+            # correlator applied.
             # E(0) = 1, so the peak values used for normalization below are unchanged.
             envelope_runtype = self.config.ensemble_type[pass_idx]
             if envelope_runtype == "single":

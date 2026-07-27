@@ -2552,10 +2552,22 @@ class Config:
           images (kills stationary structure) then window-mean removal in C
           (kills per-pair DC scatter). No finalize-time subtraction.
 
+        - 'correlation+dc_zero' / 'image+dc_zero': the ensemble-level method
+          plus a finalize-time DC-zero — after background subtraction, each
+          window's correlation-plane mean is subtracted (exactly zeroing the
+          plane's DC bin) BEFORE the envelope divide. This neutralises the
+          per-pair DC scatter and any flicker residual parked in the DC bin
+          without touching per-pair data: for std passes it is equivalent to
+          'window_mean' at the fitter (the per-pair window mean only ever
+          zeroes the DC bin there), but with no per-pair machinery and, in
+          single mode, no A-mask aperture smear. Intended for clean or
+          gain-normalised data (2026-07-27 bg-method investigation).
+
         'correlation' and 'image' are mathematically equivalent for stationary
         brightness but differ under drift; 'window_mean' is the per-pair
         method; the '+window_mean' variants combine an ensemble-level method
-        with the per-pair one (both exact).
+        with the per-pair one (both exact); the '+dc_zero' variants combine an
+        ensemble-level method with the finalize-time DC-bin zero.
 
         Default: 'correlation'
         """
@@ -2568,6 +2580,8 @@ class Config:
             "window_mean",
             "correlation+window_mean",
             "image+window_mean",
+            "correlation+dc_zero",
+            "image+dc_zero",
         }
         if method not in valid_methods:
             raise ValueError(
@@ -2598,6 +2612,18 @@ class Config:
         subtraction branch (mean-image correlation for base 'correlation').
         """
         return self.ensemble_background_subtraction_method.split("+", 1)[0]
+
+    @property
+    def ensemble_dc_zero(self) -> bool:
+        """True when the finalize-time DC-zero runs ('+dc_zero' variants).
+
+        Drives the per-window plane-mean subtraction applied to the ensemble
+        correlation planes after background subtraction and before the
+        envelope divide in SinglePassAccumulator.finalize_pass. The ordering
+        is load-bearing: the envelope divide spreads any DC-bin anomaly into
+        the low-k fit bins, so the DC bin must be zeroed first.
+        """
+        return "dc_zero" in self.ensemble_background_subtraction_method.split("+")
 
     @property
     def ensemble_per_pair_normalization(self) -> bool:

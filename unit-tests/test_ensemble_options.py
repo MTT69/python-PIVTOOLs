@@ -392,7 +392,12 @@ class TestFitterSelectionAndValidation:
             ensemble_resume_from_pass = 0
             ensemble_num_passes = 1
 
-        for method in ("correlation+window_mean", "image+window_mean"):
+        for method in (
+            "correlation+window_mean",
+            "image+window_mean",
+            "correlation+dc_zero",
+            "image+dc_zero",
+        ):
             FakeCfg.ensemble_background_subtraction_method = method
             FakeCfg.ensemble_per_pair_normalization = True
             ok, errors, _ = validate_ensemble_config(FakeCfg())
@@ -418,24 +423,69 @@ def _real_config(bg_method):
 
 class TestCombinedModeConfig:
     def test_enum_and_derived_properties(self):
-        # (method, base, window_mean_in_correlator)
+        # (method, base, window_mean_in_correlator, dc_zero)
         table = [
-            ("correlation", "correlation", False),
-            ("image", "image", False),
-            ("window_mean", "window_mean", True),
-            ("correlation+window_mean", "correlation", True),
-            ("image+window_mean", "image", True),
+            ("correlation", "correlation", False, False),
+            ("image", "image", False, False),
+            ("window_mean", "window_mean", True, False),
+            ("correlation+window_mean", "correlation", True, False),
+            ("image+window_mean", "image", True, False),
+            ("correlation+dc_zero", "correlation", False, True),
+            ("image+dc_zero", "image", False, True),
         ]
-        for method, base, in_corr in table:
+        for method, base, in_corr, dc_zero in table:
             cfg = _real_config(method)
             assert cfg.ensemble_background_subtraction_method == method
             assert cfg.ensemble_bg_base_method == base
             assert cfg.ensemble_window_mean_in_correlator is in_corr
+            assert cfg.ensemble_dc_zero is dc_zero
 
     def test_invalid_value_rejected(self):
-        cfg = _real_config("window_mean+correlation")
-        with pytest.raises(ValueError, match="background_subtraction_method"):
-            cfg.ensemble_background_subtraction_method
+        for bad in (
+            "window_mean+correlation",
+            "dc_zero",
+            "window_mean+dc_zero",
+            "correlation+window_mean+dc_zero",
+        ):
+            cfg = _real_config(bad)
+            with pytest.raises(ValueError, match="background_subtraction_method"):
+                cfg.ensemble_background_subtraction_method
+
+
+class TestDcZeroPlaneMeans:
+    """Finalize-time DC-zero: exactly the DC bin, nothing else."""
+
+    def _planes(self, dtype=np.float32, n_win=6, cs=(16, 12)):
+        rng = np.random.default_rng(7)
+        flat = rng.normal(1.5, 0.5, size=n_win * cs[0] * cs[1]).astype(dtype)
+        return flat, n_win, cs
+
+    def test_plane_means_zeroed(self):
+        from pivtools_cli.piv.piv_backend.single_pass_accumulator import (
+            _zero_plane_means,
+        )
+
+        flat, n_win, cs = self._planes()
+        out = _zero_plane_means(flat, n_win, cs)
+        planes = out.reshape(n_win, *cs)
+        assert np.allclose(planes.mean(axis=(1, 2)), 0.0, atol=1e-6)
+        assert out.dtype == flat.dtype
+        assert out.shape == flat.shape
+
+    def test_only_dc_bin_touched(self):
+        from pivtools_cli.piv.piv_backend.single_pass_accumulator import (
+            _zero_plane_means,
+        )
+
+        flat, n_win, cs = self._planes(dtype=np.float64)
+        out = _zero_plane_means(flat, n_win, cs)
+        F_in = np.fft.fft2(flat.reshape(n_win, *cs))
+        F_out = np.fft.fft2(out.reshape(n_win, *cs))
+        # DC coefficient exactly removed
+        assert np.allclose(F_out[:, 0, 0], 0.0, atol=1e-9 * abs(F_in[:, 0, 0]).max())
+        # every other bin untouched
+        F_in[:, 0, 0] = 0.0
+        assert np.allclose(F_out, F_in, rtol=0, atol=1e-9 * abs(F_in).max())
 
 
 # ---------------------------------------------------------------------------

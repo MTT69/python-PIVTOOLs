@@ -716,6 +716,7 @@ ensemble_piv:
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   # correlation | image | window_mean | correlation+window_mean | image+window_mean
+  # | correlation+dc_zero | image+dc_zero (finalize DC-bin zero, no per-pair mean)
   background_subtraction_method: correlation
   # per_pair_normalization requires background_subtraction_method: window_mean (exactly)
   per_pair_normalization: false

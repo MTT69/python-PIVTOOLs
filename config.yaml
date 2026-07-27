@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Synthetic_validation\Experimental\preprocessed_nomeansub
+  - E:\Synthetic_validation\Clean_synthetic\DC_zero
   source_paths:
-  - E:\alk235\cam4_all_512_tiff\Cam4_normalised
+  - E:\Synthetic\Planar_no_noise
   active_paths:
   - 0
   camera_numbers:
@@ -23,10 +23,10 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 2100
+  num_images: 4000
   image_shape:
-  - 2736
-  - 512
+  - 2048
+  - 2048
 batches:
   size: 10
 logging:
@@ -140,7 +140,7 @@ instantaneous_piv:
   dump_correlation_planes: false
 ensemble_piv:
   fit_method: kspace
-  kspace_shape: gaussian
+  kspace_shape: kx4
   kspace_floor: coloured
   skip_background_subtraction: false
   gradient_correction: true
@@ -148,7 +148,7 @@ ensemble_piv:
   predictor_smoothing: false
   image_warp_interpolation: lanczos
   mask_center_pixel: true
-  background_subtraction_method: correlation
+  background_subtraction_method: correlation+dc_zero
   window_size:
   - - 64
     - 64
@@ -171,12 +171,12 @@ ensemble_piv:
   store_planes: true
   save_diagnostics: true
   sum_window:
-  - 24
-  - 24
+  - 32
+  - 32
   sum_fitting_window_enabled: true
   sum_fitting_window:
-  - 24
-  - 24
+  - 16
+  - 16
   resume_from_pass: 0
   window_type: square
   predictor_boundary_conditions:
@@ -256,7 +256,7 @@ calibration:
     fix_k2: true
 filters: []
 masking:
-  enabled: true
+  enabled: false
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
   mode: rectangular
