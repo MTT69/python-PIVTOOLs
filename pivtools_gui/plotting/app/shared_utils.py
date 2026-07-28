@@ -68,6 +68,9 @@ VARIABLE_UNITS = {
     "peak_ratio": "-",
     "peakheight": "-",
     "mean_peak_height": "-",
+    # Correlation-quality maps (correlation_quality statistic)
+    "nan_pct": "%",
+    "peak_ratio_median": "-",
     # Ensemble diagnostics
     "nan_reason": "-",
     "b_mask": "-",

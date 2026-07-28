@@ -1027,6 +1027,7 @@ class Config:
             "mean_vorticity": True,
             "mean_divergence": True,
             "mean_peak_height": False,
+            "correlation_quality": False,
             # Instantaneous (per-frame) statistics
             "inst_velocity": True,
             "inst_stresses": True,

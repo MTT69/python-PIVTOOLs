@@ -20,6 +20,11 @@ from pivtools_core.config import get_config
 from pivtools_core.coordinate_utils import extract_coordinates
 from pivtools_core.paths import get_data_paths
 from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
+from pivtools_gui.vector_statistics.correlation_quality import (
+    load_timeseries_mat,
+    plot_nan_reasons,
+    plot_timeseries,
+)
 
 from ...utils import camera_number
 from ..plot_maker import make_scalar_settings
@@ -179,6 +184,77 @@ def plot_stats():
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception:
         logger.exception("plot_stats: unexpected error")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@vector_plot_bp.route("/plot_corr_quality", methods=["GET"])
+def plot_corr_quality():
+    """
+    Render a correlation-quality time-series figure as base64 PNG.
+
+    Query params: the usual plot params (base_path, camera, run, merged,
+    is_uncalibrated, ...) plus ``which`` = "timeseries" | "nan_reasons".
+    Reads stats_dir/mean_stats/corr_quality_timeseries.mat (written by the
+    correlation_quality statistic). Returns the standard {image, meta}
+    shape but WITHOUT meta.axes_bbox — these figures are not cursor-mapped,
+    and the frontend disables hover/zoom overlays when axes_bbox is absent.
+    """
+    import base64
+    from io import BytesIO
+
+    try:
+        params = parse_plot_params(request)
+        which = request.args.get("which", default="timeseries", type=str)
+        if which not in ("timeseries", "nan_reasons"):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"unknown corr-quality figure '{which}' "
+                        "(expected 'timeseries' or 'nan_reasons')",
+                    }
+                ),
+                400,
+            )
+
+        paths = validate_and_get_paths(params)
+        ts_file = Path(paths["stats_dir"]) / "mean_stats" / "corr_quality_timeseries.mat"
+        if not ts_file.exists():
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "correlation quality not computed for this "
+                        "dataset — tick 'Correlation Quality' in the "
+                        "Statistics panel and recalculate",
+                    }
+                ),
+                404,
+            )
+
+        run = params["run"] or 1
+        agg = load_timeseries_mat(ts_file, run)
+
+        title = f"Correlation quality — pass {run}"
+        buf = BytesIO()
+        if which == "timeseries":
+            plot_timeseries(agg, title, buf)
+        else:
+            plot_nan_reasons(agg, title, buf)
+        buf.seek(0)
+        b64_img = base64.b64encode(buf.read()).decode("utf-8")
+
+        meta = {
+            "run": run,
+            "var": f"corrq:{which}",
+            "n_frames": int(agg.frames.size),
+        }
+        return jsonify({"success": True, "image": b64_img, "meta": meta})
+    except ValueError as e:
+        logger.warning(f"plot_corr_quality: validation error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception:
+        logger.exception("plot_corr_quality: unexpected error")
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
@@ -535,6 +611,7 @@ def check_all_vars():
             "instantaneous_stats": [],
             "mean_stats": [],
             "ensemble": [],
+            "corr_quality": [],
         }
 
         # 1. Check instantaneous frame file
@@ -578,6 +655,11 @@ def check_all_vars():
             result["mean_stats"] = get_plottable_vars(
                 mean_stats_path, var_name="piv_result"
             )
+
+        # 3b. Correlation-quality time series (server-rendered figures, not
+        # 2D fields — the frontend shows them as pseudo-variables)
+        if (mean_stats_dir / "corr_quality_timeseries.mat").exists():
+            result["corr_quality"] = ["timeseries", "nan_reasons"]
 
         # 4. Check ensemble_result.mat
         try:

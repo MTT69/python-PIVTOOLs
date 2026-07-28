@@ -468,3 +468,259 @@ class TestDiagnosticFigures:
         fig.tight_layout()
         fig.savefig(output_dir / "vector_statistics_verification.png", dpi=150)
         plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Correlation-quality tests
+# ---------------------------------------------------------------------------
+
+from pivtools_gui.vector_statistics.correlation_quality import (  # noqa: E402
+    aggregate,
+    extract_frame_record,
+    load_timeseries_mat,
+)
+
+
+def _write_quality_mat(
+    path,
+    peak_mag,
+    nan_mask,
+    b_mask,
+    nan_reason,
+    peak_ratio=None,
+):
+    """Write one uncalibrated-style frame file with quality channels."""
+    fields = [
+        ("ux", object),
+        ("uy", object),
+        ("b_mask", object),
+        ("nan_mask", object),
+        ("nan_reason", object),
+        ("peak_mag", object),
+    ]
+    if peak_ratio is not None:
+        fields.append(("peak_ratio", object))
+    dt = np.dtype(fields)
+    piv_result = np.empty((1,), dtype=dt)
+    shape = np.asarray(peak_mag).shape
+    piv_result[0]["ux"] = np.ones(shape, dtype=np.float64)
+    piv_result[0]["uy"] = np.ones(shape, dtype=np.float64)
+    piv_result[0]["b_mask"] = np.asarray(b_mask, dtype=np.uint8)
+    piv_result[0]["nan_mask"] = np.asarray(nan_mask, dtype=np.uint8)
+    piv_result[0]["nan_reason"] = np.asarray(nan_reason, dtype=np.int8)
+    piv_result[0]["peak_mag"] = np.asarray(peak_mag, dtype=np.float32)
+    if peak_ratio is not None:
+        piv_result[0]["peak_ratio"] = np.asarray(peak_ratio, dtype=np.float32)
+    scipy.io.savemat(str(path), {"piv_result": piv_result})
+
+
+class TestCorrelationQualityCompute:
+    """Compute-layer tests: extract_frame_record + aggregate on known data."""
+
+    @pytest.fixture()
+    def quality_dir(self, tmp_path):
+        """3 frames on a 2x3 grid, one masked window, known NaN pattern.
+
+        Window (0,0) is statically masked. Frame 1: no NaNs. Frame 2:
+        window (1,1) NaN (code 1). Frame 3: windows (1,1) and (0,2) NaN
+        (codes 1 and 10).
+        """
+        b_mask = np.zeros((2, 3), dtype=bool)
+        b_mask[0, 0] = True
+
+        for i, nan_windows in enumerate([[], [(1, 1)], [(1, 1), (0, 2)]]):
+            peak_mag = np.full((2, 3), 0.5, dtype=np.float32)
+            peak_mag[0, 1] = 0.9  # asymmetry so the mean is nontrivial
+            nan_mask = np.zeros((2, 3), dtype=bool)
+            nan_reason = np.zeros((2, 3), dtype=np.int8)
+            nan_reason[b_mask] = -1
+            nan_mask[b_mask] = True
+            for j, (r, c) in enumerate(nan_windows):
+                nan_mask[r, c] = True
+                nan_reason[r, c] = 1 if j == 0 else 10
+                peak_mag[r, c] = np.nan
+            ratio = np.full((2, 3), 3.0, dtype=np.float32)
+            _write_quality_mat(
+                tmp_path / f"B{i+1:05d}.mat",
+                peak_mag,
+                nan_mask,
+                b_mask,
+                nan_reason,
+                peak_ratio=ratio,
+            )
+        return tmp_path
+
+    def test_known_values(self, quality_dir):
+        files = sorted(quality_dir.glob("B*.mat"))
+        records = [extract_frame_record(f, pass_idx=0) for f in files]
+        agg = aggregate(records)
+
+        # 5 unmasked windows (6 minus 1 masked)
+        assert agg.n_unmasked == 5
+        # Frame 1: mean of [0.9, 0.5, 0.5, 0.5, 0.5] = 0.58
+        np.testing.assert_allclose(agg.mean_peak_mag[0], 0.58, rtol=1e-6)
+        # NaN %: 0/5, 1/5, 2/5
+        np.testing.assert_allclose(agg.nan_pct, [0.0, 20.0, 40.0])
+        # Masked window is NaN in both maps
+        assert np.isnan(agg.nan_pct_map[0, 0])
+        assert np.isnan(agg.peak_mag_map[0, 0])
+        # Window (1,1): NaN in 2 of 3 frames
+        np.testing.assert_allclose(agg.nan_pct_map[1, 1], 200.0 / 3.0)
+        # Reason breakdown: codes 1 and 10, masked (-1) and valid (0) excluded
+        assert list(agg.reason_codes) == [1, 10]
+        np.testing.assert_array_equal(agg.reason_counts[0], [0, 1, 1])
+        np.testing.assert_array_equal(agg.reason_counts[1], [0, 0, 1])
+        # Ratio present everywhere -> median is 3.0 each frame
+        np.testing.assert_allclose(agg.median_peak_ratio, [3.0, 3.0, 3.0])
+
+    def test_missing_peak_ratio_guard(self, tmp_path):
+        b_mask = np.zeros((2, 2), dtype=bool)
+        for i in range(2):
+            _write_quality_mat(
+                tmp_path / f"B{i+1:05d}.mat",
+                np.full((2, 2), 0.5),
+                np.zeros((2, 2), dtype=bool),
+                b_mask,
+                np.zeros((2, 2), dtype=np.int8),
+                peak_ratio=None,
+            )
+        files = sorted(tmp_path.glob("B*.mat"))
+        records = [extract_frame_record(f, pass_idx=0) for f in files]
+        agg = aggregate(records)
+        assert agg.median_peak_ratio is None
+        assert agg.ratio_map is None
+
+    def test_calibrated_file_raises(self, tmp_path):
+        """A file without peak_mag (calibrated-style) must fail loudly."""
+        dt = np.dtype([("ux", object), ("uy", object), ("b_mask", object)])
+        piv_result = np.empty((1,), dtype=dt)
+        piv_result[0]["ux"] = np.ones((2, 2))
+        piv_result[0]["uy"] = np.ones((2, 2))
+        piv_result[0]["b_mask"] = np.zeros((2, 2))
+        path = tmp_path / "B00001.mat"
+        scipy.io.savemat(str(path), {"piv_result": piv_result})
+
+        with pytest.raises(ValueError, match="peak_mag"):
+            extract_frame_record(path, pass_idx=0)
+
+
+class TestCorrelationQualityProcessor:
+    """Processor-level test: the correlation_quality statistic end-to-end."""
+
+    def test_processor_outputs(self, tmp_path):
+        n_frames = 3
+        shape = (4, 3)
+        base_dir = tmp_path
+
+        # Calibrated data dir (ux/uy/b_mask only, as production writes it)
+        cal_dir = (
+            base_dir / "calibrated_piv" / str(n_frames) / "Cam1" / "instantaneous"
+        )
+        coords_x, coords_y = _make_coords(shape)
+        ux = np.ones((n_frames,) + shape)
+        uy = np.ones((n_frames,) + shape)
+        _write_mat_files(cal_dir, ux, uy, coords_x, coords_y)
+
+        # Uncalibrated data dir with the quality channels
+        uncal_dir = (
+            base_dir / "uncalibrated_piv" / str(n_frames) / "Cam1" / "instantaneous"
+        )
+        uncal_dir.mkdir(parents=True, exist_ok=True)
+        b_mask = np.zeros(shape, dtype=bool)
+        for i in range(n_frames):
+            nan_mask = np.zeros(shape, dtype=bool)
+            nan_reason = np.zeros(shape, dtype=np.int8)
+            peak_mag = np.full(shape, 0.7, dtype=np.float32)
+            if i == 1:
+                nan_mask[2, 1] = True
+                nan_reason[2, 1] = 1
+                peak_mag[2, 1] = np.nan
+            _write_quality_mat(
+                uncal_dir / f"B{i+1:05d}.mat",
+                peak_mag,
+                nan_mask,
+                b_mask,
+                nan_reason,
+                peak_ratio=np.full(shape, 2.5, dtype=np.float32),
+            )
+
+        proc = VectorStatisticsProcessor(
+            data_dir=cal_dir,
+            base_dir=base_dir,
+            num_frame_pairs=n_frames,
+            vector_format="B%05d.mat",
+            type_name="instantaneous",
+            use_merged=False,
+            camera=1,
+        )
+        result = proc.process(
+            requested_statistics=["mean_velocity", "correlation_quality"],
+            save_figures=False,
+        )
+        assert result["success"], result.get("error")
+
+        # mean_stats.mat gains the 2D maps
+        mat = scipy.io.loadmat(
+            str(proc.mean_stats_dir / "mean_stats.mat"),
+            struct_as_record=False,
+            squeeze_me=True,
+        )
+        piv = mat["piv_result"]
+        if isinstance(piv, np.ndarray) and piv.dtype == object:
+            piv = piv[0]
+        nan_pct_map = np.asarray(piv.nan_pct)
+        assert nan_pct_map.shape == shape
+        np.testing.assert_allclose(nan_pct_map[2, 1], 100.0 / 3.0)
+        assert np.asarray(piv.peak_ratio_median).shape == shape
+
+        # Time-series file exists and round-trips through the loader
+        ts_file = proc.mean_stats_dir / "corr_quality_timeseries.mat"
+        assert ts_file.exists()
+        agg = load_timeseries_mat(ts_file, run=1)
+        assert agg.frames.size == n_frames
+        np.testing.assert_allclose(agg.nan_pct, [0.0, 100.0 / 12.0, 0.0])
+        np.testing.assert_allclose(agg.mean_peak_mag[0], 0.7, rtol=1e-3)
+        np.testing.assert_allclose(agg.median_peak_ratio, [2.5] * 3)
+        assert list(agg.reason_codes) == [1]
+
+        # Requesting a run with no data names the available ones
+        with pytest.raises(ValueError, match="available runs"):
+            load_timeseries_mat(ts_file, run=5)
+
+    def test_merged_target_skips_visibly(self, tmp_path, caplog):
+        """Merged targets have no uncalibrated source: skip, don't fail."""
+        import logging as _logging
+
+        n_frames = 2
+        shape = (3, 3)
+        base_dir = tmp_path
+        cal_dir = (
+            base_dir / "calibrated_piv" / str(n_frames) / "Merged" / "instantaneous"
+        )
+        coords_x, coords_y = _make_coords(shape)
+        _write_mat_files(
+            cal_dir,
+            np.ones((n_frames,) + shape),
+            np.ones((n_frames,) + shape),
+            coords_x,
+            coords_y,
+        )
+        proc = VectorStatisticsProcessor(
+            data_dir=cal_dir,
+            base_dir=base_dir,
+            num_frame_pairs=n_frames,
+            vector_format="B%05d.mat",
+            type_name="instantaneous",
+            use_merged=True,
+            camera=1,
+        )
+        with caplog.at_level(_logging.WARNING):
+            result = proc.process(
+                requested_statistics=["mean_velocity", "correlation_quality"],
+                save_figures=False,
+            )
+        assert result["success"], result.get("error")
+        assert any(
+            "correlation quality skipped" in r.getMessage() for r in caplog.records
+        )
+        assert not (proc.mean_stats_dir / "corr_quality_timeseries.mat").exists()

@@ -16,6 +16,7 @@ import logging
 import pickle
 import re
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
@@ -39,6 +40,15 @@ from pivtools_core.vector_loading import (
     find_valid_piv_runs,
     load_coords_from_directory,
     load_vectors_from_directory,
+)
+from pivtools_gui.vector_statistics.correlation_quality import (
+    aggregate as corr_aggregate,
+)
+from pivtools_gui.vector_statistics.correlation_quality import (
+    discover_frame_files,
+    extract_frame_record,
+    plot_nan_reasons,
+    plot_timeseries,
 )
 
 # ===================== CONFIGURATION =====================
@@ -338,6 +348,7 @@ class VectorStatisticsProcessor:
             "uv",
         ],  # Full stress tensor (+ ww, uw, vw for stereo)
         "mean_peak_height": ["mean_peak_height"],
+        "correlation_quality": ["nan_pct", "peak_ratio_median"],
         # Instantaneous (per-frame) statistics
         "inst_velocity": ["ux", "uy"],  # Per-frame velocity
         "inst_stresses": ["uu_inst", "vv_inst", "uv_inst"],  # Per-frame stress tensor
@@ -366,6 +377,7 @@ class VectorStatisticsProcessor:
         "mean_tke": "mean_tke",
         "mean_stresses": "mean_stresses",  # New canonical name for stress tensor
         "mean_peak_height": "mean_peak_height",
+        "correlation_quality": "correlation_quality",
         # Instantaneous (identity mappings)
         "inst_velocity": "inst_velocity",
         "inst_stresses": "inst_stresses",  # New canonical name for per-frame stresses
@@ -599,14 +611,40 @@ class VectorStatisticsProcessor:
             # Determine computation flags
             calc_flags = self._determine_calc_flags(active_stats)
 
-            # Progress bands sized to where wall time actually goes: the mean and
-            # instantaneous phases each sweep every frame file, so they share the
-            # wide bands; figures and the final save are quick tail work.
+            # Progress bands sized to where wall time actually goes: the mean,
+            # correlation-quality and instantaneous phases each sweep every
+            # frame file, so they share the wide bands; figures and the final
+            # save are quick tail work.
             should_save_inst = self._should_compute_instantaneous(active_stats)
-            if should_save_inst:
-                mean_band, inst_band, tail_start = (5, 35), (35, 90), 90
+            corr_requested = calc_flags["calc_corr_quality"]
+            if should_save_inst and corr_requested:
+                mean_band, corr_band, inst_band, tail_start = (
+                    (5, 30),
+                    (30, 45),
+                    (45, 90),
+                    90,
+                )
+            elif should_save_inst:
+                mean_band, corr_band, inst_band, tail_start = (
+                    (5, 35),
+                    None,
+                    (35, 90),
+                    90,
+                )
+            elif corr_requested:
+                mean_band, corr_band, inst_band, tail_start = (
+                    (5, 50),
+                    (50, 85),
+                    None,
+                    85,
+                )
             else:
-                mean_band, inst_band, tail_start = (5, 85), None, 85
+                mean_band, corr_band, inst_band, tail_start = (
+                    (5, 85),
+                    None,
+                    None,
+                    85,
+                )
 
             # Phase 1: Compute mean statistics
             mean_results = self._compute_mean_statistics(
@@ -617,6 +655,22 @@ class VectorStatisticsProcessor:
                 progress_callback,
                 progress_band=mean_band,
             )
+
+            # Phase 1b: Correlation quality (sweeps the UNCALIBRATED frame
+            # files — the quality channels don't exist in calibrated data)
+            corr_quality_results: dict = {}
+            if corr_requested:
+                corr_quality_results = self._compute_correlation_quality(
+                    valid_runs,
+                    progress_callback,
+                    progress_band=corr_band,
+                )
+                # Attach the 2-D maps so they ride the normal mean_stats
+                # save/figure path.
+                for run_num, agg in corr_quality_results.items():
+                    mean_results[run_num]["nan_pct"] = agg.nan_pct_map
+                    if agg.ratio_map is not None:
+                        mean_results[run_num]["peak_ratio_median"] = agg.ratio_map
 
             # Phase 2: Compute instantaneous statistics (if requested)
             if should_save_inst:
@@ -641,6 +695,7 @@ class VectorStatisticsProcessor:
                     coords_x_list,
                     coords_y_list,
                     active_stats,
+                    corr_quality_results=corr_quality_results,
                 )
 
             if progress_callback:
@@ -650,6 +705,8 @@ class VectorStatisticsProcessor:
             output_file = self._save_results(
                 valid_runs, mean_results, coords_x_list, coords_y_list
             )
+            if corr_quality_results:
+                self._save_corr_quality_timeseries(corr_quality_results)
 
             if progress_callback:
                 progress_callback(100)
@@ -708,6 +765,9 @@ class VectorStatisticsProcessor:
         # Peak height
         calc_peak_height = "mean_peak_height" in active_stats
 
+        # Correlation quality (uncalibrated-file sweep)
+        calc_corr_quality = "correlation_quality" in active_stats
+
         # Combined flags (calculate if either mean or inst needs it)
         calc_vorticity = calc_mean_vorticity or calc_inst_vorticity
         calc_divergence = calc_mean_divergence or calc_inst_divergence
@@ -728,6 +788,7 @@ class VectorStatisticsProcessor:
             "calc_gamma2": calc_inst_gamma or "gamma2" in active_stats,
             "gamma_radius": self.gamma_radius,
             "calc_peak_height": calc_peak_height,
+            "calc_corr_quality": calc_corr_quality,
             # Granular save flags for separate mean vs inst control
             "save_mean_vorticity": calc_mean_vorticity,
             "save_mean_divergence": calc_mean_divergence,
@@ -1052,6 +1113,155 @@ class VectorStatisticsProcessor:
 
         logger.info(f"[Statistics] Completed {completed}/{n_frames} frames")
 
+    def _compute_correlation_quality(
+        self,
+        valid_runs: list,
+        progress_callback: Optional[Callable[[int], None]],
+        progress_band: Tuple[int, int],
+    ) -> dict:
+        """
+        Sweep the UNCALIBRATED frame files and aggregate correlation quality.
+
+        The quality channels (peak_mag, peak_ratio, nan_mask, nan_reason)
+        exist only in uncalibrated vector files — calibrated files carry
+        just ux/uy/b_mask — so this always reads the uncalibrated data dir
+        regardless of which source the statistics run targets.
+
+        Returns
+        -------
+        dict
+            run_num -> Aggregates. Empty for merged/stereo targets (no
+            per-camera uncalibrated source), with a visible log message.
+
+        Raises
+        ------
+        RuntimeError / ValueError
+            If the uncalibrated data is missing or lacks the quality
+            fields — deliberately loud, no silent skip.
+        """
+        if self.use_merged or self.use_stereo:
+            logger.warning(
+                "[Statistics] correlation quality skipped for %s — "
+                "per-camera uncalibrated vector data required "
+                "(merged/stereo targets have none)",
+                self.cam_folder,
+            )
+            return {}
+
+        uncal_dir = get_data_paths(
+            base_dir=self.base_dir,
+            num_frame_pairs=self.num_frame_pairs,
+            cam=self.camera,
+            type_name=self.type_name,
+            use_uncalibrated=True,
+        )["data_dir"]
+        if not uncal_dir.is_dir():
+            raise RuntimeError(
+                f"correlation quality requires uncalibrated vector data, "
+                f"but {uncal_dir} does not exist"
+            )
+
+        files = discover_frame_files(uncal_dir)
+        logger.info(
+            "[Statistics] Correlation quality: %d uncalibrated frames in %s",
+            len(files),
+            uncal_dir,
+        )
+
+        band_lo, band_hi = progress_band
+        band_per_run = (band_hi - band_lo) / len(valid_runs)
+        max_workers = get_max_workers(len(files))
+
+        results: dict = {}
+        for run_i, run_num in enumerate(valid_runs):
+            pass_idx = run_num - 1
+            extract = partial(extract_frame_record, pass_idx=pass_idx)
+            records = []
+            run_lo = band_lo + run_i * band_per_run
+            if max_workers <= 1:
+                iterator = map(extract, files)
+            else:
+                executor = concurrent.futures.ProcessPoolExecutor(
+                    max_workers=max_workers
+                )
+                iterator = executor.map(extract, files, chunksize=32)
+            try:
+                for n_done, rec in enumerate(iterator, start=1):
+                    records.append(rec)
+                    if progress_callback and n_done % 100 == 0:
+                        progress_callback(
+                            int(run_lo + band_per_run * n_done / len(files))
+                        )
+            finally:
+                if max_workers > 1:
+                    executor.shutdown()
+
+            agg = corr_aggregate(records)
+            if agg.skipped:
+                logger.warning(
+                    "[Statistics] Correlation quality run %d: skipped %d "
+                    "of %d unreadable frame files",
+                    run_num,
+                    len(agg.skipped),
+                    len(files),
+                )
+            if agg.median_peak_ratio is None:
+                logger.info(
+                    "[Statistics] Correlation quality run %d: peak_ratio "
+                    "not computed in this dataset — ratio outputs omitted",
+                    run_num,
+                )
+            results[run_num] = agg
+
+        return results
+
+    def _save_corr_quality_timeseries(self, corr_quality_results: dict) -> Path:
+        """
+        Write the per-frame time series to mean_stats/corr_quality_timeseries.mat.
+
+        Struct array over runs (1-based run number -> index run-1), fields:
+        frames, mean_peak_mag, nan_pct, median_peak_ratio (empty when the
+        dataset has no peak_ratio), reason_codes, reason_counts.
+        """
+        max_run = max(corr_quality_results)
+        dt = np.dtype(
+            [
+                ("frames", object),
+                ("mean_peak_mag", object),
+                ("nan_pct", object),
+                ("median_peak_ratio", object),
+                ("reason_codes", object),
+                ("reason_counts", object),
+                ("n_unmasked", object),
+            ]
+        )
+        struct = np.empty((max_run,), dtype=dt)
+        empty = np.empty((0,))
+        for i in range(max_run):
+            for field in dt.names:
+                struct[i][field] = empty
+
+        for run_num, agg in corr_quality_results.items():
+            idx = run_num - 1
+            struct[idx]["frames"] = agg.frames
+            struct[idx]["mean_peak_mag"] = agg.mean_peak_mag
+            struct[idx]["nan_pct"] = agg.nan_pct
+            if agg.median_peak_ratio is not None:
+                struct[idx]["median_peak_ratio"] = agg.median_peak_ratio
+            struct[idx]["reason_codes"] = agg.reason_codes
+            struct[idx]["reason_counts"] = agg.reason_counts
+            struct[idx]["n_unmasked"] = np.int64(agg.n_unmasked)
+
+        meta = {
+            "camera": self.cam_folder,
+            "runs": sorted(corr_quality_results),
+            "timestamp": datetime.now().isoformat(),
+        }
+        out_file = self.mean_stats_dir / "corr_quality_timeseries.mat"
+        savemat(out_file, {"corr_quality": struct, "meta": meta})
+        logger.info(f"[Statistics] Saved correlation-quality time series to {out_file}")
+        return out_file
+
     def _save_figures(
         self,
         valid_runs: list,
@@ -1059,6 +1269,7 @@ class VectorStatisticsProcessor:
         coords_x_list: list,
         coords_y_list: list,
         active_stats: set,
+        corr_quality_results: Optional[dict] = None,
     ):
         """Save visualization figures for mean statistics."""
         from pivtools_gui.plotting.plot_maker import (
@@ -1206,6 +1417,28 @@ class VectorStatisticsProcessor:
                     symmetric=False,
                 )
 
+            if corr_quality_results and run_num in corr_quality_results:
+                agg = corr_quality_results[run_num]
+                title = f"{self.cam_folder} — pass {run_num}"
+                if "nan_pct" in res and res["nan_pct"] is not None:
+                    save_field(
+                        res["nan_pct"],
+                        "CorrQuality_NaN_Pct",
+                        "%",
+                        cmap="magma",
+                        symmetric=False,
+                    )
+                plot_timeseries(
+                    agg,
+                    title,
+                    self.figures_dir / f"Run_{run_num}_CorrQuality_Timeseries.png",
+                )
+                plot_nan_reasons(
+                    agg,
+                    title,
+                    self.figures_dir / f"Run_{run_num}_CorrQuality_NanReasons.png",
+                )
+
     def _save_results(
         self,
         valid_runs: list,
@@ -1233,6 +1466,8 @@ class VectorStatisticsProcessor:
             ("divergence", object),
             ("vorticity", object),
             ("mean_peak_height", object),
+            ("nan_pct", object),
+            ("peak_ratio_median", object),
         ]
         if stereo:
             dt_fields.extend(
@@ -1270,6 +1505,8 @@ class VectorStatisticsProcessor:
                 "divergence",
                 "vorticity",
                 "mean_peak_height",
+                "nan_pct",
+                "peak_ratio_median",
             ]:
                 if field in res and res[field] is not None:
                     piv_result[idx][field] = res[field]
