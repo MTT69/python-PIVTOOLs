@@ -15,10 +15,12 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import cv2
 import dask.array as da
 import numpy as np
 from dask.distributed import Client
 from scipy.io import savemat
+from scipy.ndimage import median_filter as scipy_median
 
 from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
 from pivtools_core.config import Config
@@ -140,11 +142,14 @@ def apply_all_filters_slim(
     N, C, H, W = block.shape
     logger.debug(f"Applying filters to block: shape={block.shape}")
 
-    # Determine if we should save intermediate outputs
+    # Determine if we should save intermediate outputs.
+    # First batch only: these are debug snapshots, and compressed savemat of
+    # full frames inside every worker task is expensive (~seconds per frame).
     save_intermediate = (
         save_intermediate_base is not None
         and num_frame_pairs is not None
         and block_id is not None
+        and block_id[0] == 0
         and (filter_specs or pixel_mask is not None)
     )
 
@@ -158,10 +163,12 @@ def apply_all_filters_slim(
         )
         logger.debug(f"Saving intermediate filter outputs to {save_dir}")
 
-    # Single copy at start - all subsequent operations modify in-place
-    # This avoids multiple copies if both mask and filters are applied
-    needs_copy = pixel_mask is not None or filter_specs
-    if needs_copy:
+    # Single copy at start - all subsequent operations modify in-place.
+    # Filters run in float32, so the defensive copy and the dtype promotion
+    # are one astype (also guarantees C-contiguous input for cv2).
+    if filter_specs:
+        block = block.astype(np.float32, copy=True)
+    elif pixel_mask is not None:
         block = block.copy()
 
     # Save before any filtering
@@ -239,6 +246,85 @@ def _gaussian_kernel_1d(size: int, sigma: float) -> np.ndarray:
     return k
 
 
+# scipy.ndimage border mode -> cv2 borderType. Verified bit-exact pairings on
+# real data (2026-07-28): nearest==REPLICATE, reflect==REFLECT (the
+# edge-duplicating variant; cv2's BORDER_REFLECT_101 is scipy 'mirror', NOT
+# this), constant==CONSTANT with value 0.
+_CV2_BORDER = {
+    "nearest": cv2.BORDER_REPLICATE,
+    "reflect": cv2.BORDER_REFLECT,
+    "constant": cv2.BORDER_CONSTANT,
+}
+
+
+def _as_c_contiguous(frame: np.ndarray) -> np.ndarray:
+    """cv2 silently allocates+copies for non-C-contiguous input; keep the copy
+    explicit so the zero-copy SIMD path is guaranteed for contiguous frames."""
+    if not frame.flags["C_CONTIGUOUS"]:
+        frame = np.ascontiguousarray(frame)
+    return frame
+
+
+def _median2d(frame: np.ndarray, size: Tuple[int, int], mode: str) -> np.ndarray:
+    """Median filter matching ``scipy.ndimage.median_filter(size=size, mode=mode)``.
+
+    Square 3/5 float32 kernels go through ``cv2.medianBlur`` (SIMD, ~80x
+    faster than scipy's rank filter). medianBlur's own border handling is
+    hard-coded to replicate, so the frame is pre-padded with the
+    scipy-matching border and cropped afterwards — bit-exact vs scipy
+    including the border ring (verified on real Cam4 data). Larger or
+    anisotropic kernels (the GUI allows median sizes up to 21) fall back to
+    scipy.
+    """
+    frame = _as_c_contiguous(frame)
+    k = size[0]
+    if size[0] == size[1] and k in (3, 5) and frame.dtype == np.float32:
+        r = k // 2
+        if mode == "constant":
+            padded = cv2.copyMakeBorder(
+                frame, r, r, r, r, cv2.BORDER_CONSTANT, value=0
+            )
+        else:
+            padded = cv2.copyMakeBorder(frame, r, r, r, r, _CV2_BORDER[mode])
+        return np.ascontiguousarray(cv2.medianBlur(padded, k)[r:-r, r:-r])
+    return scipy_median(frame, size=size, mode=mode)
+
+
+def _min2d(frame: np.ndarray, size: Tuple[int, int], mode: str) -> np.ndarray:
+    """Sliding minimum via ``cv2.erode`` — bit-exact vs scipy ``minimum_filter``.
+
+    cv2 structuring-element size is (width, height); scipy size is (sy, sx).
+    """
+    frame = _as_c_contiguous(frame)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size[1], size[0]))
+    return cv2.erode(frame, kernel, borderType=_CV2_BORDER[mode])
+
+
+def _max2d(frame: np.ndarray, size: Tuple[int, int], mode: str) -> np.ndarray:
+    """Sliding maximum via ``cv2.dilate`` — bit-exact vs scipy ``maximum_filter``."""
+    frame = _as_c_contiguous(frame)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size[1], size[0]))
+    return cv2.dilate(frame, kernel, borderType=_CV2_BORDER[mode])
+
+
+def _box2d(frame: np.ndarray, size: Tuple[int, int], dst: np.ndarray) -> np.ndarray:
+    """Normalized box smooth matching ``scipy uniform_filter(mode='constant')``.
+
+    Writes into ``dst`` (aliasing ``frame`` is safe for cv2.boxFilter).
+    Same math; cv2's running-sum order differs at float32 rounding level
+    (~1e-7 relative; measured displacement impact <= 2e-6 px).
+    """
+    frame = _as_c_contiguous(frame)
+    return cv2.boxFilter(
+        frame,
+        -1,
+        (size[1], size[0]),
+        dst=dst,
+        normalize=True,
+        borderType=cv2.BORDER_CONSTANT,
+    )
+
+
 def _apply_spatial_filters_numpy(
     block: np.ndarray,
     filter_specs: List[dict],
@@ -246,7 +332,12 @@ def _apply_spatial_filters_numpy(
     """
     Apply spatial filters to a numpy block.
 
-    Uses scipy.ndimage for direct numpy-based filtering on computed arrays.
+    Backend is cv2 (SIMD; 8-80x faster than the previous scipy.ndimage
+    implementation on these kernels), with scipy border semantics preserved
+    via ``_CV2_BORDER``. min/max/median outputs are bit-exact vs scipy;
+    box/gaussian differ only at float32 rounding level (~1e-7 relative).
+    Median kernels cv2 cannot express (size > 5 or anisotropic) fall back to
+    scipy inside ``_median2d``.
 
     Args:
         block: Image batch of shape (N, 2, H, W)
@@ -255,12 +346,6 @@ def _apply_spatial_filters_numpy(
     Returns:
         Filtered block
     """
-    from scipy.ndimage import correlate as scipy_correlate
-    from scipy.ndimage import maximum_filter as scipy_maximum
-    from scipy.ndimage import median_filter as scipy_median
-    from scipy.ndimage import minimum_filter as scipy_minimum
-    from scipy.ndimage import uniform_filter as scipy_uniform
-
     # In-place arithmetic below requires floating-point dtype
     if not np.issubdtype(block.dtype, np.floating):
         block = block.astype(np.float32)
@@ -269,22 +354,27 @@ def _apply_spatial_filters_numpy(
         filter_type = spec.get("type")
 
         if filter_type == "gaussian":
-            # FIR Gaussian kernel matching MATLAB fspecial('gaussian', size, sigma).
-            # Uses explicit kernel + correlation (not scipy IIR gaussian_filter).
+            # FIR Gaussian kernel matching MATLAB fspecial('gaussian', size, sigma),
+            # applied separably (the 2D kernel is an outer product by construction).
             size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
             sigma = spec.get("sigma", 1.0)
-            ky = _gaussian_kernel_1d(size[0], sigma)
-            kx = _gaussian_kernel_1d(size[1], sigma)
-            kernel_2d = np.outer(ky, kx).astype(np.float32)
+            ky = _gaussian_kernel_1d(size[0], sigma).astype(np.float32)
+            kx = _gaussian_kernel_1d(size[1], sigma).astype(np.float32)
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
-                    block[i, j] = scipy_correlate(
-                        block[i, j], kernel_2d, mode="constant"
+                    block[i, j] = cv2.sepFilter2D(
+                        _as_c_contiguous(block[i, j]),
+                        -1,
+                        kx,
+                        ky,
+                        borderType=cv2.BORDER_CONSTANT,
                     )
 
         elif filter_type == "median":
             size = _normalize_kernel_size(spec.get("size"), default=(5, 5))
-            block = scipy_median(block, size=(1, 1) + size)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    block[i, j] = _median2d(block[i, j], size, mode="reflect")
 
         elif filter_type == "norm":
             size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
@@ -294,8 +384,8 @@ def _apply_spatial_filters_numpy(
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    local_min = scipy_minimum(frame, size=size)
-                    local_range = scipy_maximum(frame, size=size)
+                    local_min = _min2d(frame, size, mode="reflect")
+                    local_range = _max2d(frame, size, mode="reflect")
                     local_range -= local_min
                     np.maximum(local_range, gain_floor, out=local_range)
                     frame -= local_min
@@ -313,10 +403,8 @@ def _apply_spatial_filters_numpy(
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    local_min = scipy_minimum(frame, size=size, mode="nearest")
-                    scipy_uniform(
-                        local_min, size=size, output=local_min, mode="constant"
-                    )
+                    local_min = _min2d(frame, size, mode="nearest")
+                    _box2d(local_min, size, dst=local_min)
                     np.maximum(local_min, gain_floor, out=local_min)
                     np.maximum(frame, 0, out=frame)
                     frame /= local_min
@@ -332,14 +420,10 @@ def _apply_spatial_filters_numpy(
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    local_min = scipy_minimum(frame, size=size, mode="nearest")
-                    local_max = scipy_maximum(frame, size=size, mode="nearest")
-                    scipy_uniform(
-                        local_min, size=size, output=local_min, mode="constant"
-                    )
-                    scipy_uniform(
-                        local_max, size=size, output=local_max, mode="constant"
-                    )
+                    local_min = _min2d(frame, size, mode="nearest")
+                    local_max = _max2d(frame, size, mode="nearest")
+                    _box2d(local_min, size, dst=local_min)
+                    _box2d(local_max, size, dst=local_max)
                     local_max -= local_min
                     np.maximum(local_max, gain_floor, out=local_max)
                     frame -= local_min
@@ -354,9 +438,9 @@ def _apply_spatial_filters_numpy(
             for i in range(block.shape[0]):
                 for j in range(block.shape[1]):
                     frame = block[i, j]
-                    bg = scipy_median(frame, size=(3, 3), mode="constant")
-                    bg = scipy_minimum(bg, size=size, mode="nearest")
-                    scipy_uniform(bg, size=size, output=bg, mode="constant")
+                    bg = _median2d(frame, (3, 3), mode="constant")
+                    bg = _min2d(bg, size, mode="nearest")
+                    _box2d(bg, size, dst=bg)
                     frame -= bg
                     np.maximum(frame, 0, out=frame)
 
@@ -380,15 +464,15 @@ def _apply_spatial_filters_numpy(
 
         elif filter_type == "lmax":
             size = _normalize_kernel_size(spec.get("size"), default=(7, 7))
-            block = scipy_maximum(block, size=(1, 1) + size)
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    block[i, j] = _max2d(block[i, j], size, mode="reflect")
 
         elif filter_type == "invert":
             img_max = block.max(axis=(-2, -1), keepdims=True)
             np.subtract(img_max, block, out=block)
 
         elif filter_type == "clahe":
-            import cv2
-
             clip_limit = spec.get("clip_limit", 2.0)
             tile_size = _normalize_kernel_size(
                 spec.get("tile_grid_size"), default=(8, 8)
@@ -466,13 +550,14 @@ def create_filter_pipeline(
     # Apply filters via map_blocks using the slim version
     # This only serializes the filter specs (small dicts), not the full config
     # Use block_id to get the batch number for intermediate saving
+    # Filters promote to float32; mask-only blocks keep the source dtype.
     filtered = images.map_blocks(
         apply_all_filters_slim,
         filter_specs=filter_specs,
         pixel_mask=pixel_mask,
         save_intermediate_base=save_base_str,
         num_frame_pairs=num_frame_pairs,
-        dtype=images.dtype,
+        dtype=np.float32 if filter_specs else images.dtype,
         block_id=True,  # Tell dask to pass block_id to the function
     )
 

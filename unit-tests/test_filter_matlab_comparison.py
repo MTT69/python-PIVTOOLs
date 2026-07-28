@@ -407,6 +407,70 @@ class TestPODFilterStandalone:
         assert result.shape == batch.shape
         assert result.dtype == batch.dtype
 
+    def test_projection_matches_rank1_deflation(self):
+        """The one-shot projection M -= PSI_k (PSI_k^T M) must reproduce
+        sequential rank-1 deflation (the pre-2026-07-28 implementation).
+
+        Reference is the old algorithm run in float64: per selected mode,
+        phi = M.T @ psi (normalized), tcoeff = M @ phi, M -= outer(tcoeff, phi).
+        The two are identical in exact arithmetic (temporal eigenvectors are
+        orthonormal); float32 GEMMs put the difference at the rounding floor.
+
+        The fixture uses coherent modes with well-separated amplitudes:
+        with a degenerate (i.i.d.-noise) spectrum the eigenvectors are not
+        identifiable and ANY precision perturbation legitimately rotates
+        which noise directions are removed — that would test the fixture,
+        not the projection.
+        """
+        rng = np.random.RandomState(7)
+        n, h, w = 16, 64, 64
+        yy, xx = np.meshgrid(
+            np.linspace(0, 1, h), np.linspace(0, 1, w), indexing="ij"
+        )
+        modes = [
+            500.0 * np.exp(-((yy - 0.5) ** 2 + (xx - 0.5) ** 2) / 0.1),
+            50.0 * (xx * yy),
+            10.0 * np.sin(4 * np.pi * xx),
+        ]
+        images = np.zeros((n, h, w), dtype=np.float32)
+        for i in range(n):
+            for amp_scale, m in zip((0.2, 0.5, 0.8), modes):
+                coeff = np.float32(1.0 + amp_scale * rng.randn())
+                images[i] += coeff * m.astype(np.float32)
+            images[i] += rng.rand(h, w).astype(np.float32)  # small noise
+
+        filtered = pod_filter_single_channel(images.copy(), verbose=False)
+
+        # Old-algorithm float64 reference, using the same mode selection
+        M = images.reshape(n, h * w).astype(np.float64)
+        C = M @ M.T
+        PSI, S, _ = np.linalg.svd(C, full_matrices=False)
+        n_remove = find_auto_mode(PSI, S, n)
+        assert n_remove > 0, "fixture must select at least one mode"
+
+        # The comparison is only meaningful if both precisions select the
+        # same modes (guaranteed here by the separated spectrum).
+        C32 = (images.reshape(n, h * w) @ images.reshape(n, h * w).T).astype(
+            np.float64
+        )
+        PSI32, S32, _ = np.linalg.svd(C32, full_matrices=False)
+        assert find_auto_mode(PSI32, S32, n) == n_remove
+        for mode_i in range(n_remove):
+            phi = M.T @ PSI[:, mode_i]
+            norm = np.linalg.norm(phi)
+            if norm > 1e-10:
+                phi /= norm
+            tcoeff = M @ phi
+            M -= np.outer(tcoeff, phi)
+        expected = M.reshape(n, h, w)
+
+        scale = np.abs(expected).max()
+        assert np.abs(filtered - expected).max() < 1e-3 * scale, (
+            "projection deviates from rank-1 deflation beyond the float32 "
+            f"rounding floor: {np.abs(filtered - expected).max():.3e} "
+            f"vs allowed {1e-3 * scale:.3e}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Diagnostic figures (gated by --make-figures)

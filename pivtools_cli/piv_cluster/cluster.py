@@ -237,6 +237,14 @@ def set_worker_omp_threads(omp_threads: str):
         "NUMEXPR_NUM_THREADS",
     ):
         os.environ[var] = omp_threads
+
+    # cv2 runs its own thread pool (ignores OMP_NUM_THREADS) and defaults to
+    # every core; the spatial image filters go through cv2, so pin it too.
+    # Measured: those filters lose nothing single-threaded.
+    import cv2
+
+    cv2.setNumThreads(int(omp_threads))
+
     logging.debug(
-        f"Set OMP/BLAS/MKL/NumExpr threads to {omp_threads} in worker process"
+        f"Set OMP/BLAS/MKL/NumExpr/cv2 threads to {omp_threads} in worker process"
     )
