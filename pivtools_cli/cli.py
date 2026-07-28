@@ -713,6 +713,8 @@ ensemble_piv:
   kspace_shape: gaussian
   # coloured (analytic N0*P(k;f) pipeline floor) | flat (pre-2026-07 model)
   kspace_floor: coloured
+  # divide AA/BB/AB by the pair-count envelope (true = pre-2026-07-27 behaviour)
+  envelope_divide: false
   skip_background_subtraction: false
   image_warp_interpolation: cubic
   # correlation | image | window_mean | correlation+window_mean | image+window_mean

@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Synthetic_validation\Clean_synthetic\DC_zero
+  - E:\Synthetic_validation\Noisy_synthetic\inst_check
   source_paths:
-  - E:\Synthetic\Planar_no_noise
+  - E:\Synthetic\planar_noise
   active_paths:
   - 0
   camera_numbers:
@@ -23,12 +23,12 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 4000
+  num_images: 100
   image_shape:
   - 2048
   - 2048
 batches:
-  size: 10
+  size: 5
 logging:
   file: pypiv.log
   level: INFO
@@ -38,8 +38,8 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 4
-  dask_memory_limit: 14GB
+  dask_workers_per_node: 5
+  dask_memory_limit: 10GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
   dask_nanny: false
@@ -85,7 +85,7 @@ video:
   data_source: stereo
   variable: mag
   run: 3
-  piv_type: ensemble
+  piv_type: instantaneous
   cmap: default
   lower: ''
   upper: ''
@@ -114,20 +114,28 @@ statistics:
     gamma1: false
   gamma_radius: 4
   save_figures: true
-  type_name: ensemble
+  type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 8
+  - - 64
     - 96
-  - - 8
-    - 96
+  - - 64
+    - 64
+  - - 32
+    - 32
+  - - 16
+    - 16
   overlap:
+  - 50
+  - 50
   - 50
   - 50
   runs:
   - 1
   - 2
+  - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -140,7 +148,7 @@ instantaneous_piv:
   dump_correlation_planes: false
 ensemble_piv:
   fit_method: kspace
-  kspace_shape: kx4
+  kspace_shape: gaussian
   kspace_floor: coloured
   skip_background_subtraction: false
   gradient_correction: true
@@ -152,22 +160,17 @@ ensemble_piv:
   window_size:
   - - 64
     - 64
-  - - 32
-    - 32
   - - 8
     - 8
   overlap:
   - 50
   - 50
-  - 50
   type:
-  - std
   - std
   - single
   runs:
   - 1
   - 2
-  - 3
   store_planes: true
   save_diagnostics: true
   sum_window:
@@ -254,7 +257,11 @@ calibration:
     stereo_config: auto
     model_type: pinhole
     fix_k2: true
-filters: []
+filters:
+- type: ssmin
+  size:
+  - 7
+  - 7
 masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat
@@ -266,12 +273,12 @@ masking:
     left: 0
     right: 0
 merging:
-  type_name: ensemble
+  type_name: instantaneous
   base_path_idx: 0
   cameras: null
 transforms:
   base_path_idx: 0
-  type_name: ensemble
+  type_name: instantaneous
   cameras:
     1:
       operations: []

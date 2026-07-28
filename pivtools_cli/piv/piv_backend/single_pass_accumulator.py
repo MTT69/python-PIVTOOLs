@@ -692,18 +692,27 @@ class SinglePassAccumulator:
                 )
                 env_auto = _linear_pair_envelope(env_weight, env_weight, corr_size)
                 env_ab = env_auto
-            env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
-            env_ab_f32 = env_ab.astype(np.float32)[None, :, :]
-            # E(0)=1 so the peak/center (and norm_factors below) are unchanged; only the
-            # off-peak floor is affected.
-            AA_3d /= env_auto_f32
-            BB_3d /= env_auto_f32
-            AB_3d /= env_ab_f32
-            logging.info(
-                f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
-                f"AA/BB by their pair-count envelope, AB by its true envelope; "
-                f"min E_auto = {env_auto.min():.3f}, min E_ab = {env_ab.min():.3f})"
-            )
+            # env_auto/env_ab and the weights above are computed regardless of the
+            # toggle: the coloured floor (weight_B) and the plane sidecar need them.
+            envelope_divide = self.config.ensemble_envelope_divide
+            if envelope_divide:
+                env_auto_f32 = env_auto.astype(np.float32)[None, :, :]
+                env_ab_f32 = env_ab.astype(np.float32)[None, :, :]
+                # E(0)=1 so the peak/center (and norm_factors below) are unchanged;
+                # only the off-peak floor is affected.
+                AA_3d /= env_auto_f32
+                BB_3d /= env_auto_f32
+                AB_3d /= env_ab_f32
+                logging.info(
+                    f"Pass {pass_idx + 1}: Envelope divide applied ({envelope_runtype}: "
+                    f"AA/BB by their pair-count envelope, AB by its true envelope; "
+                    f"min E_auto = {env_auto.min():.3f}, min E_ab = {env_ab.min():.3f})"
+                )
+            else:
+                logging.info(
+                    f"Pass {pass_idx + 1}: Envelope divide OFF ({envelope_runtype}: "
+                    f"planes keep the pair-count tent R*E)"
+                )
 
             # Central index (autocorrelation peak is at center)
             center_y, center_x = corr_size[0] // 2, corr_size[1] // 2
@@ -820,8 +829,15 @@ class SinglePassAccumulator:
                 # f = 0 everywhere (pass 0 / predictor_rounding): a 2-node grid
                 # is node-exact at (0, 0) and skips 437 unused grid cells
                 n_fracs = 2 if max(fx.max(), fy.max()) == 0.0 else 21
+                # The analytic floor divides by its env argument internally
+                # (analytic_floor_single) — P must describe the same chain the
+                # planes went through, so a unit envelope makes that divide a
+                # no-op when the plane divide is off.
+                env_for_floor = (
+                    env_auto if envelope_divide else np.ones_like(env_auto)
+                )
                 fs_grid, P_grid = build_P_grid(
-                    env_auto, warp_kernel, hole, weight_B, n_fracs=n_fracs
+                    env_for_floor, warp_kernel, hole, weight_B, n_fracs=n_fracs
                 )
                 P_win_flat = (
                     interp_P(fs_grid, P_grid, fx, fy)
@@ -1549,12 +1565,14 @@ class SinglePassAccumulator:
                     # Window weights used in cross-correlation
                     "win_weight_A": correlator_for_weights.win_weights_A[pass_idx],
                     "win_weight_B": correlator_for_weights.win_weights_B[pass_idx],
-                    # Pair-count envelopes already divided out of AA/BB/AB above.
-                    # Downstream tools must check 'env_divided' before deciding whether
-                    # to divide; the presence of env_auto/env_ab alone means nothing.
+                    # Pair-count envelopes, always stored for offline re-derivation.
+                    # Whether they were divided out of AA/BB/AB follows the
+                    # envelope_divide config toggle — downstream tools must check
+                    # 'env_divided' before deciding whether to divide; the presence
+                    # of env_auto/env_ab alone means nothing.
                     "env_auto": env_auto,
                     "env_ab": env_ab,
-                    "env_divided": True,
+                    "env_divided": bool(envelope_divide),
                     # Accumulation-mode provenance: with 'window_mean' the per-pair
                     # weighted window mean was removed inside the C correlator (the
                     # *_bg planes stored above are zeros), and per-pair

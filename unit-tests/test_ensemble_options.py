@@ -539,6 +539,26 @@ class TestKspaceFloorConfig:
 
 
 # ---------------------------------------------------------------------------
+# Envelope divide toggle (envelope_divide): config surface
+# ---------------------------------------------------------------------------
+class TestEnvelopeDivideConfig:
+    @staticmethod
+    def _cfg(**ensemble_keys):
+        from pivtools_core.config import Config
+
+        cfg = Config.__new__(Config)
+        cfg.data = {"ensemble_piv": ensemble_keys}
+        return cfg
+
+    def test_default_is_off(self):
+        assert self._cfg().ensemble_envelope_divide is False
+
+    def test_explicit_values(self):
+        assert self._cfg(envelope_divide=True).ensemble_envelope_divide is True
+        assert self._cfg(envelope_divide=False).ensemble_envelope_divide is False
+
+
+# ---------------------------------------------------------------------------
 # Combined background modes: kernel-boundary behavior
 # ---------------------------------------------------------------------------
 class TestCombinedModeKernel:

@@ -2660,6 +2660,32 @@ class Config:
         return self.data.get("ensemble_piv", {}).get("per_pair_normalization", False)
 
     @property
+    def ensemble_envelope_divide(self) -> bool:
+        """Divide the ensemble correlation planes by the pair-count envelope.
+
+        Applies to all three planes (AA, BB, AB) in both 'std' and 'single'
+        pass types, at finalize time in SinglePassAccumulator.finalize_pass.
+        When False (default) the planes keep the linear pair-count tent
+        R(lag)*E(lag) — Westerweel-faithful, no plane-level 1/E division.
+        When True the pre-2026-07-27 behaviour is restored: AA/BB divided by
+        their auto envelope, AB by its true (possibly asymmetric) envelope.
+
+        The coloured noise floor follows this toggle automatically: when the
+        divide is off, build_P_grid receives a unit envelope so the analytic
+        floor describes undivided planes (its internal 1/env_auto becomes a
+        no-op). The plane sidecar records the state in 'env_divided'.
+
+        Rationale (2026-07-27, clean synthetic): in single mode the divide
+        spreads the autos' off-trend DC bin into the low-k fit bins
+        (ring-1 T hole), which the LM fit levers into a large stress
+        under-read; leaving the planes undivided removes the hole with only
+        a small common-mode tent attenuation in T.
+
+        Default: False
+        """
+        return self.data.get("ensemble_piv", {}).get("envelope_divide", False)
+
+    @property
     def outlier_detection_enabled(self):
         """Return True if outlier detection is enabled."""
         return self.data.get("outlier_detection", {}).get("enabled", True)
