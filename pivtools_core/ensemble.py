@@ -172,6 +172,9 @@ def process_pass_worker_accumulate(
             )
             phase_a_futures.append(fut)
         sums_futures = list(phase_a_futures)
+        # The list pins each worker's warp-sum result until released — drop
+        # the original so merged leaves free as the reduction consumes them.
+        del phase_a_futures
         while len(sums_futures) > 1:
             merged = []
             for i in range(0, len(sums_futures), 2):
@@ -188,6 +191,7 @@ def process_pass_worker_accumulate(
                     merged.append(sums_futures[i])
             sums_futures = merged
         image_bg_sums = sums_futures[0].result()
+        del sums_futures  # release the merged warp sums held on the worker
         n_phase_a = image_bg_sums["n_images"]
         A_mean = (image_bg_sums["warp_A_sum"] / n_phase_a).astype(np.float32)
         B_mean = (image_bg_sums["warp_B_sum"] / n_phase_a).astype(np.float32)
@@ -299,6 +303,10 @@ def process_pass_worker_accumulate(
 
     # Tree reduction of per-worker results
     futures = list(worker_futures)
+    # Drop the original references (list + as_completed iterator): they pin
+    # every per-worker result on its worker until this function returns.
+    # Do not re-reference worker_futures below this point.
+    del worker_futures, ac
     logger.info(f"  Tree reduction: {len(futures)} worker results")
 
     round_idx = 0

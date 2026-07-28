@@ -498,9 +498,12 @@ class SinglePassAccumulator:
         """
         Finalize a single pass with single-pass optimization.
 
-        Uses pure OpenMP parallelization for Gaussian fitting (no Dask overhead).
-        The correlation planes are already on the main process after reduction,
-        so we call the C library directly with OpenMP parallelization.
+        Runs on the driver after the tree reduction. The k-space LM fit is
+        dispatched to the Dask workers: the normalised planes are scattered in
+        per-worker slices and fitted remotely (C library, OpenMP inside each
+        worker). Large intermediates are freed at their last use — those
+        del/None statements are load-bearing for peak driver memory (see
+        wiki/pipelines/dask-patterns-and-memory.md, "Finalize memory").
 
         Parameters
         ----------
@@ -545,6 +548,12 @@ class SinglePassAccumulator:
             R_AA_raw = pass_data["sum_corr_AA"] / N
             R_BB_raw = pass_data["sum_corr_BB"] / N
             R_AB_raw = pass_data["sum_corr_AB"] / N
+
+        # The merged sums are fully consumed by the averages above — free a
+        # full plane-set now (clear_pass_data tolerates the None entries).
+        pass_data["sum_corr_AA"] = None
+        pass_data["sum_corr_BB"] = None
+        pass_data["sum_corr_AB"] = None
 
         # Step 3-4: Background subtraction depends on method
         with self._profile_section(pass_idx, "bg_subtraction"):
@@ -631,6 +640,11 @@ class SinglePassAccumulator:
             logging.warning(
                 f"Pass {pass_idx + 1}: {_n_negative}/{_n_win} windows have negative AA variance."
             )
+
+        # Raw averages (and the centre views pinning them) are dead past the
+        # check above — freeing them drops a full plane-set from the peak.
+        del R_AA_raw, R_BB_raw, R_AB_raw
+        del _aa_raw_centers, _aa_bg_centers, _aa_ens_centers
 
         # Step 4b: finalize-time DC-zero ('+dc_zero' bg variants) — subtract each
         # window's plane mean so the envelope divide below has no DC-bin anomaly
@@ -755,10 +769,18 @@ class SinglePassAccumulator:
             BB_3d_norm = BB_3d / norm_factors_3d
             AB_3d_norm = AB_3d / norm_factors_3d
 
-            # Flatten back to original format
-            R_AA_ensemble = AA_3d_norm.reshape(-1).astype(np.float32)
-            R_BB_ensemble = BB_3d_norm.reshape(-1).astype(np.float32)
-            R_AB_ensemble = AB_3d_norm.reshape(-1).astype(np.float32)
+            # Flatten back to original format. copy=False: the planes are
+            # already float32 in every production path — a plain astype would
+            # duplicate the full plane-set for nothing.
+            R_AA_ensemble = AA_3d_norm.reshape(-1).astype(np.float32, copy=False)
+            R_BB_ensemble = BB_3d_norm.reshape(-1).astype(np.float32, copy=False)
+            R_AB_ensemble = AB_3d_norm.reshape(-1).astype(np.float32, copy=False)
+
+        # The pre-norm plane buffers survive only through these views once
+        # R_*_ensemble is rebound — delete them or a full plane-set stays
+        # resident until function return (measured 2026-07-28).
+        del AA_3d, BB_3d, AB_3d, AA_3d_norm, BB_3d_norm, AB_3d_norm
+        del AA_peaks, BB_peaks, norm_factors_3d
 
         logging.debug(
             f"Pass {pass_idx + 1}: Normalized planes by geometric mean "
@@ -943,6 +965,11 @@ class SinglePassAccumulator:
                         )
                     )
 
+        # The floor slices live on the workers now — drop the client's copy
+        # (a full plane); only the has_P flag is needed below.
+        has_P = P_win_flat is not None
+        P_win_flat = None
+
         # K-space fit, dispatched across Dask workers. 'kspace' — the only
         # production method — is the one-stage 7-param joint LM fit of the raw
         # transfer ratio (mu, Sigma, gain g, in-model noise floor N0);
@@ -968,7 +995,7 @@ class SinglePassAccumulator:
                     pass_idx,
                     self.config.debug,  # diagnostics when debug=True
                     save_fit_diagnostics,  # return per-window diag dict
-                    P_win=(P_win_futures[i] if P_win_flat is not None else None),
+                    P_win=(P_win_futures[i] if has_P else None),
                 )
                 for i in range(len(R_AA_futures))
             ]
@@ -1513,12 +1540,17 @@ class SinglePassAccumulator:
                     outdir = Path(os.getcwd())
                 outdir.mkdir(parents=True, exist_ok=True)
 
-                # Create correlator to get window weights
-                from pivtools_cli.piv.piv_backend.factory import make_correlator_backend
-
-                correlator_for_weights = make_correlator_backend(
-                    self.config, ensemble=True
-                )
+                # Window weights for the sidecar: same _window_weight_fun and
+                # arguments as the EnsembleCorrelatorCPU ctor, reusing the
+                # envelope weights computed above. Building a full correlator
+                # here allocated plane buffers for every pass just to read
+                # these two small arrays.
+                if runtype == "single":
+                    win_weight_A_out = env_weight_a
+                    win_weight_B_out = env_weight_b
+                else:
+                    win_weight_A_out = env_weight
+                    win_weight_B_out = env_weight
 
                 # Save correlation planes in 4D format (n_win_y, n_win_x, corr_h, corr_w)
                 # Note: All planes (AA, BB, AB and backgrounds) are saved in NORMALIZED form
@@ -1538,6 +1570,10 @@ class SinglePassAccumulator:
                 AB_bg_norm = (AB_bg_3d / norm_factors_3d).reshape(
                     n_win_y, n_win_x, corr_size[0], corr_size[1]
                 )
+                # Raw bg planes are superseded by the normalised copies —
+                # free a full plane-set for the duration of the long savemat.
+                R_AA_bg = R_BB_bg = R_AB_bg = None
+                AA_bg_3d = BB_bg_3d = AB_bg_3d = None
 
                 planes_dict = {
                     "AA": R_AA_ensemble.reshape(
@@ -1563,8 +1599,8 @@ class SinglePassAccumulator:
                     "n_win_x": n_win_x,
                     "pass_idx": pass_idx,
                     # Window weights used in cross-correlation
-                    "win_weight_A": correlator_for_weights.win_weights_A[pass_idx],
-                    "win_weight_B": correlator_for_weights.win_weights_B[pass_idx],
+                    "win_weight_A": win_weight_A_out,
+                    "win_weight_B": win_weight_B_out,
                     # Pair-count envelopes, always stored for offline re-derivation.
                     # Whether they were divided out of AA/BB/AB follows the
                     # envelope_divide config toggle — downstream tools must check
@@ -1657,13 +1693,18 @@ class SinglePassAccumulator:
 
         pass_data = self.passes_data[pass_idx]
 
-        # Get memory usage before clearing
-        mem_before = (
-            pass_data["sum_warp_A"].nbytes
-            + pass_data["sum_warp_B"].nbytes
-            + pass_data["sum_corr_AA"].nbytes
-            + pass_data["sum_corr_BB"].nbytes
-            + pass_data["sum_corr_AB"].nbytes
+        # Get memory usage before clearing. finalize_pass frees the
+        # correlation sums as it consumes them, so count only what remains.
+        mem_before = sum(
+            pass_data[key].nbytes
+            for key in (
+                "sum_warp_A",
+                "sum_warp_B",
+                "sum_corr_AA",
+                "sum_corr_BB",
+                "sum_corr_AB",
+            )
+            if pass_data[key] is not None
         ) / (
             1024**2
         )  # Convert to MB
