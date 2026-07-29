@@ -75,6 +75,7 @@ def run_joint_from_spec(
     board: str,
     model_type: str,
     spacing_mm: float,
+    dt: float,
     datum_camera: int,
     datum_view: int,
     board_release: str = "full3d",
@@ -175,6 +176,7 @@ def run_joint_from_spec(
                     "n_views": 1,
                     "joint": 1,
                     "datum_view": datum_view,
+                    "dt": float(dt),
                     **({"geometry": geo} if geo else {}),
                 },
             )
@@ -247,6 +249,7 @@ def run_joint_from_spec(
         board_meta={
             "converged": int(result.converged),
             "n_views": n_views,
+            "dt": float(dt),
             "datum_camera": datum_camera,
             "datum_view": datum_view,
             "n_board_dots": len(result.board),

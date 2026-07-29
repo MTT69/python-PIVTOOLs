@@ -38,6 +38,7 @@ import numpy as np
 from flask import Blueprint, jsonify, request
 
 from pivtools_cli import calibration_cli as c2
+from pivtools_core import calibration_settings as cs
 from pivtools_core.config import get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_image
 from pivtools_gui.calibration import record as rec
@@ -113,17 +114,35 @@ def _source_idx(data: dict) -> int:
     return int(v) if v not in (None, "") else int(_cfg().get("source_idx", 0))
 
 
-def _resolve_cameras(data: dict, cfg: dict) -> List[int]:
+def _settings(data: dict) -> dict:
+    """Settings sidecar for the request's source; the defaults template when absent.
+
+    Only a missing/invalid SOURCE INDEX yields the template — a sidecar that
+    exists but fails validation raises (silently reverting a corrupt file to
+    defaults would be the stale-state class this store eliminates). Required
+    keys stay None in the template, so anything that truly needs them still
+    fails loudly downstream (``_board_params`` raises on missing geometry).
+    """
+    try:
+        source = get_config().get_calibration_source(_source_idx(data))
+    except (ValueError, IndexError):
+        return cs.default_settings()
+    settings = cs.try_load_settings(source)
+    return settings if settings is not None else cs.default_settings()
+
+
+def _resolve_cameras(data: dict) -> List[int]:
     """Resolve the camera list: explicit ``cameras``, else stereo pair, else mono camera."""
     cams = data.get("cameras")
     if cams:
         return [int(c) for c in cams]
+    rig = _settings(data).get("rig") or {}
     if bool(data.get("stereo", False)):
-        pair = data.get("camera_pair") or cfg.get("camera_pair", [1, 2])
+        pair = data.get("camera_pair") or rig.get("camera_pair") or [1, 2]
         if isinstance(pair, str):
             pair = [int(x) for x in pair.split(",")]
         return [int(pair[0]), int(pair[1])]
-    return [int(data.get("camera", cfg.get("camera", 1)))]
+    return [int(data.get("camera") or rig.get("camera") or 1)]
 
 
 def _strip_internal(diag: dict) -> dict:
@@ -326,7 +345,7 @@ def _save_sequence_sidecar(source, entry: dict) -> None:
     )
 
 
-def _entry_from_sidecar(data: dict, cfg: dict, cameras: List[int]):
+def _entry_from_sidecar(data: dict, cameras: List[int]):
     """Rebuild a sequence ``entry`` from a model dir's sidecar (no live sequence).
 
     Returns ``(entry, model_dir, side, None)`` or ``(None, None, None, error)``.
@@ -401,7 +420,10 @@ def _entry_from_sidecar(data: dict, cfg: dict, cameras: List[int]):
             ),
         )
     params = c2._board_params(
-        cfg, "stepped", data.get("board_params"), sidecar=side.board_params
+        _settings(data).get("methods") or {},
+        "stepped",
+        data.get("board_params"),
+        sidecar=side.board_params,
     )
     dets = _dets_from_sidecar(side.detections)
     entry = {
@@ -497,15 +519,16 @@ def detect_sequence():
     Returns ``{job_id, sequence_id}``; poll the job for per-pose summaries.
     """
     data = request.get_json() or {}
-    cfg = _cfg()
-    cameras = _resolve_cameras(data, cfg)
+    cameras = _resolve_cameras(data)
     source_idx = _source_idx(data)
     num_frames = int(data.get("num_frames", 1))
     start_frame_idx = int(data.get("start_frame_idx", 1))
     datum_frame_idx = int(data.get("datum_frame_idx", start_frame_idx))
     image_format = data.get("image_format")
     image_type = data.get("image_type")
-    params = c2._board_params(cfg, "stepped", data.get("board_params"))
+    params = c2._board_params(
+        _settings(data).get("methods") or {}, "stepped", data.get("board_params")
+    )
 
     if num_frames < 1:
         return jsonify({"error": "num_frames must be >= 1"}), 400
@@ -735,7 +758,7 @@ def restore_sequence():
         cameras = [int(x) for x in pair.split(",")]
     else:
         cameras = [int(request.args.get("camera", 1))]
-    entry, _model_dir, side, err = _entry_from_sidecar(request.args, _cfg(), cameras)
+    entry, _model_dir, side, err = _entry_from_sidecar(request.args, cameras)
     if err is not None:
         return jsonify({"exists": False})
     sequence_id = uuid.uuid4().hex
@@ -1008,7 +1031,6 @@ def generate_model():
     assumed (datum) rather than user-verified. Returns ``{job_id}``; poll for the result.
     """
     data = request.get_json() or {}
-    cfg = _cfg()
     stereo = bool(data.get("stereo", False))
     model_type = str(data.get("model_type", "pinhole"))
     if model_type not in ("pinhole", "polynomial3d"):
@@ -1033,7 +1055,7 @@ def generate_model():
             ),
             400,
         )
-    cameras_req = _resolve_cameras(data, cfg)
+    cameras_req = _resolve_cameras(data)
 
     # Resolve the detected sequence: the live in-session cache first, else the persisted
     # sidecar (a regenerate after restart / cache expiry / a fresh session with no clicks).
@@ -1046,7 +1068,7 @@ def generate_model():
         if err is not None:
             entry = None  # expired/missing -> fall through to the sidecar
     if entry is None:
-        entry, model_dir, side, err = _entry_from_sidecar(data, cfg, cameras_req)
+        entry, model_dir, side, err = _entry_from_sidecar(data, cameras_req)
         if err is not None:
             return err
 
@@ -1066,6 +1088,12 @@ def generate_model():
         source = get_config().get_calibration_source(int(entry["source_idx"]))
     except (ValueError, IndexError) as exc:
         return jsonify({"error": f"calibration source not configured ({exc})"}), 400
+    from .views import _generate_dt  # local: views imports this module first
+
+    try:
+        gen_dt = _generate_dt(data.get, source)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if model_dir is None:
         model_dir = _sidecar_model_dir(source, use_cams)
     if side is None:
@@ -1155,6 +1183,7 @@ def generate_model():
                     figure_dir=fig_dir,
                 )
                 record.board_meta["assumed_poses"] = assumed_poses
+                record.board_meta["dt"] = gen_dt
                 path = rec.save_stereo(record, model_dir)
                 done = dict(
                     stereo=True,
@@ -1201,6 +1230,7 @@ def generate_model():
                     figure_dir=fig_dir,
                 )
                 record.board_meta["assumed_poses"] = assumed_poses
+                record.board_meta["dt"] = gen_dt
                 path = rec.save_mono(record, model_dir)
                 cm = record.camera_model
                 done = dict(

@@ -128,6 +128,15 @@ class TestDumpPayload:
 
 class TestNpzWriter:
     def test_write_and_tool_load(self, tmp_path, clean_pair):
+        # The reader half of the round-trip lives in an UNTRACKED manual tool —
+        # absent on fresh worktrees/machines. Skip (with the pointer) rather
+        # than die in the import.
+        if not (MANUAL_TOOLS / "inspect_corr_planes.py").exists():
+            pytest.skip(
+                f"manual_tools/inspect_corr_planes.py not found under {MANUAL_TOOLS} "
+                "(untracked tool — copy it from the main checkout)"
+            )
+
         result = _run_with_dump(tmp_path, clean_pair)
         out = save_corr_plane_dump(result, tmp_path / "res", 1, "B%05d.mat")
         assert out is not None

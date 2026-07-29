@@ -30,6 +30,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 from scipy.io import loadmat, savemat
 
+# Canonical home is pivtools_core (the settings sidecar and image loaders need
+# it without importing pivtools_gui); re-exported here for existing callers.
+from pivtools_core.calibration_settings import root_for_source  # noqa: F401
+
 from .camera_model import (
     CameraModel,
     DistortionModel,
@@ -49,17 +53,6 @@ MonoModel = Union[CameraModel, PolynomialModel, Polynomial3DModel, ScaleFactorMo
 # ---------------------------------------------------------------------------
 # Path resolution (into the calibration source folder)
 # ---------------------------------------------------------------------------
-
-
-def root_for_source(source: Path) -> Path:
-    """Calibration-output root for an explicit source path.
-
-    Directory sources -> ``<source>/calibration``. Container-file sources
-    (``.set``/``.cine``) -> ``<source>.parent/calibration``.
-    """
-    source = Path(source)
-    base = source.parent if source.suffix else source
-    return base / "calibration"
 
 
 def mono_model_dir_for_source(source: Path, camera: int, board: str) -> Path:

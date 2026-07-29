@@ -765,58 +765,14 @@ ensemble_piv:
   persist_images: false
   window_type: square
 calibration:
-  # Single unified calibration block (pinhole-based). RIG-SPECIFIC placeholders below.
-  # --- Image sourcing (consumed by the calibration image loaders) ---
+  # Pointer only. Everything else (image format, board geometry, dt, global
+  # coordinates) lives in the per-source settings sidecar at
+  # <source>/calibration/settings.yaml — seed one with
+  # `pivtools-cli calibration init-settings` or via the GUI calibration tab.
   calibration_sources: []
-  image_format: calib%05d.png
-  image_type: standard
-  zero_based_indexing: false
-  use_camera_subfolders: false
-  camera_subfolders: []
-  piv_type: instantaneous
-  # --- Calibration math ---
-  active: charuco             # charuco | dotboard | scale_factor (stereo chosen per command)
   source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
   source_idx: 0
-  n_views: 10
-  start_index: 1
-  datum_index: 0
-  distortion_model: standard # standard | rational | tilted
-  fix_aspect_ratio: true
-  use_release_object: false
-  world_frame: default       # 'default' or path to a clicks JSON {origin,x_axis,y_axis}
-  camera: 1
-  camera_pair:
-  - 1
-  - 2
-  dt: 1                      # seconds between frames — RIG-SPECIFIC, no safe default
-  z_world: 0.0              # light-sheet plane Z (mm) + tilt (rad), applied at apply time
-  tilt_x: 0.0
-  tilt_y: 0.0
-  interpolator: lanczos     # stereo cam2 resample kernel: linear | cubic | lanczos
-  charuco:
-    squares_h: 10
-    squares_v: 7
-    square_size: 0.03
-    marker_ratio: 0.5
-    aruco_dict: DICT_4X4_1000
-    min_corners: 6
-    model_type: pinhole      # pinhole | polynomial (polynomial is planar-only)
-  dotboard:
-    dot_spacing_mm: 15.0
-    k_neighbors: 9
-    model_type: pinhole
-    fix_k2: false            # pin r⁴ radial term (CALIB_FIX_K2); set true only for few-view (<3) fits
-  scale_factor:
-    px_per_mm: 1
-    dt: 1
-  global_coordinates:
-    enabled: false
-    datum_camera: 1
-    datum_pixel: null
-    datum_physical: [0.0, 0.0]
-    datum_frame: 1
-    overlap_pairs: []
+  active: charuco            # charuco | dotboard | scale_factor (stereo chosen per command)
 filters: []
 preprocessing:
   # gain_normalisation: per-frame laser-gain divide (two-pass regression against
@@ -843,8 +799,7 @@ transforms:
 
 """
 
-    # Explicit UTF-8: the template holds superscripts (e.g. r⁴) that Windows'
-    # default cp1252 codec cannot encode.
+    # Explicit UTF-8 so the template never depends on Windows' cp1252 default.
     with open(config_path, "w", encoding="utf-8") as f:
         f.write(default_config.strip())
     print(f"Created default config.yaml at {config_path}")

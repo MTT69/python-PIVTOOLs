@@ -12,7 +12,7 @@ point free, bundled intrinsics across all views (two-stage: intrinsics from ever
 view, then fix intrinsics and solve the measurement pose). RMS reported in pixels.
 
 Lineage: the ray-plane back-projection generalises
-``global_coordinate_alignment._pixels_to_world_mm`` (Z=0) to an arbitrary tilted
+``stereo_reconstruction.pixel_world._pixels_to_world_mm`` to an arbitrary tilted
 sheet plane; the projection Jacobian is six vectorised ``projectPoints`` calls
 (±delta on X, Y, Z).
 """
@@ -812,7 +812,7 @@ def back_project_to_plane(
     The plane is ``Z = z_world + X*tan(tilt_y) + Y*tan(tilt_x)`` (the laser sheet;
     z_world=tilt=0 is the Z=0 plane). Returns (N,3) world mm. NaN rows where the
     ray is parallel to the plane. Generalises
-    ``global_coordinate_alignment._pixels_to_world_mm``.
+    ``stereo_reconstruction.pixel_world._pixels_to_world_mm``.
     """
     pts = np.asarray(pts_px, dtype=np.float64).reshape(-1, 2)
     if pts.size == 0:

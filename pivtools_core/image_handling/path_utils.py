@@ -55,60 +55,69 @@ def _glob_images(directory: Path, pattern: str) -> List[Path]:
     return [f for f in directory.glob(pattern) if not f.name.startswith(".")]
 
 
-def build_calibration_camera_path(
-    config: "Config",
-    source_path_idx: int = 0,
-    camera: int = 1,
-) -> Path:
-    """Build path to calibration images for a specific camera.
+def calibration_camera_folder(
+    image_settings: dict,
+    image_type: str,
+    camera: int,
+    num_cameras: int,
+) -> str:
+    """Subfolder name for one camera's calibration images (settings-sidecar based).
 
-    Uses calibration_sources directly - no legacy subfolder logic.
+    Container formats (.cine, .set) never use camera subfolders. Standard and
+    IM7 formats respect ``image.use_camera_subfolders``: an explicit
+    ``camera_subfolders`` entry wins, else the ``Cam{N}`` default for
+    multi-camera rigs.
+    """
+    if image_type in ("lavision_set", "cine"):
+        return ""
+    if not image_settings.get("use_camera_subfolders", False):
+        return ""
+    subfolders = image_settings.get("camera_subfolders") or []
+    idx = camera - 1  # camera is 1-based
+    if idx < len(subfolders) and subfolders[idx]:
+        return str(subfolders[idx])
+    if num_cameras > 1:
+        return f"Cam{camera}"
+    return ""
+
+
+def build_calibration_camera_path(
+    source: Path,
+    image_settings: dict,
+    camera: int = 1,
+    num_cameras: int = 1,
+) -> Path:
+    """Path to one camera's calibration images for an explicit source.
+
+    ``image_settings`` is the ``image`` block of the source's settings sidecar
+    (``pivtools_core.calibration_settings``) — the persisted YAML config plays
+    no part in calibration image resolution.
 
     Path structure:
-    - Container formats (.set, .cine): calibration_source path directly (no camera subfolders)
-    - IM7 with use_camera_subfolders=False: calibration_source path directly
-    - IM7/Standard with use_camera_subfolders=True: calibration_source / camera_folder
-
-    Args:
-        config: Configuration object with calibration settings
-        source_path_idx: Index into calibration_sources list (default: 0)
-        camera: Camera number (1-based, default: 1)
-
-    Returns:
-        Path: Full path to calibration image directory or container file
-
-    Raises:
-        ValueError: If calibration_sources is not configured
-        IndexError: If source_path_idx is out of range
-
-    Examples:
-        >>> # Standard format with camera subfolders: /data/calibration/Cam1/
-        >>> path = build_calibration_camera_path(config, 0, 1)
-
-        >>> # Container format: /data/calibration/data.set (no camera folder)
-        >>> path = build_calibration_camera_path(config, 0, 1)
+    - Container formats (.set, .cine): the source path directly (no camera subfolders)
+    - IM7 with use_camera_subfolders=False: the source path directly
+    - IM7/Standard with use_camera_subfolders=True: source / camera_folder
     """
-    cal_source = config.get_calibration_source(source_path_idx)
-    cal_image_type = config.calibration_image_type
+    source = Path(source)
+    fmt = image_settings.get("image_format") or ""
+    image_type = image_settings.get("image_type") or infer_image_type(fmt)
 
     # Container formats: path is directly to file, no camera subfolder
-    if cal_image_type in ("lavision_set", "cine"):
-        return cal_source
+    if image_type in ("lavision_set", "cine"):
+        return source
 
     # IM7 without camera subfolders: return source directly
-    if (
-        cal_image_type == "lavision_im7"
-        and not config.calibration_use_camera_subfolders
+    if image_type == "lavision_im7" and not image_settings.get(
+        "use_camera_subfolders", False
     ):
-        return cal_source
+        return source
 
     # Standard/IM7 with subfolders: apply camera folder
-    if config.calibration_use_camera_subfolders:
-        camera_folder = config.get_calibration_camera_folder(camera)
-        if camera_folder:
-            return cal_source / camera_folder
+    folder = calibration_camera_folder(image_settings, image_type, camera, num_cameras)
+    if folder:
+        return source / folder
 
-    return cal_source
+    return source
 
 
 def build_piv_camera_path(

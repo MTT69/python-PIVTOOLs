@@ -1,15 +1,12 @@
 """S1·Phase 4 — the ``detect-joint`` CLI command + the global_grid config reader.
 
-Two layers are exercised:
-
-- ``_global_grid_spec_from_cfg`` — the headless reader that turns the
-  ``calibration.global_grid`` config block into a ``GlobalGridSpec`` (same_as list->tuple,
-  the ``origin`` literal, ``ref_pixel`` None, and a loud failure on a missing datum click).
-- ``detect_joint_command`` end-to-end on the pre-rendered two-camera ChArUco set: real
-  image load -> real detect -> real ``resolve_global_grid`` (corner-id path, no clicks) ->
-  real ``run_joint`` -> a unified ``JointRecord`` written and reloadable. ChArUco is used for
-  the end-to-end because it needs no datum/overlap clicks; the dotboard click path is covered
-  at the resolver level in ``test_calibration_global_grid``.
+Exercised: ``_global_grid_spec_from_cfg`` (the headless reader that turns the
+``global_grid`` block into a ``GlobalGridSpec``) and ``detect_joint_command``'s
+image-free guard rails (unknown board, missing cameras, model-fidelity checks).
+The image-driven end-to-end solves were deleted 2026-07-29 — they depended on a
+``stereo_charuco`` synthetic set that was never generated (see git history to
+recover them if it ever is); the dotboard click path is covered at the resolver
+level in ``test_calibration_global_grid``.
 """
 
 from __future__ import annotations
@@ -17,13 +14,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import cv2
 import numpy as np
 import pytest
 
 import pivtools_cli.calibration_cli as cli
-from pivtools_gui.calibration.camera_model import PolynomialModel
-from pivtools_gui.calibration.record import load_joint, load_mono
+from pivtools_core import calibration_settings as cs
 
 _SYN = Path(__file__).parent / "synthetic_calibration"
 _STEREO_CHARUCO = _SYN / "stereo_charuco"
@@ -120,41 +115,47 @@ def test_spec_from_cfg_raises_on_missing_datum_click():
 
 
 class _FakeConfig:
-    """Minimal config double for detect-joint: a calibration block + the resolvers it calls.
+    """Minimal config double for detect-joint: the pointer block + rig camera count.
 
-    The clicked-coords block (datum + anchors + cameras) is NOT config anymore — it lives in the
-    sidecar ``inputs.mat``. ChArUco needs no clicks (corner ids give the grid) and its cameras come
-    from ``--cameras`` here, so these tests need no sidecar; the dotboard click path is covered at
-    the resolver level in ``test_calibration_global_grid``.
+    Image sourcing + board geometry now live in the SOURCE's settings sidecar
+    (written by ``_write_settings``); the clicked-coords block lives in the
+    sidecar ``inputs.mat``. ChArUco needs no clicks (corner ids give the grid)
+    and its cameras come from ``--cameras`` here.
     """
 
-    def __init__(self):
-        self.calibration = {
-            "active": "charuco",
-            "image_format": "calib%05d.png",
-            "start_index": 1,
-            "n_views": 10,
-            "distortion_model": "standard",
-            "fix_aspect_ratio": True,
-            "use_camera_subfolders": True,
-            "camera_subfolders": ["cam1", "cam2"],
-            "charuco": {
-                "squares_h": 10,
-                "squares_v": 7,
-                "square_size": 0.030,
-                "marker_ratio": 0.5,
-                "aruco_dict": "DICT_4X4_1000",
-                "min_corners": 6,
-            },
-        }
+    camera_count = 2
 
-    def get_calibration_camera_folder(self, camera_num: int) -> str:
-        c = self.calibration
-        if not c.get("use_camera_subfolders", False):
-            return ""
-        subs = c.get("camera_subfolders", [])
-        idx = camera_num - 1
-        return subs[idx] if 0 <= idx < len(subs) and subs[idx] else ""
+    def __init__(self):
+        self.calibration = {"active": "charuco"}
+
+
+def _write_settings(src, fit=None):
+    """The settings sidecar the command reads (replaces the old config block)."""
+    cs.save_settings(
+        src,
+        {
+            "image": {
+                "image_format": "calib%05d.png",
+                "image_type": "standard",
+                "start_index": 1,
+                "n_views": 10,
+                "use_camera_subfolders": True,
+                "camera_subfolders": ["cam1", "cam2"],
+            },
+            "rig": {"dt": 1.0},
+            "fit": fit or {},
+            "methods": {
+                "charuco": {
+                    "squares_h": 10,
+                    "squares_v": 7,
+                    "square_size": 0.030,
+                    "marker_ratio": 0.5,
+                    "aruco_dict": "DICT_4X4_1000",
+                    "min_corners": 6,
+                }
+            },
+        },
+    )
 
 
 def _args(source, **overrides):
@@ -177,81 +178,11 @@ def _install(monkeypatch, cfg):
     monkeypatch.setattr(cli, "_cfg2", lambda c: c.calibration)
 
 
-def _tmp_source(tmp_path):
-    """A writable source whose cam1/cam2 symlink the read-only checked-in ChArUco fixture.
-
-    detect-joint writes its record under ``<source>/calibration``; pointing source at a tmp dir
-    keeps the solve's output out of the checked-in fixture tree.
-    """
-    src = tmp_path / "src"
-    src.mkdir()
-    for cam in ("cam1", "cam2"):
-        (src / cam).symlink_to(_STEREO_CHARUCO / cam)
-    return src
-
-
-@pytest.mark.skipif(
-    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
-)
-def test_detect_joint_charuco_end_to_end(tmp_path, monkeypatch):
-    cfg = _FakeConfig()
-    _install(monkeypatch, cfg)
-
-    path = cli.detect_joint_command(
-        _args(_tmp_source(tmp_path), cameras="1,2", board_release="full3d")
-    )
-    rec = load_joint(Path(path))
-
-    assert rec.cameras == [1, 2]
-    assert rec.board_type == "charuco"
-    assert rec.board_release == "full3d"
-    # One shared board: every camera agrees on it by construction.
-    assert rec.board_meta["cross_camera_board_agreement_mm"] == pytest.approx(
-        0.0, abs=1e-9
-    )
-    # Synthetic data -> the joint solve should reproject tightly for both cameras.
-    assert np.isfinite(rec.rms_px) and rec.rms_px < 2.0
-    for c in (1, 2):
-        assert c in rec.models
-        assert rec.per_camera_rms[c] < 2.0
-    # ChArUco spacing is the square size in mm (30 mm), not the raw 0.03 m.
-    assert rec.spacing_mm == pytest.approx(30.0)
-    # A real shared board with many dots.
-    assert len(rec.board) > 40
-
-
-@pytest.mark.skipif(
-    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
-)
-def test_detect_joint_polynomial_writes_per_camera_records(tmp_path, monkeypatch):
-    """model_type=polynomial fits a per-camera single-plane map in the shared global frame."""
-    cfg = _FakeConfig()
-    _install(monkeypatch, cfg)
-
-    src = _tmp_source(tmp_path)
-    paths = cli.detect_joint_command(_args(src, model_type="polynomial", cameras="1,2"))
-    assert len(paths) == 2
-    for cam, p in zip((1, 2), paths):
-        mono = load_mono(Path(p))
-        assert isinstance(mono.camera_model, PolynomialModel)
-        assert mono.camera == cam
-        assert mono.world_frame.mode == "global_grid"
-        # Synthetic data -> the planar polynomial should fit to well under a mm.
-        assert mono.camera_model.rms_x_mm < 1.0 and mono.camera_model.rms_y_mm < 1.0
-
-
-@pytest.mark.skipif(
-    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
-)
-def test_detect_joint_cameras_override_from_cli(tmp_path, monkeypatch):
-    """``--cameras`` selects the rig; a single camera still solves (degenerate rig)."""
-    cfg = _FakeConfig()
-    _install(monkeypatch, cfg)
-    path = cli.detect_joint_command(
-        _args(_tmp_source(tmp_path), cameras="1", board_release="none")
-    )
-    rec = load_joint(Path(path))
-    assert rec.cameras == [1]
+# The e2e solves (charuco end-to-end, polynomial per-camera, cameras override,
+# drop-failed-view, blank-camera-fatal) were deleted 2026-07-29: they skipif'd on
+# a ``stereo_charuco`` synthetic set that was never generated on any machine, so
+# they had never run anywhere. If that fixture set is ever rendered, recover them
+# from git history — the guard tests below run without images and stay.
 
 
 def test_detect_joint_rejects_unknown_board(monkeypatch):
@@ -274,16 +205,16 @@ def test_detect_joint_requires_cameras(monkeypatch):
 
 def test_detect_joint_rejects_non_standard_distortion(tmp_path, monkeypatch):
     cfg = _FakeConfig()
-    cfg.calibration["distortion_model"] = "rational"
     _install(monkeypatch, cfg)
+    _write_settings(tmp_path, fit={"distortion_model": "rational"})
     with pytest.raises(SystemExit, match="DaVis pinhole only"):
         cli.detect_joint_command(_args(tmp_path, board="charuco", cameras="1,2"))
 
 
 def test_detect_joint_requires_fixed_aspect(tmp_path, monkeypatch):
     cfg = _FakeConfig()
-    cfg.calibration["fix_aspect_ratio"] = False
     _install(monkeypatch, cfg)
+    _write_settings(tmp_path, fit={"fix_aspect_ratio": False})
     with pytest.raises(SystemExit, match="fix_aspect_ratio"):
         cli.detect_joint_command(_args(tmp_path, board="charuco", cameras="1,2"))
 
@@ -297,48 +228,3 @@ def test_detect_joint_rejects_bad_board_release(tmp_path, monkeypatch):
         )
 
 
-@pytest.mark.skipif(
-    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
-)
-def test_detect_joint_drops_failed_view(tmp_path, monkeypatch):
-    """One bad (non-datum) frame is dropped, not fatal — the rest of the rig still calibrates.
-
-    The user's requirement: a single bad image must not throw off the whole solve.
-    """
-    src = tmp_path / "src"
-    (src / "cam1").mkdir(parents=True)
-    (src / "cam2").mkdir(parents=True)
-    for k in range(1, 11):
-        name = "calib%05d.png" % k
-        (src / "cam1" / name).symlink_to(_STEREO_CHARUCO / "cam1" / name)
-        if k == 5:
-            # a blank, non-datum frame the ChArUco detector cannot resolve -> a failed view
-            assert cv2.imwrite(str(src / "cam2" / name), np.zeros((600, 800), np.uint8))
-        else:
-            (src / "cam2" / name).symlink_to(_STEREO_CHARUCO / "cam2" / name)
-    cfg = _FakeConfig()
-    _install(monkeypatch, cfg)
-
-    # does NOT raise — the bad frame is dropped
-    path = cli.detect_joint_command(_args(src, cameras="1,2", board_release="none"))
-    rec = load_joint(Path(path))
-    assert rec.cameras == [1, 2]
-    assert np.isfinite(rec.rms_px)
-
-
-@pytest.mark.skipif(
-    not _STEREO_CHARUCO.is_dir(), reason="synthetic stereo_charuco set absent"
-)
-def test_detect_joint_blank_camera_fails_loudly(tmp_path, monkeypatch):
-    """A camera that detects NOTHING in any image is fatal (almost always a wrong path/format)."""
-    src = tmp_path / "src"
-    (src / "cam1").mkdir(parents=True)
-    (src / "cam2").mkdir(parents=True)
-    for k in range(1, 11):
-        name = "calib%05d.png" % k
-        (src / "cam1" / name).symlink_to(_STEREO_CHARUCO / "cam1" / name)
-        assert cv2.imwrite(str(src / "cam2" / name), np.zeros((600, 800), np.uint8))
-    cfg = _FakeConfig()
-    _install(monkeypatch, cfg)
-    with pytest.raises(SystemExit, match="detected no calibration target"):
-        cli.detect_joint_command(_args(src, cameras="1,2", board_release="none"))

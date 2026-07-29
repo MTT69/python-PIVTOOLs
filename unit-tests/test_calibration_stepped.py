@@ -88,27 +88,27 @@ def stepped_render():
     return _render_stepped()
 
 
-def test_stepped_detector_separates_and_stitches(stepped_render, request):
-    img, px, n_peak, _pose = stepped_render
-    det = SteppedDetector(
-        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
-    )
-    res = det.detect(img)
+def _assert_two_level_recovery(res):
+    """Shared correctness bar: both levels recovered, stitched, geometry sound.
 
+    Edge dots are pruned by RANSAC + connected-component filtering in grid
+    assembly (normal, and harmless for calibration), so the yield bar is "most
+    dots", not "every dot" — the geometry checks are the real correctness test.
+    """
     assert res.success, res.diagnostics.get("error")
     assert res.board_type == "stepped"
 
-    # Both levels recovered. Edge dots are pruned by RANSAC + connected-component
-    # filtering in grid assembly (normal, and harmless for calibration), so the
-    # yield bar is "most dots", not "every dot" — the geometry checks below are the
-    # real correctness test.
     na = len(res.level_data["a"]["centers"])
     nb = len(res.level_data["b"]["centers"])
-    assert na >= 0.75 * (PEAK_COLS * PEAK_ROWS), f"level A short: {na}"
-    assert nb >= 0.75 * (TROUGH_COLS * TROUGH_ROWS), f"level B short: {nb}"
+    n_small = TROUGH_COLS * TROUGH_ROWS
+    n_large = PEAK_COLS * PEAK_ROWS
+    # The a/b slots are per-pose arbitrary, so bound the larger/smaller level
+    # counts rather than assuming which slot holds the peak grid.
+    assert max(na, nb) >= 0.75 * n_large, f"larger level short: {max(na, nb)}"
+    assert min(na, nb) >= 0.75 * n_small, f"smaller level short: {min(na, nb)}"
     assert res.n >= 0.78 * (
-        PEAK_COLS * PEAK_ROWS + TROUGH_COLS * TROUGH_ROWS
-    ), f"too few points: {res.n} of {PEAK_COLS*PEAK_ROWS + TROUGH_COLS*TROUGH_ROWS}"
+        n_large + n_small
+    ), f"too few points: {res.n} of {n_large + n_small}"
 
     # Stitch produced a genuine two-level frame (not a degraded single level).
     meta = res.diagnostics["stitch"]
@@ -137,8 +137,44 @@ def test_stepped_detector_separates_and_stitches(stepped_render, request):
     )
     assert res.image_points[:, 0].min() >= 0 and res.image_points[:, 1].min() >= 0
 
+
+def test_stepped_detector_separates_and_stitches(stepped_render, request):
+    img, px, n_peak, _pose = stepped_render
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
+    res = det.detect(img)
+    _assert_two_level_recovery(res)
+
     if request.config.getoption("--make-figures", default=False):
         _make_figure(img, res)
+
+
+def test_stepped_detector_handles_steep_rolled_view():
+    """Steep + rolled pose reproducing the zef DaVis failure geometry.
+
+    ~17° tilt makes the 3 mm step parallax pair the trough rows up against the
+    peak rows, and ~5° roll drifts row y across the frame by more than the row
+    spacing — both break any separation that clusters rows in global image-y.
+    (Stay under ~25° combined obliquity: the synthetic renderer starts
+    dropping/merging dots beyond that.)
+    """
+    img, _px, _n_peak, _pose = _render_stepped(rvec=(0.30, 0.05, 0.09))
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
+    _assert_two_level_recovery(det.detect(img))
+
+
+def test_stepped_detector_handles_fronto_parallel_view():
+    """Normal-incidence pose: no parallax smear, so the direction histogram can
+    lock onto the cross-level diagonals (they pass the 60–120° orthogonality
+    gate). Pins the detector's combined-lattice guard."""
+    img, _px, _n_peak, _pose = _render_stepped(rvec=(0.0, 0.0, 0.0))
+    det = SteppedDetector(
+        SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    )
+    _assert_two_level_recovery(det.detect(img))
 
 
 def test_stepped_detector_fails_cleanly_on_blank():

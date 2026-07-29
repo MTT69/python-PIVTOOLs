@@ -43,6 +43,7 @@ import scipy.io
 from flask import Blueprint, Response, jsonify, request
 
 from pivtools_cli import calibration_cli as c2
+from pivtools_core import calibration_settings as cs
 from pivtools_core.config import get_config
 from pivtools_core.coordinate_utils import extract_coordinates, get_num_coordinate_runs
 from pivtools_core.image_handling.calibration_loader import (
@@ -75,6 +76,7 @@ from pivtools_gui.calibration.inputs_store import (
 )
 from pivtools_gui.calibration.joint_driver import run_joint_from_spec
 from pivtools_gui.calibration.pipeline import Calibrator, build_scale_factor_record
+from pivtools_gui.calibration.settings_seed import seed_settings
 from pivtools_gui.calibration.stereo_model import StereoCalibrator
 from pivtools_gui.services.job_manager import job_manager
 from pivtools_gui.utils import (
@@ -159,6 +161,35 @@ def _source_path(source_idx: int) -> Path:
     return get_config().get_calibration_source(int(source_idx))
 
 
+def _settings_idx(source_idx: int) -> dict:
+    """Settings sidecar for a source index; the defaults template when absent.
+
+    An unconfigured source list also yields the template — helpers that only
+    need a knob default (datum frame, camera number) must not fail before the
+    route's own source handling does. A sidecar that EXISTS but fails
+    validation still raises: silently reverting a corrupt file to the defaults
+    template would be exactly the stale-state class this store eliminates.
+    """
+    try:
+        source = _source_path(source_idx)
+    except (ValueError, IndexError):
+        return cs.default_settings()
+    settings = cs.try_load_settings(source)
+    return settings if settings is not None else cs.default_settings()
+
+
+def _settings_for(get: Callable[[str], Any]) -> dict:
+    return _settings_idx(_source_idx(get))
+
+
+def _rig(get: Callable[[str], Any]) -> dict:
+    return _settings_for(get).get("rig") or {}
+
+
+def _methods(get: Callable[[str], Any]) -> dict:
+    return _settings_for(get).get("methods") or {}
+
+
 def _model_type_arg(
     get: Callable[[str], Any], board: Optional[str] = None, stereo: bool = False
 ) -> Optional[str]:
@@ -172,7 +203,7 @@ def _model_type_arg(
     """
     mt = get("model_type")
     if not mt and board:
-        mt = _cfg().get(board, {}).get("model_type")
+        mt = _methods(get).get(board, {}).get("model_type")
     if not mt:
         return None
     mt = str(mt)
@@ -181,13 +212,104 @@ def _model_type_arg(
     return mt
 
 
+def _generate_dt(get: Callable[[str], Any], source: Path) -> float:
+    """dt to stamp into a generated record: request > settings ``rig.dt`` > error.
+
+    Velocity scales linearly with dt, so it has no safe default; generation is
+    the moment the user is present to supply it, and every record it produces
+    carries it (apply then resolves request > model-stamped > error, with no
+    config source).
+    """
+    v = get("dt")
+    if v not in (None, ""):
+        return float(v)
+    settings = cs.try_load_settings(source)
+    dt = ((settings or {}).get("rig") or {}).get("dt")
+    if dt is None:
+        raise ValueError(
+            "dt is required to generate a calibration model — velocity has no "
+            "safe default. Set dt in the Calibration tab (saved to the "
+            "source's calibration/settings.yaml) or pass 'dt' in the request."
+        )
+    return float(dt)
+
+
 def _resolve_board(get: Callable[[str], Any], overrides: Optional[dict] = None):
-    """Resolve (cfg, board, params, detector). Board params may be overridden per-call."""
+    """Resolve (cfg, board, params, detector). Board params may be overridden per-call.
+
+    ``cfg`` (the YAML calibration block) supplies only the ``active`` pointer;
+    board geometry comes from the source's settings sidecar + request overrides.
+    """
     cfg = _cfg()
     board = get("board") or cfg.get("active", "charuco")
-    params = c2._board_params(cfg, board, overrides)
+    params = c2._board_params(_methods(get), board, overrides)
     detector = c2._build_detector(board, params)
     return cfg, board, params, detector
+
+
+@calibration_bp.route("/calibration/settings", methods=["GET"])
+def get_calibration_settings():
+    """Per-source settings sidecar for the requested source.
+
+    ``exists: false`` ships a seed built from the model records on disk (the
+    persisted YAML is presumed stale and never consulted); nothing is written
+    until the client saves. A present-but-corrupt sidecar is an error, never
+    silently reseeded.
+    """
+    try:
+        source = _source_path(_source_idx(request.args.get))
+    except (ValueError, IndexError) as e:
+        return jsonify({"error": str(e)}), 400
+    try:
+        existing = cs.try_load_settings(source)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if existing is not None:
+        return jsonify({"exists": True, "settings": existing})
+    return jsonify({"exists": False, "settings": seed_settings(source)})
+
+
+@calibration_bp.route("/calibration/settings", methods=["POST"])
+def save_calibration_settings():
+    """Deep-merge a partial settings payload into the source's sidecar.
+
+    Unknown TOP-LEVEL blocks are rejected — a typo'd block name would be
+    written and then ignored forever, the silent-staleness class this store
+    exists to kill. Keys nested inside known blocks stay open: the deliberately
+    untemplated knobs (``fit.use_release_object``, ``methods.<board>.fix_k2``)
+    are legal precisely because they are absent from the template.
+    """
+    data = request.get_json(force=True) or {}
+    partial = data.get("settings")
+    if not isinstance(partial, dict):
+        return jsonify({"error": "settings must be a mapping"}), 400
+    unknown = set(partial) - set(cs.default_settings())
+    if unknown:
+        return (
+            jsonify(
+                {
+                    "error": "unknown settings block(s): "
+                    + ", ".join(sorted(unknown))
+                }
+            ),
+            400,
+        )
+    try:
+        source = _source_path(_source_idx(data.get))
+    except (ValueError, IndexError) as e:
+        return jsonify({"error": str(e)}), 400
+    try:
+        if not cs.settings_path(source).exists():
+            # First save for this source: persist the record-recovered seed as
+            # the base, THEN merge the client partial over it. Without this the
+            # seed shown by GET (dt, geometry, camera_pair from the newest
+            # records) would be discarded whenever the first POST is partial —
+            # the whole migration path for existing datasets rides on it.
+            cs.save_settings(source, seed_settings(source))
+        merged = cs.save_settings(source, partial)
+    except (ValueError, PermissionError) as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"status": "success", "settings": merged})
 
 
 def _load_one(
@@ -231,11 +353,11 @@ def _load_views(
 
 
 def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int:
-    """Resolve frame total: request value, else config num_images, else auto-detect."""
+    """Resolve frame total: request value, else settings ``image.n_views``, else auto-detect."""
     v = get("frame_total")
     if v not in (None, ""):
         return int(v)
-    n = int(_cfg().get("num_images") or 0)
+    n = int((_settings_idx(source_idx).get("image") or {}).get("n_views") or 0)
     if n > 0:
         return n
     try:
@@ -252,7 +374,7 @@ def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int
 
 def _datum_frame(get: Callable[[str], Any]) -> int:
     v = get("datum_frame")
-    return int(v) if v not in (None, "") else int(_cfg().get("datum_frame", 1))
+    return int(v) if v not in (None, "") else int(_rig(get).get("datum_frame") or 1)
 
 
 def _png_response(img: np.ndarray):
@@ -477,14 +599,14 @@ def _figures_dir(get: Callable[[str], Any]) -> Path:
     if str(get("joint")) in ("1", "true", "True"):
         return rec.joint_model_dir_for_source(source, board).parent / "figures"
     if str(get("stereo")) in ("1", "true", "True"):
-        pair = get("camera_pair") or cfg.get("camera_pair", [1, 2])
+        pair = get("camera_pair") or _rig(get).get("camera_pair") or [1, 2]
         if isinstance(pair, str):
             pair = [int(x) for x in pair.split(",")]
         return (
             rec.stereo_model_dir_for_source(source, int(pair[0]), int(pair[1])).parent
             / "figures"
         )
-    camera = int(get("camera") or cfg.get("camera", 1))
+    camera = int(get("camera") or _rig(get).get("camera") or 1)
     return rec.mono_model_dir_for_source(source, camera, board).parent / "figures"
 
 
@@ -509,7 +631,7 @@ def _meta_int(meta: dict, key: str) -> Optional[int]:
 def validate():
     """Validate the calibration image source (all formats): found-count, preview, suggestion."""
     data = request.get_json() or {}
-    camera = int(data.get("camera", _cfg().get("camera", 1)))
+    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     try:
         result = validate_calibration_images(
@@ -536,7 +658,7 @@ def detect_datum():
     """Detect the datum view for a camera; cache it and return dot pixels for clicking."""
     data = request.get_json() or {}
     cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
-    camera = int(data.get("camera", cfg.get("camera", 1)))
+    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame = _datum_frame(data.get)
     try:
@@ -580,8 +702,9 @@ def detect_datum():
 @calibration_bp.route("/calibration/datum_image", methods=["GET"])
 def datum_image():
     """Return the datum-view image (PNG) for a camera, for the click overlay."""
-    cfg = _cfg()
-    camera = int(request.args.get("camera", cfg.get("camera", 1)))
+    camera = int(
+        request.args.get("camera") or _rig(request.args.get).get("camera") or 1
+    )
     source_idx = _source_idx(request.args.get)
     frame = _datum_frame(request.args.get)
     try:
@@ -600,8 +723,9 @@ def datum_image():
 @calibration_bp.route("/calibration/frame_image", methods=["GET"])
 def frame_image():
     """Serve any calibration frame (1-based image index) as a PNG."""
-    cfg = _cfg()
-    camera = int(request.args.get("camera", cfg.get("camera", 1)))
+    camera = int(
+        request.args.get("camera") or _rig(request.args.get).get("camera") or 1
+    )
     source_idx = _source_idx(request.args.get)
     frame = int(request.args.get("frame", 1))
     try:
@@ -697,7 +821,7 @@ def detect_frame():
     """
     data = request.get_json() or {}
     cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
-    camera = int(data.get("camera", cfg.get("camera", 1)))
+    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame = int(data.get("frame", 1))
     try:
@@ -758,7 +882,7 @@ def detect_views():
     """
     data = request.get_json() or {}
     cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
-    camera = int(data.get("camera", cfg.get("camera", 1)))
+    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame_total = int(data.get("frame_total", 1))
     image_format = data.get("image_format")
@@ -843,8 +967,11 @@ def generate_model():
 
     try:
         source = _source_path(source_idx)
+        # Resolve dt up front: a missing dt must fail before the expensive
+        # detection pass, while the user is still at the form.
+        gen_dt = _generate_dt(data.get, source)
         if stereo:
-            pair = data.get("camera_pair") or cfg.get("camera_pair", [1, 2])
+            pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
             cam1, cam2 = int(pair[0]), int(pair[1])
             frame_total = _frame_total(data.get, cam1, source_idx)
             if not (0 <= datum_index < frame_total):
@@ -909,6 +1036,9 @@ def generate_model():
                 det1=det1,
                 det2=det2,
             )
+            record.board_meta["dt"] = gen_dt
+            if image_format:
+                record.board_meta["image_format"] = str(image_format)
             path = rec.save_stereo(record, model_dir)
             save_inputs(
                 model_dir,
@@ -959,7 +1089,7 @@ def generate_model():
                 }
             )
         else:
-            camera = int(data.get("camera", cfg.get("camera", 1)))
+            camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
             model_dir = rec.mono_model_dir_for_source(source, camera, board)
             # Detection sidecar (parity with stereo/joint): reuse stored detections + clicks when
             # the request params still match (det_key), so a model can be regenerated without
@@ -1028,6 +1158,9 @@ def generate_model():
                 figure_dir=fig_dir,
                 detections=dets,
             )
+            record.board_meta["dt"] = gen_dt
+            if image_format:
+                record.board_meta["image_format"] = str(image_format)
             path = rec.save_mono(record, model_dir)
             isz = record.camera_model.image_size
             save_inputs(
@@ -1090,14 +1223,13 @@ def scale_factor_generate():
     """
     data = request.get_json() or {}
     source_idx = _source_idx(data.get)
-    camera = int(data.get("camera", _cfg().get("camera", 1)))
+    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     make_figs = not bool(data.get("no_figures", False))
     try:
         px_per_mm = float(data["px_per_mm"])
         origin_px = data["origin_px"]
         if origin_px is None or len(origin_px) != 2:
             raise ValueError("origin_px must be [x, y] pixels — click the origin first")
-        dt = float(data.get("dt", _cfg().get("scale_factor", {}).get("dt", 1.0)))
         x_dir = str(data.get("x_dir", "right"))
         y_dir = str(data.get("y_dir", "up"))
         swap = bool(data.get("swap_axes", False))
@@ -1111,6 +1243,7 @@ def scale_factor_generate():
             else (0.0, 0.0)
         )
         source = _source_path(source_idx)
+        dt = _generate_dt(data.get, source)
         model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
         use_image = bool(data.get("use_image", True))
         if use_image:
@@ -1346,20 +1479,20 @@ def measure():
     p2 = np.asarray(data.get("p2"), dtype=float)
     if p1.shape != (2,) or p2.shape != (2,):
         return jsonify({"error": "p1 and p2 must be [x, y] pixel pairs"}), 400
-    z = float(data.get("z_world", cfg.get("z_world", 0.0)))
-    tx = float(data.get("tilt_x", cfg.get("tilt_x", 0.0)))
-    ty = float(data.get("tilt_y", cfg.get("tilt_y", 0.0)))
+    z = float(data.get("z_world", 0.0))
+    tx = float(data.get("tilt_x", 0.0))
+    ty = float(data.get("tilt_y", 0.0))
     try:
         source = _source_path(_source_idx(data.get))
         if bool(data.get("stereo", False)):
-            pair = data.get("camera_pair") or cfg.get("camera_pair", [1, 2])
+            pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
             cam1, cam2 = int(pair[0]), int(pair[1])
             model = rec.load_stereo(
                 rec.stereo_model_dir_for_source(source, cam1, cam2),
                 model_type=_model_type_arg(data.get, board, stereo=True),
             ).model1
         else:
-            camera = int(data.get("camera", cfg.get("camera", 1)))
+            camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
             # Joint-preferred: a measure after a joint solve uses the unified rig model.
             model = rec.mono_record_for_camera(
                 rec.mono_model_dir_for_source(source, camera, board),
@@ -1441,9 +1574,9 @@ def _global_chain(data):
     datum_pixel = data.get("datum_pixel")
     datum_physical = data.get("datum_physical", [0.0, 0.0])
     overlap_pairs = data.get("overlap_pairs") or []
-    z = float(data.get("z_world", cfg.get("z_world", 0.0)))
-    tx = float(data.get("tilt_x", cfg.get("tilt_x", 0.0)))
-    ty = float(data.get("tilt_y", cfg.get("tilt_y", 0.0)))
+    z = float(data.get("z_world", 0.0))
+    tx = float(data.get("tilt_x", 0.0))
+    ty = float(data.get("tilt_y", 0.0))
     if not datum_pixel:
         raise _GlobalChainError(
             "datum_pixel not set — click a point on the datum camera"
@@ -1558,7 +1691,7 @@ def _apply_units(data, full_cfg, source, board, stereo, type_name):
         stereo,
         type_name,
         active_paths=get("active_paths"),
-        camera_pair=(get("camera_pair") or _cfg().get("camera_pair", [1, 2])),
+        camera_pair=(get("camera_pair") or _rig(get).get("camera_pair") or [1, 2]),
         camera=get("camera"),
         explicit=explicit,
         model_type=_model_type_arg(get, board, stereo=stereo),
@@ -1706,12 +1839,14 @@ def apply_model():
     cfg = _cfg()
     board = data.get("board") or cfg.get("active", "charuco")
     stereo = bool(data.get("stereo", False))
-    z = float(data.get("z_world", cfg.get("z_world", 0.0)))
-    tx = float(data.get("tilt_x", cfg.get("tilt_x", 0.0)))
-    ty = float(data.get("tilt_y", cfg.get("tilt_y", 0.0)))
+    # Light-sheet plane: request > 0.0 for mono (the board plane, a geometric
+    # identity); stereo additionally defaults from the record's self-cal below.
+    z = float(data.get("z_world", 0.0))
+    tx = float(data.get("tilt_x", 0.0))
+    ty = float(data.get("tilt_y", 0.0))
     # Stereo cam2 resample kernel (validated up front, before the worker starts).
-    interpolator = data.get("interpolator") or cfg.get("interpolator", "lanczos")
-    if interpolator not in ("linear", "cubic", "lanczos"):
+    interpolator = data.get("interpolator")
+    if interpolator not in ("linear", "cubic", "lanczos", None, ""):
         return (
             jsonify(
                 {
@@ -1731,6 +1866,19 @@ def apply_model():
 
     try:
         source = _source_path(_source_idx(data.get))
+        if not interpolator:
+            # Settings-sidecar knob (defaulted there); no config source. The
+            # sidecar value gets the same membership check as a request value —
+            # a typo'd rig.interpolator must fail here, not inside the worker.
+            settings = cs.try_load_settings(source)
+            interpolator = ((settings or {}).get("rig") or {}).get(
+                "interpolator", "lanczos"
+            )
+            if interpolator not in ("linear", "cubic", "lanczos"):
+                raise ValueError(
+                    f"rig.interpolator in the settings sidecar must be "
+                    f"linear|cubic|lanczos, got {interpolator!r}"
+                )
         units = _apply_units(data, full_cfg, source, board, stereo, type_name)
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return (
@@ -1752,13 +1900,15 @@ def apply_model():
     # block unless the request explicitly overrides it. So once self-cal is stored, 3C
     # reconstruction sits on the true sheet automatically.
     if stereo and units:
-        sc = getattr(units[0]["record"], "self_cal", {}) or {}
-        if "z_world" not in data and "z_offset" in sc:
-            z = float(sc.get("z_offset", 0.0))
-        if "tilt_x" not in data and "tilt_x" in sc:
-            tx = float(sc.get("tilt_x", 0.0))
-        if "tilt_y" not in data and "tilt_y" in sc:
-            ty = float(sc.get("tilt_y", 0.0))
+        # StereoRecord.sc_* mirror the CLI apply's fallback — one implementation
+        # of "self-cal leg, 0.0 when absent" on the record, not two dict reads.
+        rec0 = units[0]["record"]
+        if "z_world" not in data:
+            z = rec0.sc_z_offset
+        if "tilt_x" not in data:
+            tx = rec0.sc_tilt_x
+        if "tilt_y" not in data:
+            ty = rec0.sc_tilt_y
 
     if not units:
         return (
@@ -1771,17 +1921,17 @@ def apply_model():
             200,
         )
 
-    # dt is resolved PER UNIT: request override > model-stamped (scale-factor records
-    # carry it in board_meta) > config. Resolving per unit (not once from units[0]) means
-    # a multi-camera rig whose cameras carry different stamped dt calibrates each camera
-    # with ITS OWN dt instead of camera 1's. Velocity has no safe default, so an
-    # unresolved dt fails loudly here, before the job thread starts.
+    # dt is resolved PER UNIT: request override > model-stamped (every generated
+    # record carries it in board_meta). Resolving per unit (not once from units[0])
+    # means a multi-camera rig whose cameras carry different stamped dt calibrates
+    # each camera with ITS OWN dt instead of camera 1's. Velocity has no safe
+    # default and no config source, so an unresolved dt fails loudly here, before
+    # the job thread starts.
     explicit_dt = data.get("dt")
-    config_dt = cfg.get("dt")
     try:
         for u in units:
             model_dt = (getattr(u["record"], "board_meta", None) or {}).get("dt")
-            u["dt"] = c2runio.resolve_dt(explicit_dt, model_dt, config_dt)
+            u["dt"] = c2runio.resolve_dt(explicit_dt, model_dt)
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 200
 
@@ -1886,6 +2036,8 @@ def _joint_setup(get: Callable[[str], Any]):
         raise ValueError(f"joint: board must be dotboard|charuco, got {board!r}")
     source_idx = _source_idx(get)
     source = _source_path(source_idx)
+    settings = _settings_idx(source_idx)
+    image_settings = settings.get("image") or {}
     # The clicked coords (datum + anchors + camera_extends + cameras) live in the sidecar
     # inputs.mat, not config. Same dict shape as the old global_grid block, so the gg.get(...)
     # reads below and _joint_spec / _joint_origin_mm are unchanged. A request override (the live
@@ -1895,7 +2047,7 @@ def _joint_setup(get: Callable[[str], Any]):
     cameras = (
         _joint_int_list(get("cameras"))
         or _joint_int_list(gg.get("cameras"))
-        or _joint_int_list(cfg.get("camera_numbers"))
+        or _joint_int_list(get_config().camera_numbers)
     )
     if not cameras:
         raise ValueError("joint: no cameras — set the rig cameras in the joint wizard")
@@ -1911,14 +2063,14 @@ def _joint_setup(get: Callable[[str], Any]):
         (
             get("frame_total")
             if get("frame_total") not in (None, "")
-            else cfg.get("n_views", cfg.get("num_images", 10))
+            else image_settings.get("n_views") or 10
         ),
     )
     if n_views < 1:
         raise ValueError("joint: n_views must be >= 1")
-    image_format = get("image_format") or cfg.get("image_format")
-    image_type = get("image_type") or cfg.get("image_type")
-    params = c2._board_params(cfg, board)
+    image_format = get("image_format") or image_settings.get("image_format")
+    image_type = get("image_type") or image_settings.get("image_type")
+    params = c2._board_params(settings.get("methods") or {}, board)
     spacing = c2._spacing_mm(board, params)
     return (
         cfg,
@@ -2276,7 +2428,7 @@ def joint_generate():
             datum_camera,
             datum_view,
         ) = _joint_setup(get)
-        model_type = get("model_type") or cfg.get(board, {}).get(
+        model_type = get("model_type") or _methods(get).get(board, {}).get(
             "model_type", "pinhole"
         )
         if model_type not in ("pinhole", "polynomial"):
@@ -2286,6 +2438,7 @@ def joint_generate():
         board_release = get("board_release") or gg.get("board_release", "full3d")
         spec = _joint_spec(get, gg, board)
         origin_mm = _joint_origin_mm(board, gg)
+        gen_dt = _generate_dt(get, source)
     except (
         ValueError,
         TypeError,
@@ -2356,6 +2509,7 @@ def joint_generate():
                 board=board,
                 model_type=model_type,
                 spacing_mm=spacing,
+                dt=gen_dt,
                 datum_camera=datum_camera,
                 datum_view=datum_view,
                 board_release=board_release,
@@ -2418,7 +2572,7 @@ def joint_model():
         cameras = (
             _joint_int_list(get("cameras"))
             or _joint_int_list(gg.get("cameras"))
-            or _joint_int_list(cfg.get("camera_numbers"))
+            or _joint_int_list(get_config().camera_numbers)
         )
         out = {}
         geom = None
@@ -2532,9 +2686,8 @@ def joint_model():
 
 def _stereo_locators(get: Callable[[str], Any]):
     """(source, cam1, cam2, model_dir, self_cal_figdir) from request locators."""
-    cfg = _cfg()
     source = _source_path(_source_idx(get))
-    pair = get("camera_pair") or cfg.get("camera_pair", [1, 2])
+    pair = get("camera_pair") or _rig(get).get("camera_pair") or [1, 2]
     if isinstance(pair, str):
         pair = [int(x) for x in pair.split(",")]
     cam1, cam2 = int(pair[0]), int(pair[1])

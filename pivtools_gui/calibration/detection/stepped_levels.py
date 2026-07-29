@@ -1,17 +1,22 @@
-"""calibration.detection.stepped_levels — two-Z level separation + stitch geometry.
+"""calibration.detection.stepped_levels — two-Z level grid walk + stitch geometry.
 
 The stepped (dual-level) dotboard carries dots on two parallel Z-planes (peak /
 trough) separated by a known machined ``step_height_mm``. The trough grid is
 interleaved by half a dot spacing in both x and y. A single image therefore shows
-two interleaved grids that must be separated before a per-level grid walk can run,
-then stitched back into one consistent grid frame.
+two interleaved grids; ``detection.stepped`` extracts them walk-first (the BFS
+grid walk on the full mixed blob set locks onto one level's lattice and rejects
+the other level's dots as off-lattice; re-walking the remainder yields the second
+level), then this module's stitch joins them into one consistent grid frame.
 
-This module is the canonical home for that geometry in calibration. It is a
-faithful port of the (now-orphaned) v1
-``calibration_stepped.stepped_calibration_production`` detection helpers — the
-math is preserved exactly (no silent algorithm changes). Only the blob/BFS/rescue
-primitives are imported from the still-shared ``grid_detection`` module, exactly as
-``detection.dotboard`` already does.
+The per-level walk/RANSAC/rescue pipeline and the stitch are faithful ports of
+the (now-orphaned) v1 ``calibration_stepped.stepped_calibration_production``
+helpers — the math is preserved exactly. Only the blob/BFS/rescue primitives are
+imported from the still-shared ``grid_detection`` module, exactly as
+``detection.dotboard`` already does. The v1 row-parity level separation
+(y-clustering + alternating rows) was removed 2026-07-28: it assumed
+near-horizontal, evenly spaced, strictly alternating rows in image-y, which
+steep off-axis views break (image roll drifts rows across y-clusters and step
+parallax pairs trough rows up against peak rows).
 
 Fiducial-coupled absolute-index assignment is deliberately NOT ported here: in
 calibration the world frame (origin / +X / +Y) is resolved later by
@@ -24,7 +29,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -55,18 +60,27 @@ class SteppedBoardSpec:
 
 
 # ---------------------------------------------------------------------------
-# Per-level grid detection (k=5 after level separation)
+# Per-level grid detection
 # ---------------------------------------------------------------------------
 
 
 def find_grid_vectors(
     centers: np.ndarray,
+    k: int = 5,
 ) -> Optional[Tuple[np.ndarray, np.ndarray, float]]:
-    """Find the two dominant grid direction vectors for ONE separated level.
+    """Find the two dominant grid direction vectors of a dot lattice.
 
-    Delegates to the shared ``_find_grid_directions`` with k=5 (critical for
-    stepped boards after level separation — k>5 pulls in diagonals to the removed
-    level's row positions). Returns (vec1, vec2, spacing_px) or None.
+    Delegates to the shared ``_find_grid_directions``. ``k`` sets the NN
+    neighbourhood the direction histogram is built from:
+
+    - ``k=5`` for a set holding ONE level only (the 4 nearest neighbours are the
+      true lattice neighbours; larger k pulls in longer diagonals).
+    - ``k=9`` for the full MIXED two-level set (each dot's 4 nearest neighbours
+      are mostly the cross-level diagonal partners; k=9 reaches the same-level
+      lattice neighbours, whose sharp angular peaks beat the parallax-smeared
+      diagonals in the histogram).
+
+    Returns (vec1, vec2, spacing_px) or None.
     """
     n = len(centers)
     if n < 9:
@@ -76,7 +90,7 @@ def find_grid_vectors(
     nn_dists, _ = tree.query(centers, k=2)
     spacing_px = float(np.median(nn_dists[:, 1]))
 
-    result = _find_grid_directions(centers, spacing_px, k=5)
+    result = _find_grid_directions(centers, spacing_px, k=k)
     if result is None:
         return None
 
@@ -88,26 +102,45 @@ def run_single_level_detection(
     centers: np.ndarray,
     original_gray: np.ndarray,
     flat_field: Optional[np.ndarray] = None,
+    k: int = 5,
+    vectors: Optional[Tuple[np.ndarray, np.ndarray]] = None,
 ) -> Optional[dict]:
-    """Full single-level pipeline: direction finding (k=5) -> reciprocal BFS ->
+    """Full single-level pipeline: direction finding -> reciprocal BFS ->
     RANSAC -> template rescue -> connected component filter.
+
+    The BFS walk steps by full lattice vectors only, so on a MIXED two-level
+    blob set it extracts exactly the seed dot's level and rejects the other
+    level's dots as off-lattice — this is what makes walk-first separation work.
 
     Parameters
     ----------
     centers : ndarray, shape (N, 2)
-        Blob centers for this level only.
+        Blob centers (one level, or the full mixed set with ``k=9``).
     original_gray : ndarray
         Original grayscale image (for diagnostics).
     flat_field : ndarray, optional
         Flat-field image from blob detection (for template rescue).
+    k : int
+        Direction-finding neighbourhood — see ``find_grid_vectors``.
+    vectors : (vec1, vec2), optional
+        Explicit lattice basis; skips direction finding. Used by the detector's
+        combined-lattice guard to re-walk with an algebraically derived basis.
     """
-    result = find_grid_vectors(centers)
-    if result is None:
-        return None
-    vec1, vec2, spacing_px = result
+    if vectors is not None:
+        if len(centers) < 9:
+            return None
+        vec1 = np.asarray(vectors[0], dtype=np.float64)
+        vec2 = np.asarray(vectors[1], dtype=np.float64)
+        tree = cKDTree(centers)
+        spacing_px = float(np.median(tree.query(centers, k=2)[0][:, 1]))
+    else:
+        result = find_grid_vectors(centers, k=k)
+        if result is None:
+            return None
+        vec1, vec2, spacing_px = result
+        tree = cKDTree(centers)
 
     # Reciprocal BFS grid walk
-    tree = cKDTree(centers)
     grid_dict = _bfs_grid_walk_dict(centers, vec1, vec2, tree)
 
     if len(grid_dict) < 9:
@@ -190,154 +223,6 @@ def run_single_level_detection(
         "vec2": vec2,
         "spacing_px": spacing_px,
         "H": H,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Row clustering + level separation (alternating-row parity)
-# ---------------------------------------------------------------------------
-
-
-def cluster_into_rows(
-    centers: np.ndarray, spacing_px: float
-) -> Tuple[np.ndarray, List[float]]:
-    """Cluster blob centers into horizontal rows by y-coordinate.
-
-    For a two-level board with diagonal interleaving, consecutive rows alternate
-    between levels and are spaced by ~half the same-level grid spacing in y.
-    """
-    gap_thresh = spacing_px * 0.3
-
-    # Sort by y
-    sorted_idx = np.argsort(centers[:, 1])
-    sorted_y = centers[sorted_idx, 1]
-    dy = np.diff(sorted_y)
-
-    row_labels_sorted = np.zeros(len(centers), dtype=int)
-    current_row = 0
-    for i in range(len(dy)):
-        if dy[i] > gap_thresh:
-            current_row += 1
-        row_labels_sorted[i + 1] = current_row
-
-    row_labels = np.zeros(len(centers), dtype=int)
-    row_labels[sorted_idx] = row_labels_sorted
-
-    n_rows = current_row + 1
-    row_y_values = []
-    row_counts = []
-    for r in range(n_rows):
-        mask_r = row_labels == r
-        row_y_values.append(float(np.median(centers[mask_r, 1])))
-        row_counts.append(int(np.sum(mask_r)))
-
-    # Split over-populated rows
-    median_count = float(np.median(row_counts))
-    split_thresh = median_count * 1.3
-    splits_done = True
-    while splits_done:
-        splits_done = False
-        for r in range(n_rows):
-            mask_r = row_labels == r
-            count = int(np.sum(mask_r))
-            if count <= split_thresh:
-                continue
-
-            row_indices = np.where(mask_r)[0]
-            row_ys = centers[row_indices, 1]
-            order = np.argsort(row_ys)
-            sorted_ys = row_ys[order]
-            sorted_indices = row_indices[order]
-
-            dy_internal = np.diff(sorted_ys)
-            if len(dy_internal) == 0:
-                continue
-
-            max_gap_pos = int(np.argmax(dy_internal))
-            max_gap = dy_internal[max_gap_pos]
-
-            if max_gap < gap_thresh * 0.3:
-                continue
-
-            logger.debug(
-                f"Splitting row {r} ({count} dots, max internal gap={max_gap:.1f}px)"
-            )
-
-            new_label = n_rows
-            for idx in sorted_indices[max_gap_pos + 1 :]:
-                row_labels[idx] = new_label
-            n_rows += 1
-            splits_done = True
-            break
-
-    # Renumber in y-order
-    unique_rows = sorted(set(row_labels))
-    row_medians = []
-    for r in unique_rows:
-        mask_r = row_labels == r
-        row_medians.append((r, float(np.median(centers[mask_r, 1]))))
-    row_medians.sort(key=lambda x: x[1])
-
-    old_to_new = {old: new for new, (old, _) in enumerate(row_medians)}
-    row_labels = np.array([old_to_new[r] for r in row_labels], dtype=int)
-
-    n_rows = len(row_medians)
-    row_y_values = [y for _, y in row_medians]
-
-    return row_labels, row_y_values
-
-
-def separate_levels(
-    centers: np.ndarray, row_labels: np.ndarray, row_y_values: List[float]
-) -> dict:
-    """Separate dots into two levels using alternating row parity.
-
-    Even rows -> Level A, odd rows -> Level B (whichever parity has more dots gets
-    Level A). Peak/trough assignment is determined later by the user's clicked
-    level, not by auto-detection.
-
-    Returns dict with 'centers', 'row_labels', 'mask_level_A', 'mask_level_B',
-    'n_rows'.
-    """
-    n_rows = len(row_y_values)
-
-    # Drop rows with too few dots
-    row_counts = np.bincount(row_labels, minlength=n_rows)
-    median_count = float(np.median(row_counts[row_counts > 0]))
-    min_row_dots = max(5, median_count * 0.3)
-
-    keep_mask = np.ones(len(centers), dtype=bool)
-    for r in range(n_rows):
-        if row_counts[r] < min_row_dots:
-            keep_mask[row_labels == r] = False
-
-    if not np.all(keep_mask):
-        centers_clean = centers[keep_mask]
-        tree = cKDTree(centers_clean)
-        nn_dists = tree.query(centers_clean, k=2)[0]
-        spacing_px = float(np.median(nn_dists[:, 1]))
-        row_labels_clean, row_y_values = cluster_into_rows(centers_clean, spacing_px)
-    else:
-        centers_clean = centers
-        row_labels_clean = row_labels
-
-    n_rows = len(row_y_values)
-
-    even_rows = row_labels_clean % 2 == 0
-    odd_rows = row_labels_clean % 2 == 1
-
-    # Level A = whichever parity has more dots
-    n_even = int(np.sum(even_rows))
-    n_odd = int(np.sum(odd_rows))
-    level_A_mask = even_rows if n_even >= n_odd else odd_rows
-    level_B_mask = odd_rows if n_even >= n_odd else even_rows
-
-    return {
-        "centers": centers_clean,
-        "row_labels": row_labels_clean,
-        "mask_level_A": level_A_mask,
-        "mask_level_B": level_B_mask,
-        "n_rows": n_rows,
     }
 
 

@@ -1,15 +1,12 @@
-"""Stereo reconstruction and calibration module.
+"""Stereo self-calibration and pixel↔world projection.
 
-This module provides stereo camera calibration and 3D reconstruction functionality.
+The legacy calibrator classes (BaseStereoCalibrator and the dotboard/ChArUco
+production scripts) were removed — stereo model generation lives in
+``pivtools_gui.calibration``. This package keeps the two leaves that
+production still uses:
 
 Classes
 -------
-BaseStereoCalibrator
-    Abstract base class for stereo calibration
-StereoDotboardCalibrator
-    Stereo calibration using circle grid (dotboard) detection
-StereoCharucoCalibrator
-    Stereo calibration using ChArUco board detection
 PinholeCamera
     Pinhole camera model for self-calibration
 SelfCalibrationResult
@@ -25,6 +22,7 @@ estimate_pixel_scale
     Estimate native pixel scale (mm/px) from camera pair
 """
 
+from .pixel_world import _pixels_to_world_mm
 from .self_calibration import (
     PinholeCamera,
     SelfCalibrationResult,
@@ -32,17 +30,12 @@ from .self_calibration import (
     estimate_pixel_scale,
     run_self_calibration,
 )
-from .stereo_calibration_base import BaseStereoCalibrator
-from .stereo_charuco_calibration_production import StereoCharucoCalibrator
-from .stereo_dotboard_calibration_production import StereoDotboardCalibrator
 
 __all__ = [
-    "BaseStereoCalibrator",
-    "StereoDotboardCalibrator",
-    "StereoCharucoCalibrator",
     "PinholeCamera",
     "SelfCalibrationResult",
     "run_self_calibration",
     "compute_dewarp_maps",
     "estimate_pixel_scale",
+    "_pixels_to_world_mm",
 ]

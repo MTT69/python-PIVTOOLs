@@ -14,7 +14,6 @@ from pathlib import Path
 import dask
 import dask.array as da
 import numpy as np
-import yaml
 from dask import config as dask_config
 from flask import Blueprint, Flask, jsonify, request, send_from_directory
 from flask_compress import Compress
@@ -43,7 +42,6 @@ from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
 # Transform endpoints (per-file storage with backup/restore, used by frontend)
 from pivtools_gui.plotting.app.transform_views import transform_bp
 
-# from pivtools_gui.stereo_reconstruction.app.views import stereo_bp
 from pivtools_gui.utils import (
     camera_number,
     get_display_contrast_stats,
@@ -102,7 +100,6 @@ from pivtools_gui.calibration.app import calibration_bp, calibration_stepped_bp
 app.register_blueprint(calibration_bp, url_prefix="/backend")
 app.register_blueprint(calibration_stepped_bp, url_prefix="/backend")
 app.register_blueprint(video_maker_bp, url_prefix="/backend/video")
-# app.register_blueprint(stereo_bp, url_prefix='/backend')
 app.register_blueprint(statistics_bp, url_prefix="/backend")
 app.register_blueprint(merging_bp, url_prefix="/backend")
 # --- In-memory stores ---
@@ -278,25 +275,6 @@ def recursive_update(d, u):
             recursive_update(d[k], v)
         else:
             d[k] = v
-
-
-def get_active_calibration_params(cfg):
-    """
-    Returns (active_method, params_dict) from config['calibration'].
-    Updated to work with new calibration structure.
-    """
-    cal = cfg.data.get("calibration", {})
-    active = cal.get("active", "dotboard")
-    params = cal.get(active, {})
-    return active, params
-
-
-def get_calibration_method_params(cfg, method: str):
-    """
-    Get parameters for a specific calibration method.
-    """
-    cal = cfg.data.get("calibration", {})
-    return cal.get(method, {})
 
 
 def _preload_surrounding_frames(
@@ -1595,30 +1573,6 @@ def update_config():
         data = dict(data)
         data["post_processing"] = current_pp
 
-    # Detect calibration source changes -> reset pixel-dependent GC fields
-    incoming_sources = data.get("calibration", {}).get("calibration_sources")
-    if incoming_sources is not None:
-        old_sources = sorted(str(s) for s in cfg.calibration_sources)
-        new_sources = sorted(str(s).strip() for s in incoming_sources if s)
-        if new_sources != old_sources and old_sources:
-            gc = cfg.global_coordinates_config
-            data.setdefault("calibration", {})["global_coordinates"] = {
-                "enabled": gc.get("enabled", False),
-                "datum_camera": 1,
-                "datum_pixel": None,
-                "datum_physical": gc.get("datum_physical", [0.0, 0.0]),
-                "datum_frame": gc.get("datum_frame", 1),
-                "invert_ux": False,
-                "overlap_points": [],
-                "overlap_pairs": [],
-            }
-            logger.info(
-                "Calibration sources changed — reset pixel-dependent global coordinate fields"
-            )
-            # Per-model clicks (fiducials/clicked_level/pose_levels) are NOT stored in config —
-            # they live in the per-model sidecar inputs.mat, which is keyed by source, so a source
-            # change naturally selects the right sidecar. Nothing to reset here.
-
     # Store old camera_count to detect changes
     old_camera_count = cfg.data["paths"].get("camera_count", 1)
 
@@ -1679,8 +1633,9 @@ def update_config():
         )
     cfg.data["paths"]["camera_subfolders"] = pruned
 
-    with open(cfg.config_path, "w", encoding="utf-8") as f:
-        yaml.dump(cfg.data, f, default_flow_style=False, sort_keys=False)
+    # cfg.save() (not a raw yaml.dump) so _normalize_calibration_block strips the
+    # calibration block to its pointer keys on every GUI-driven persist.
+    cfg.save()
     reload_config()
 
     # Inject computed image properties into response so frontend stays in sync
@@ -1697,6 +1652,12 @@ def update_config():
         data["paths"]["camera_count"] = cfg.camera_count
         data["paths"]["camera_numbers"] = cfg.data["paths"].get("camera_numbers", [])
         data["paths"]["camera_subfolders"] = cfg.camera_subfolders
+
+    # Echo the PERSISTED calibration block, not the request's: save() strips
+    # non-pointer keys, and echoing a stripped key back as "updated" would tell
+    # the client it was persisted when it was dropped.
+    if "calibration" in data:
+        data["calibration"] = cfg.data.get("calibration", {})
 
     return jsonify({"status": "success", "updated": data})
 

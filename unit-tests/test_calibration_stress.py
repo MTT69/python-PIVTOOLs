@@ -204,16 +204,16 @@ def test_ensemble_shape_mismatch_raises(tmp_path):
 
 
 def test_resolve_dt_precedence_and_no_silent_default():
-    """dt resolution: explicit > model-stamped > config, and RAISE if none is given.
+    """dt resolution: explicit > model-stamped, and RAISE if neither is given.
 
     Pins B1's per-camera intent (each model's own stamped dt wins) and the no-silent-1.0
-    rule — velocity scales with dt, so an unresolved dt must fail, not default.
+    rule — velocity scales with dt, so an unresolved dt must fail, not default. There is
+    no config source: every generated record stamps dt, so an unstamped record is stale.
     """
     import pytest
 
-    assert runio.resolve_dt(2.0, 0.5, 1.0) == 2.0  # explicit wins
-    assert runio.resolve_dt(None, 0.5, 1.0) == 0.5  # model-stamped next
-    assert runio.resolve_dt(None, None, 1.0) == 1.0  # config last
+    assert runio.resolve_dt(2.0, 0.5) == 2.0  # explicit wins
+    assert runio.resolve_dt(None, 0.5) == 0.5  # model-stamped next
     # Two cameras with different stamped dt each resolve to THEIR OWN value (not cam1's).
     rec_a = build_scale_factor_record(
         camera=1, origin_px=(0, 0), px_per_mm=10.0, image_size=IMAGE_SIZE, dt=0.5
@@ -221,7 +221,7 @@ def test_resolve_dt_precedence_and_no_silent_default():
     rec_b = build_scale_factor_record(
         camera=2, origin_px=(0, 0), px_per_mm=10.0, image_size=IMAGE_SIZE, dt=2.0
     ).board_meta["dt"]
-    assert runio.resolve_dt(None, rec_a, None) == 0.5
-    assert runio.resolve_dt(None, rec_b, None) == 2.0
-    with pytest.raises(ValueError, match="no safe default"):
-        runio.resolve_dt(None, None, None)
+    assert runio.resolve_dt(None, rec_a) == 0.5
+    assert runio.resolve_dt(None, rec_b) == 2.0
+    with pytest.raises(ValueError, match="re-generate the model"):
+        runio.resolve_dt(None, None)

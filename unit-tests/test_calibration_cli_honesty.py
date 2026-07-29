@@ -58,7 +58,7 @@ def test_datum_both_conflicting_raises():
 
 
 def test_dotboard_missing_spacing_raises():
-    with pytest.raises(ValueError, match="calibration.dotboard.dot_spacing_mm"):
+    with pytest.raises(ValueError, match="methods.dotboard.dot_spacing_mm"):
         _dotboard_params_from({})
 
 
@@ -69,12 +69,12 @@ def test_dotboard_present_builds():
 
 
 def test_charuco_missing_squares_raises():
-    with pytest.raises(ValueError, match="calibration.charuco.squares_h"):
+    with pytest.raises(ValueError, match="methods.charuco.squares_h"):
         _charuco_params_from({"squares_v": 7, "square_size": 0.03})
 
 
 def test_charuco_missing_square_size_raises():
-    with pytest.raises(ValueError, match="calibration.charuco.square_size"):
+    with pytest.raises(ValueError, match="methods.charuco.square_size"):
         _charuco_params_from({"squares_h": 10, "squares_v": 7})
 
 
@@ -85,19 +85,19 @@ def test_charuco_present_builds():
 
 
 def test_stepped_missing_spacing_raises():
-    with pytest.raises(ValueError, match="calibration.stepped.dot_spacing_mm"):
+    with pytest.raises(ValueError, match="methods.stepped.dot_spacing_mm"):
         _stepped_params_from({"step_height_mm": 3.0})
 
 
 def test_stepped_missing_step_height_raises():
-    with pytest.raises(ValueError, match="calibration.stepped.step_height_mm"):
+    with pytest.raises(ValueError, match="methods.stepped.step_height_mm"):
         _stepped_params_from({"dot_spacing_mm": 15.0, "board_thickness_mm": 14.8})
 
 
 def test_stepped_missing_board_thickness_raises():
     # board_thickness only bites transmission stereo, but a silent default there
     # corrupts the opposite-face Z — so it is required like the rest of the geometry.
-    with pytest.raises(ValueError, match="calibration.stepped.board_thickness_mm"):
+    with pytest.raises(ValueError, match="methods.stepped.board_thickness_mm"):
         _stepped_params_from({"dot_spacing_mm": 15.0, "step_height_mm": 3.0})
 
 
@@ -115,29 +115,35 @@ def test_stepped_present_builds():
 
 # ---------------------------------------------------------------------------
 # cam_subfolders convergence — _cam_dir delegates the folder name to the same
-# resolver the image loader uses (Config.get_calibration_camera_folder), so the
+# resolver the image loader uses (path_utils.calibration_camera_folder), so the
 # headless CLI and the GUI/PIV loaders land on the identical per-camera directory.
 # ---------------------------------------------------------------------------
 
 ROOT = Path("/data/calib")
 
 
-class _FolderConfig:
-    """Stub Config exposing only the folder resolver _cam_dir delegates to."""
-
-    def __init__(self, folders):
-        self._folders = folders  # {camera: folder_name}
-
-    def get_calibration_camera_folder(self, camera):
-        return self._folders.get(camera, "")
+def _scfg(**image_keys):
+    return {"image_format": "calib%05d.tif", "image_type": "standard", **image_keys}
 
 
 def test_cam_dir_joins_delegated_folder():
-    cfg = _FolderConfig({1: "cam1", 2: "cam2"})
-    assert _cam_dir(cfg, ROOT, 1) == ROOT / "cam1"
-    assert _cam_dir(cfg, ROOT, 2) == ROOT / "cam2"
+    scfg = _scfg(use_camera_subfolders=True, camera_subfolders=["cam1", "cam2"])
+    assert _cam_dir(scfg, ROOT, 1, 2) == ROOT / "cam1"
+    assert _cam_dir(scfg, ROOT, 2, 2) == ROOT / "cam2"
+
+
+def test_cam_dir_default_camN_for_multicam():
+    scfg = _scfg(use_camera_subfolders=True)
+    assert _cam_dir(scfg, ROOT, 2, 2) == ROOT / "Cam2"
 
 
 def test_cam_dir_empty_folder_returns_source():
-    assert _cam_dir(_FolderConfig({}), ROOT, 1) == ROOT
-    assert _cam_dir(_FolderConfig({1: ""}), ROOT, 1) == ROOT
+    assert _cam_dir(_scfg(), ROOT, 1, 1) == ROOT  # subfolders off
+    assert _cam_dir(_scfg(use_camera_subfolders=True), ROOT, 1, 1) == ROOT  # 1 cam
+    # container formats never use subfolders
+    scfg = _scfg(
+        image_format="run.set",
+        image_type="lavision_set",
+        use_camera_subfolders=True,
+    )
+    assert _cam_dir(scfg, ROOT, 1, 2) == ROOT

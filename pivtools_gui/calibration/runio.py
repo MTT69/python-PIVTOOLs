@@ -40,21 +40,20 @@ from .record import MonoRecord, StereoRecord
 ENSEMBLE_FILE = "ensemble_result.mat"
 
 
-def resolve_dt(explicit_dt, model_dt, config_dt) -> float:
-    """Resolve the time-between-frames with NO silent default: explicit > model > config.
+def resolve_dt(explicit_dt, model_dt) -> float:
+    """Resolve the time-between-frames with NO silent default: explicit > model.
 
     Velocity scales linearly with dt, so a wrong dt silently corrupts every vector by a
-    constant factor. There is therefore no safe default — if none of the three sources
-    supplies dt, this raises instead of falling back to 1.0. ``model_dt`` is the value
-    stamped into the model (scale-factor records carry it in ``board_meta``); pass None
-    for models that do not stamp it (boards, stereo).
+    constant factor. There is therefore no safe default — and no config source: every
+    record generated since dt stamping carries it in ``board_meta``, so a record
+    without one is stale. If neither source supplies dt, this raises.
     """
-    for cand in (explicit_dt, model_dt, config_dt):
+    for cand in (explicit_dt, model_dt):
         if cand is not None:
             return float(cand)
     raise ValueError(
-        "dt could not be resolved — not given explicitly, not stamped in the model, "
-        "and not in config; velocity has no safe default, so set dt"
+        "dt could not be resolved — not given explicitly and not stamped in the "
+        "model; re-generate the model (generation stamps dt) or pass dt"
     )
 
 

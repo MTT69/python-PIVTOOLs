@@ -266,7 +266,10 @@ def instantaneous_workspace():
     Run 3-pass instantaneous PIV on the first Poiseuille ensemble image pair.
     Returns dict with per-pass results and ground truth.
     """
-    if not PARAMS_PATH.exists():
+    # params.json is git-tracked but the rendered tifs are NOT — a fresh
+    # worktree has the former without the latter, so check an actual image too
+    # (otherwise setup dies in shutil.copy2 with a bare FileNotFoundError).
+    if not PARAMS_PATH.exists() or not (ENSEMBLE_DATA_DIR / "B00001_A.tif").exists():
         pytest.skip(
             f"Synthetic data not found at {ENSEMBLE_DATA_DIR}. "
             "Run: cd unit-tests && python generate_poiseuille_ensemble.py"
@@ -429,7 +432,10 @@ def ensemble_workspace(request):
     """
     fit_method = request.param
 
-    if not PARAMS_PATH.exists():
+    # params.json is git-tracked but the rendered tifs are NOT — a fresh
+    # worktree has the former without the latter, so check an actual image too
+    # (otherwise setup dies in shutil.copy2 with a bare FileNotFoundError).
+    if not PARAMS_PATH.exists() or not (ENSEMBLE_DATA_DIR / "B00001_A.tif").exists():
         pytest.skip(
             f"Synthetic data not found at {ENSEMBLE_DATA_DIR}. "
             "Run: cd unit-tests && python generate_poiseuille_ensemble.py"

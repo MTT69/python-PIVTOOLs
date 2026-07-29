@@ -201,9 +201,7 @@ def estimate_disparity_sensitivity(
         of the disparity.  For horizontal stereo this is ~[1, 0]; for
         transmission it may be ~[0, -1] or any direction.
     """
-    from .global_coordinate_alignment import (
-        _pixels_to_world_mm,
-    )
+    from .pixel_world import _pixels_to_world_mm
 
     x_min, x_max, y_min, y_max = world_bounds
     cx = (x_min + x_max) / 2.0
