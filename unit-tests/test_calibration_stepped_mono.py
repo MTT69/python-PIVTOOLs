@@ -100,10 +100,10 @@ def _figpath(slug: str) -> Path:
 def _level_a_label(detection, proj, gt_z):
     """Physical level ('peak'|'trough') of detected level A, from ground truth.
 
-    The parity-based A/B split is per-pose arbitrary — which physical level lands on
-    the topmost detected row flips with board tilt. In production the GUI click-to-
-    label step supplies this per-pose label; here the synthetic ground truth stands
-    in for that human/GUI knowledge.
+    The walk-order A/B split is per-pose arbitrary — which physical level the
+    first grid walk locks onto depends on the seed blob. In production the GUI
+    click-to-label step supplies this per-pose label; here the synthetic ground
+    truth stands in for that human/GUI knowledge.
     """
     from scipy.spatial import cKDTree
 
