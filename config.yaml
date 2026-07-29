@@ -45,8 +45,8 @@ processing:
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
 outlier_detection:
   enabled: true
   methods:
@@ -143,7 +143,7 @@ instantaneous_piv:
   dump_correlation_planes: false
 ensemble_piv:
   fit_method: kspace
-  kspace_shape: gaussian
+  kspace_shape: kx4
   kspace_floor: coloured
   skip_background_subtraction: false
   gradient_correction: true
@@ -155,17 +155,22 @@ ensemble_piv:
   window_size:
   - - 64
     - 64
+  - - 32
+    - 32
   - - 8
     - 8
   overlap:
   - 50
   - 50
+  - 50
   type:
+  - std
   - std
   - single
   runs:
   - 1
   - 2
+  - 3
   store_planes: true
   save_diagnostics: true
   sum_window:

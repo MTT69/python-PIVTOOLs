@@ -59,6 +59,10 @@ def test_mono_all_paths_two_by_two(tmp_path):
         )
         assert u["record"].camera_model.model_type == "scale_factor"
 
+    # Each unit carries the base path it came from, so apply can stamp that run's
+    # config snapshot with the calibration actually used.
+    assert {u["base"] for u in units} == {tmp_path / "runA", tmp_path / "runB"}
+
 
 def test_active_paths_subset(tmp_path):
     source = _make_source(tmp_path)
@@ -86,3 +90,5 @@ def test_explicit_single_unit_override(tmp_path):
     u = units[0]
     assert u["label"] == "manual"
     assert u["uncal"].name == "u" and u["out"].name == "o"
+    # Ad-hoc dirs have no base path, so there is no run snapshot to stamp.
+    assert u["base"] is None

@@ -1204,6 +1204,7 @@ def apply_calibration_command(args):
         explicit=explicit,
         model_type=model_type,
     )
+    applied_pointer = runio.build_applied_pointer(source, board, False)
     total = 0
     for u in units:
         # dt: --dt override > model-stamped. No config source and no silent 1.0
@@ -1214,6 +1215,9 @@ def apply_calibration_command(args):
             u["record"], u["uncal"], u["out"], dt, z, tx, ty, vector_glob=vector_glob
         )
         total += len(written)
+        # The run's archived config was written before this calibration was chosen —
+        # stamp what actually applied over the stale pointer.
+        runio.stamp_unit(u, applied_pointer)
         print(
             f"[calibration] applied {board} {u['label']} -> {len(written)} frame(s) in {u['out']}"
         )
@@ -1275,6 +1279,7 @@ def apply_stereo_command(args):
             f"calibration: rig.interpolator must be linear|cubic|lanczos, "
             f"got {interpolator!r} (fix it in {cs.settings_path(source)})"
         )
+    applied_pointer = runio.build_applied_pointer(source, board, True)
     total = 0
     for u in units:
         # dt: --dt override > model-stamped (stereo records stamp dt at generate).
@@ -1293,6 +1298,9 @@ def apply_stereo_command(args):
             interpolator=interpolator,
         )
         total += len(written)
+        # The run's archived config was written before this calibration was chosen —
+        # stamp what actually applied over the stale pointer.
+        runio.stamp_unit(u, applied_pointer)
         print(
             f"[calibration] stereo 3C {u['label']} -> {len(written)} frame(s) in {u['out']}"
         )

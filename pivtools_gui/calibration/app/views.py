@@ -1943,6 +1943,10 @@ def apply_model():
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 200
 
+    # Built here (not in the worker) so it captures the source/board this request
+    # resolved, independent of any config change made while the job runs.
+    applied_pointer = c2runio.build_applied_pointer(source, board, stereo)
+
     n_units = len(units)
     out_dirs = [str(u["out"]) for u in units]
     job_id = job_manager.create_job(
@@ -1991,6 +1995,10 @@ def apply_model():
                         vector_glob=vector_glob,
                     )
                 total_written += len(written)
+                # Record what actually calibrated these vectors in the run's archived
+                # config. The snapshot was written when PIV started, so its calibration
+                # block still names whatever dataset was configured before this one.
+                c2runio.stamp_unit(u, applied_pointer)
                 job_manager.update_job(job_id, processed=i + 1, total=n_units)
             job_manager.complete_job(
                 job_id, n_frames=total_written, out_dir="; ".join(out_dirs)

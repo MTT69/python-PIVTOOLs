@@ -11,13 +11,17 @@ Y-flips — the sign is carried by the camera model.
 
 from __future__ import annotations
 
+import logging
+import os
 import pickle
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import scipy.io
+import yaml
 
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.utils.worker_pool import (
@@ -35,6 +39,8 @@ from .apply import (
 )
 from .camera_model import CameraModel
 from .record import MonoRecord, StereoRecord
+
+logger = logging.getLogger(__name__)
 
 # Ensemble PIV stores its result under this name + struct (vs per-frame "piv_result").
 ENSEMBLE_FILE = "ensemble_result.mat"
@@ -75,9 +81,14 @@ def plan_apply_units(
     same dataset-planning logic. Pure (no Flask / job-manager / threading): it reads config,
     loads the model record per unit, and returns a list of unit dicts:
 
-        mono:   {"stereo": False, "record": MonoRecord,   "uncal": Path,  "out": Path, "label": str}
+        mono:   {"stereo": False, "record": MonoRecord,   "uncal": Path,  "out": Path,
+                 "label": str, "base": Optional[Path]}
         stereo: {"stereo": True,  "record": StereoRecord, "uncal1": Path, "uncal2": Path,
-                 "out": Path, "label": str}
+                 "out": Path, "label": str, "base": Optional[Path]}
+
+    ``base`` is the base path the unit was derived from, so apply can stamp the run's
+    config snapshot with the calibration actually used. It is ``None`` for ``explicit``
+    units, which have no base path and therefore no snapshot to stamp.
 
     ``active_paths`` are indices into ``full_cfg.base_paths`` (None/empty -> all configured).
     ``camera_pair`` is ``(cam1, cam2)`` for stereo (defaults ``[1, 2]``). ``camera`` is the mono
@@ -109,6 +120,7 @@ def plan_apply_units(
                     uncal2=Path(explicit["uncal2"]),
                     out=Path(explicit["out"]),
                     label="manual",
+                    base=None,
                 )
             ]
         for bi in base_indices:
@@ -135,6 +147,7 @@ def plan_apply_units(
                     uncal2=uncal2,
                     out=out,
                     label=f"{base.name}/Cam{cam1}_Cam{cam2}",
+                    base=base,
                 )
             )
     else:
@@ -152,6 +165,7 @@ def plan_apply_units(
                     uncal=Path(explicit["uncal"]),
                     out=Path(explicit["out"]),
                     label="manual",
+                    base=None,
                 )
             ]
         for bi in base_indices:
@@ -173,9 +187,120 @@ def plan_apply_units(
                         uncal=uncal,
                         out=out,
                         label=f"{base.name}/Cam{cam}",
+                        base=base,
                     )
                 )
     return units
+
+
+# Config.save_timestamped_copy names snapshots "config_<YYYY-MM-DD_HH-MM-SS>.yaml".
+# Every field is fixed-width and zero-padded, so a lexical sort IS chronological and
+# max() picks the newest without parsing the stamp.
+_CONFIG_SNAPSHOT_GLOB = "config_*.yaml"
+
+# Config.save() writes with these; the snapshot rewrite matches so a stamped file stays
+# diffable against a freshly saved config.
+_YAML_DUMP_KWARGS = dict(default_flow_style=False, sort_keys=False)
+
+
+def active_method_name(board: str, stereo: bool) -> str:
+    """Config's ``calibration.active`` name for a board applied mono or stereo.
+
+    The apply paths carry the bare board ("charuco") plus a separate ``stereo`` flag,
+    but config stores the fused name ("stereo_charuco"). Callers may pass either form —
+    an already-prefixed board is returned unchanged rather than double-prefixed.
+    """
+    if not stereo or board.startswith("stereo_"):
+        return board
+    return f"stereo_{board}"
+
+
+def build_applied_pointer(source, board: str, stereo: bool) -> Dict[str, object]:
+    """The ``calibration`` pointer block describing what an apply actually used.
+
+    Deliberately a single-entry ``calibration_sources``: the snapshot records one
+    concrete apply, so listing the other configured sources would reintroduce the
+    ambiguity this stamp exists to remove.
+    """
+    return {
+        "calibration_sources": [str(source)],
+        "source": str(source),
+        "source_idx": 0,
+        "active": active_method_name(board, stereo),
+    }
+
+
+def stamp_applied_calibration(base: Path, pointer: Dict[str, object]) -> Optional[Path]:
+    """Rewrite the calibration pointer in the newest config snapshot under ``base``.
+
+    The run's snapshot is archived when PIV *starts*, before any calibration has been
+    chosen, so its calibration block is whatever the previous dataset left behind. Apply
+    is the first moment the answer is known — this stamps it back so the archived config
+    records the calibration that actually produced the vectors.
+
+    Returns the stamped path, or ``None`` if the base path holds no snapshot (logged at
+    WARNING — a base path with PIV output but no snapshot means something is off, so it
+    is surfaced rather than silently skipped).
+
+    Does NOT go through ``Config.save()``: that writes the live ``config.yaml``, which
+    must keep pointing wherever the user currently has the GUI set.
+    """
+    base = Path(base)
+    snapshots = sorted(base.glob(_CONFIG_SNAPSHOT_GLOB))
+    if not snapshots:
+        logger.warning(
+            "no %s found in %s — calibration provenance not stamped for this run",
+            _CONFIG_SNAPSHOT_GLOB,
+            base,
+        )
+        return None
+
+    snapshot = snapshots[-1]
+    with open(snapshot, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    data["calibration"] = dict(pointer)
+
+    # Atomic write with the retry from Config.save(): base paths sit on OneDrive and
+    # external drives, where os.replace can transiently hit a lock held by a sync client.
+    tmp_path = str(snapshot) + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, **_YAML_DUMP_KWARGS)
+    for attempt in range(5):
+        try:
+            os.replace(tmp_path, snapshot)
+            break
+        except PermissionError:
+            if attempt < 4:
+                time.sleep(0.1 * (attempt + 1))
+            else:
+                raise
+
+    logger.info(
+        "stamped applied calibration into %s (source=%s, active=%s)",
+        snapshot.name,
+        pointer.get("source"),
+        pointer.get("active"),
+    )
+    return snapshot
+
+
+def stamp_unit(unit: Dict, pointer: Dict[str, object]) -> None:
+    """Stamp one apply unit's base path, swallowing failures.
+
+    The vectors are already on disk by the time this runs, so a provenance-write failure
+    must not fail the apply — it is logged with its traceback and the run continues.
+    """
+    base = unit.get("base")
+    if base is None:
+        logger.info(
+            "apply unit %r has no base path (explicit dirs) — no config snapshot to stamp",
+            unit.get("label"),
+        )
+        return
+    try:
+        stamp_applied_calibration(base, pointer)
+    except Exception:  # provenance is secondary to the vectors already written
+        logger.exception("failed to stamp applied calibration into %s", base)
 
 
 # .mat files in a PIV output dir that are NOT per-frame vector files. A vector glob
