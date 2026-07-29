@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -176,21 +177,38 @@ class Config:
 
         Uses atomic write (write to temp file, then os.replace) to prevent
         corruption from interrupted writes or cloud sync (e.g. OneDrive).
+
+        The temp file name must be unique per writer, not derived from the
+        config path. The Flask backend runs threaded, so several
+        /backend/update_config requests can be inside this method at once; with
+        one shared name the first os.replace moves the file away and the second
+        fails with FileNotFoundError. A CLI run saving the same config
+        concurrently collides the same way, which is why this is a unique name
+        rather than a lock.
         """
         self._normalize_calibration_block()
-        tmp_path = str(self._config_path) + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
-        # Retry os.replace to handle transient locks from OneDrive/cloud sync
-        for attempt in range(5):
-            try:
-                os.replace(tmp_path, self._config_path)
-                return
-            except PermissionError:
-                if attempt < 4:
-                    time.sleep(0.1 * (attempt + 1))
-                else:
-                    raise
+        config_path = Path(self._config_path)
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=config_path.name + ".", suffix=".tmp", dir=config_path.parent
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
+            # Retry os.replace to handle transient locks from OneDrive/cloud sync
+            for attempt in range(5):
+                try:
+                    os.replace(tmp_path, config_path)
+                    return
+                except PermissionError:
+                    if attempt < 4:
+                        time.sleep(0.1 * (attempt + 1))
+                    else:
+                        raise
+        except Exception:
+            # Never leave a staged temp file behind next to the real config
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
 
     def save_timestamped_copy(
         self, destination_dir: Path, timestamp: str = None

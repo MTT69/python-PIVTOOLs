@@ -1960,11 +1960,24 @@ def apply_model():
             )
             total_written = 0
             for i, u in enumerate(units):
+                # Which dataset is running, published before the first frame ticks so the
+                # label is never a unit behind. Frame counts reset to 0 ("not yet reported")
+                # rather than carrying the previous unit's totals into this one.
+                label = u["label"]
+                job_manager.update_job(
+                    job_id, unit_label=label, frame_done=0, frame_total=0
+                )
 
-                def cb(done, total, _i=i):
+                def cb(done, total, _i=i, _label=label):
                     pct = int(((_i + done / max(total, 1)) / n_units) * 100)
                     job_manager.update_job(
-                        job_id, progress=pct, processed=_i, total=n_units
+                        job_id,
+                        progress=pct,
+                        processed=_i,
+                        total=n_units,
+                        frame_done=done,
+                        frame_total=total,
+                        unit_label=_label,
                     )
 
                 if u["stereo"]:
