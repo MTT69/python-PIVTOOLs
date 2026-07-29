@@ -99,6 +99,8 @@ def apply_all_filters_slim(
     save_intermediate_base: Optional[str] = None,
     num_frame_pairs: Optional[int] = None,
     block_id: Optional[Tuple[int, ...]] = None,
+    frame_gains: Optional[np.ndarray] = None,
+    chunk_starts: Optional[Tuple[int, ...]] = None,
 ) -> np.ndarray:
     """
     Unified filter function for map_blocks (slim version).
@@ -107,8 +109,9 @@ def apply_all_filters_slim(
     avoiding repeated serialization of the entire config for every chunk.
 
     Applies all configured filters in the user-defined order:
-    1. Pixel mask (zero masked regions)
-    2. Filters in order (spatial and temporal interleaved as configured)
+    1. Per-frame gain divide (laser-gain normalisation, optional)
+    2. Pixel mask (zero masked regions)
+    3. Filters in order (spatial and temporal interleaved as configured)
 
     This function is called by dask.array.map_blocks on each chunk.
     The chunk is already computed when it reaches this function.
@@ -122,6 +125,11 @@ def apply_all_filters_slim(
             If provided, saves frames to {base}/basic_filters/{num_frame_pairs}/{batch_no}/
         num_frame_pairs: Number of frame pairs (for path construction)
         block_id: Block ID from map_blocks (automatically populated by dask)
+        frame_gains: Per-frame laser gains of shape (n_pairs_total, 2), column
+            0 = A and 1 = B; each frame is divided by its scalar gain before
+            masking and filtering (optional)
+        chunk_starts: Absolute start pair index of every chunk (ragged-safe),
+            required with frame_gains to slice the right gain rows
 
     Returns:
         Filtered block of same shape
@@ -150,7 +158,7 @@ def apply_all_filters_slim(
         and num_frame_pairs is not None
         and block_id is not None
         and block_id[0] == 0
-        and (filter_specs or pixel_mask is not None)
+        and (filter_specs or pixel_mask is not None or frame_gains is not None)
     )
 
     if save_intermediate:
@@ -165,8 +173,9 @@ def apply_all_filters_slim(
 
     # Single copy at start - all subsequent operations modify in-place.
     # Filters run in float32, so the defensive copy and the dtype promotion
-    # are one astype (also guarantees C-contiguous input for cv2).
-    if filter_specs:
+    # are one astype (also guarantees C-contiguous input for cv2). The gain
+    # divide also needs float, so it forces the promotion too.
+    if filter_specs or frame_gains is not None:
         block = block.astype(np.float32, copy=True)
     elif pixel_mask is not None:
         block = block.copy()
@@ -177,7 +186,34 @@ def apply_all_filters_slim(
 
     filter_idx = 1  # Counter for filter ordering in filenames
 
-    # 1. Apply pixel mask (zero masked regions) - now in-place
+    # 1. Per-frame gain divide (laser-gain normalisation) — before mask and
+    # all filters, so downstream nonlinear filters see gain-free frames.
+    if frame_gains is not None:
+        if block_id is None or chunk_starts is None:
+            raise ValueError(
+                "gain normalisation: frame_gains requires block_id and "
+                "chunk_starts to resolve absolute pair indices"
+            )
+        start = chunk_starts[block_id[0]]
+        gains = frame_gains[start : start + N]
+        if gains.shape[0] != N:
+            raise ValueError(
+                f"gain normalisation: gains slice [{start}:{start + N}] has "
+                f"{gains.shape[0]} rows but block has {N} pairs"
+            )
+        if not np.all(np.isfinite(gains)) or np.any(gains <= 0.0):
+            raise ValueError(
+                f"gain normalisation: non-positive or non-finite gain in "
+                f"pairs {start}..{start + N - 1} — refusing to divide"
+            )
+        block /= gains.astype(np.float32)[:, :, np.newaxis, np.newaxis]
+        if save_intermediate:
+            _save_intermediate_frame(
+                block, save_dir, f"{filter_idx:02d}_after_gain_normalisation"
+            )
+            filter_idx += 1
+
+    # 2. Apply pixel mask (zero masked regions) - now in-place
     if pixel_mask is not None:
         if pixel_mask.shape == (H, W):
             block[:, :, pixel_mask] = 0
@@ -192,7 +228,7 @@ def apply_all_filters_slim(
                 f"Pixel mask shape {pixel_mask.shape} != image shape ({H}, {W})"
             )
 
-    # 2. Apply filters in user-defined order (spatial and temporal interleaved)
+    # 3. Apply filters in user-defined order (spatial and temporal interleaved)
     for spec in filter_specs:
         filter_type = spec.get("type")
 
@@ -502,6 +538,7 @@ def create_filter_pipeline(
     config: Config,
     pixel_mask: Optional[np.ndarray] = None,
     save_intermediate_base: Optional[Path] = None,
+    frame_gains: Optional[np.ndarray] = None,
 ) -> da.Array:
     """
     Create a lazy filter pipeline using map_blocks.
@@ -516,6 +553,9 @@ def create_filter_pipeline(
         pixel_mask: Optional pixel mask (H, W)
         save_intermediate_base: Optional base path for saving intermediate filter outputs.
             If provided, saves frames to {base}/basic_filters/{num_frame_pairs}/{batch_no}/
+        frame_gains: Optional per-frame laser gains of shape (N, 2) (column
+            0 = A, 1 = B); each frame is divided by its scalar gain before
+            masking and filtering
 
     Returns:
         Dask array with filters applied lazily
@@ -534,10 +574,25 @@ def create_filter_pipeline(
             f"  Saving intermediate outputs to: {save_intermediate_base}/basic_filters/..."
         )
 
-    # If no filters and no mask, return unchanged
-    if not filter_specs and pixel_mask is None:
+    if frame_gains is not None and frame_gains.shape[0] != images.shape[0]:
+        raise ValueError(
+            f"gain normalisation: frame_gains has {frame_gains.shape[0]} rows "
+            f"but the image array has {images.shape[0]} pairs"
+        )
+
+    # If no filters, no mask and no gains, return unchanged
+    if not filter_specs and pixel_mask is None and frame_gains is None:
         logger.debug("  No filters configured, returning images unchanged")
         return images
+
+    # Absolute start pair index of every chunk. Chunks can be ragged (short
+    # last chunk, one chunk per loop-batch), so never use block_id * batch_size.
+    chunk_starts = None
+    if frame_gains is not None:
+        chunk_starts = tuple(
+            int(s) for s in np.concatenate(([0], np.cumsum(images.chunks[0])[:-1]))
+        )
+        logger.debug(f"  Gain normalisation: {frame_gains.shape[0]} per-frame gains")
 
     # Prepare intermediate saving parameters
     save_base_str = (
@@ -550,14 +605,19 @@ def create_filter_pipeline(
     # Apply filters via map_blocks using the slim version
     # This only serializes the filter specs (small dicts), not the full config
     # Use block_id to get the batch number for intermediate saving
-    # Filters promote to float32; mask-only blocks keep the source dtype.
+    # Filters and the gain divide promote to float32; mask-only blocks keep
+    # the source dtype.
     filtered = images.map_blocks(
         apply_all_filters_slim,
         filter_specs=filter_specs,
         pixel_mask=pixel_mask,
         save_intermediate_base=save_base_str,
         num_frame_pairs=num_frame_pairs,
-        dtype=np.float32 if filter_specs else images.dtype,
+        frame_gains=frame_gains,
+        chunk_starts=chunk_starts,
+        dtype=(
+            np.float32 if (filter_specs or frame_gains is not None) else images.dtype
+        ),
         block_id=True,  # Tell dask to pass block_id to the function
     )
 
@@ -806,6 +866,7 @@ def correlate_worker_batches(
     progress_var_name: Optional[str] = None,
     warp_sums_only: bool = False,
     mean_images: Optional[tuple] = None,
+    frame_gains: Optional[np.ndarray] = None,
 ) -> dict:
     """Accumulate correlation across multiple batches on one worker.
 
@@ -840,7 +901,9 @@ def correlate_worker_batches(
             source=Path(source_path),
             batch_size=config.batch_size,
         )
-        images = create_filter_pipeline(images, config, pixel_mask)
+        images = create_filter_pipeline(
+            images, config, pixel_mask, frame_gains=frame_gains
+        )
 
     # Create ONE correlator for all batches
     correlator = EnsembleCorrelatorCPU(

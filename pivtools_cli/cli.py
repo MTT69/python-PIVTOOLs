@@ -818,6 +818,10 @@ calibration:
     datum_frame: 1
     overlap_pairs: []
 filters: []
+preprocessing:
+  # gain_normalisation: per-frame laser-gain divide (two-pass regression against
+  # the ensemble mean image over unmasked pixels) before all filters
+  gain_normalisation: false
 masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat

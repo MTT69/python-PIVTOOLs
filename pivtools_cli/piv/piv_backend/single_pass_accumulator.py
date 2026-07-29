@@ -1023,6 +1023,7 @@ class SinglePassAccumulator:
             fit_diag["per_pair_normalization"] = (
                 self.config.ensemble_per_pair_normalization
             )
+            fit_diag["gain_normalised"] = self.config.gain_normalisation
             fit_diag["kspace_shape"] = self.config.ensemble_kspace_shape
             fit_diag["kspace_floor"] = kspace_floor
             # coloured-floor provenance: per-window fractions + P chain inputs
@@ -1619,6 +1620,7 @@ class SinglePassAccumulator:
                     "per_pair_normalization": (
                         self.config.ensemble_per_pair_normalization
                     ),
+                    "gain_normalised": self.config.gain_normalisation,
                     "skip_bg_subtraction": skip_bg_subtraction,
                 }
 

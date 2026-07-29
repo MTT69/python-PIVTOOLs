@@ -976,6 +976,26 @@ class Config:
         return self.data.get("filters", [])
 
     @property
+    def gain_normalisation(self) -> bool:
+        """Two-pass per-frame laser-gain normalisation (preprocessing.gain_normalisation).
+
+        When True, an eager pre-pass computes ensemble mean images <A>, <B>
+        per camera and a per-frame gain by least-squares regression against
+        them over unmasked pixels:
+
+            g_i = sum(I_i * ref) / sum(ref**2)
+
+        (gain-only, no offset — the model validated on Cam4 2026-07-27).
+        Each frame is then divided by its scalar gain at the head of the
+        filter pipeline, before pixel-mask zeroing and all configured
+        filters, in both the ensemble and instantaneous pipelines. Removes
+        per-frame laser energy drift and A/B pulse-energy imbalance at
+        source. Costs two extra full reads of the dataset per camera per
+        run. Default: False.
+        """
+        return self.data.get("preprocessing", {}).get("gain_normalisation", False)
+
+    @property
     def vector_format(self):
         # Returns a single format string like "%05d.mat".
         # Guard the read side: a stored value lacking a printf integer specifier

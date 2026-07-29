@@ -77,6 +77,7 @@ def process_pass_worker_accumulate(
     source_path,
     pixel_mask,
     images=None,
+    frame_gains=None,
 ):
     """
     Process one pass using per-worker accumulation.
@@ -167,6 +168,7 @@ def process_pass_worker_accumulate(
                 pixel_mask=pixel_mask,
                 batch_images=batch_images,
                 warp_sums_only=True,
+                frame_gains=frame_gains,
                 workers=[worker],
                 pure=False,
             )
@@ -228,6 +230,7 @@ def process_pass_worker_accumulate(
             batch_images=batch_images,
             progress_var_name=f"_corr_p{pass_idx}_{wi}",
             mean_images=scattered_mean_images,
+            frame_gains=frame_gains,
             workers=[worker],
             pure=False,
         )
@@ -488,14 +491,29 @@ def run_ensemble_piv(
         client, config, vector_masks, pixel_mask, ensemble=True
     )
 
-    # 3. Apply all filters via map_blocks
+    # 3. Optional gain-normalisation pre-pass (two extra reads of the data)
+    frame_gains = None
+    if config.gain_normalisation:
+        from pivtools_cli.preprocessing.gain_normalisation import (
+            compute_and_save_frame_gains,
+        )
+
+        frame_gains = compute_and_save_frame_gains(
+            images, pixel_mask, output_path, camera_num, source_path
+        )
+
+    # 4. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
     save_intermediate = base_path if config.filters else None
     images = create_filter_pipeline(
-        images, config, pixel_mask, save_intermediate_base=save_intermediate
+        images,
+        config,
+        pixel_mask,
+        save_intermediate_base=save_intermediate,
+        frame_gains=frame_gains,
     )
 
-    # 4. Decide memory strategy based on dataset size
+    # 5. Decide memory strategy based on dataset size
     num_chunks = len(images.chunks[0])
 
     if num_chunks == 1:
@@ -602,6 +620,11 @@ def run_ensemble_piv(
     if pixel_mask is not None:
         scattered_pixel_mask = client.scatter(pixel_mask, broadcast=True)
 
+    # Scatter per-frame gains for the worker-side pipeline reconstruction
+    scattered_frame_gains = None
+    if frame_gains is not None:
+        scattered_frame_gains = client.scatter(frame_gains, broadcast=True)
+
     images_are_persisted = (num_chunks == 1) or config.ensemble_persist_images
 
     # Pre-compute correlator metadata for intermediate saves and coordinates
@@ -649,6 +672,7 @@ def run_ensemble_piv(
             source_path=source_path,
             pixel_mask=scattered_pixel_mask,
             images=images if images_are_persisted else None,
+            frame_gains=scattered_frame_gains,
         )
 
         corr_elapsed = time.time() - pass_start

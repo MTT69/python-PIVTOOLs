@@ -273,15 +273,30 @@ def run_instantaneous_piv(
         client, config, vector_masks, pixel_mask, ensemble=False
     )
 
-    # 3. Apply all filters via map_blocks
+    # 3. Optional gain-normalisation pre-pass (two extra reads of the data)
+    frame_gains = None
+    if config.gain_normalisation:
+        from pivtools_cli.preprocessing.gain_normalisation import (
+            compute_and_save_frame_gains,
+        )
+
+        frame_gains = compute_and_save_frame_gains(
+            images, pixel_mask, output_path, camera_num, source_path
+        )
+
+    # 4. Apply all filters via map_blocks
     logger.info("Creating filter pipeline...")
     # Pass base_path to save intermediate filter outputs when filters are configured
     save_intermediate = base_path if config.filters else None
     images = create_filter_pipeline(
-        images, config, pixel_mask, save_intermediate_base=save_intermediate
+        images,
+        config,
+        pixel_mask,
+        save_intermediate_base=save_intermediate,
+        frame_gains=frame_gains,
     )
 
-    # 4. Process using sliding window for parallel I/O with bounded memory
+    # 5. Process using sliding window for parallel I/O with bounded memory
     num_chunks = len(images.chunks[0])
     logger.info(f"Processing {num_chunks} chunks using sliding window...")
 
