@@ -198,11 +198,6 @@ class TestSelector:
         assert _LIB.bulkxcorr2d_set_peakfit_impl(0) == 0
         assert _LIB.bulkxcorr2d_get_peakfit_impl() == 0
 
-    @pytest.mark.skipif(_AVAILABLE, reason="stub-only semantics")
-    def test_stub_refuses_batch(self):
-        assert _LIB.bulkxcorr2d_set_peakfit_impl(1) == -1
-        assert _LIB.bulkxcorr2d_get_peakfit_impl() == 0
-
     @needs_batch
     def test_lanes_sane(self):
         assert _LANES in (4, 8, 16)

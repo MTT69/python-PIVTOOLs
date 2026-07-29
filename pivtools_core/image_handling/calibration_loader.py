@@ -12,18 +12,59 @@ Key Functions:
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
+from ..calibration_settings import default_settings, try_load_settings
 from ..config import Config
 from .load_images import read_single_frame
 from .path_utils import (
     build_calibration_camera_path,
     format_to_glob,
+    infer_image_type,
     resolve_file_path,
     validate_images_generic,
 )
+
+
+def _resolve_image_settings(
+    config: Config,
+    source_path_idx: int,
+    image_format: Optional[str] = None,
+    image_type: Optional[str] = None,
+    num_images: Optional[int] = None,
+) -> Tuple[Path, Dict[str, Any]]:
+    """(source, effective image block) for a calibration read.
+
+    The image block comes from the source's settings sidecar; explicit
+    ``image_format`` / ``image_type`` / ``num_images`` arguments override it
+    (live form values from the GUI). A source with no sidecar yet is readable
+    ONLY with an explicit ``image_format`` (the first-visit validate flow,
+    before anything is saved) — the remaining knobs then take the documented
+    defaults. Without an override, a missing sidecar raises.
+    """
+    source = config.get_calibration_source(source_path_idx)
+    settings = try_load_settings(source)
+    if settings is None:
+        if not image_format:
+            from ..calibration_settings import _missing_message, settings_path
+
+            raise FileNotFoundError(_missing_message(source, settings_path(source)))
+        image = default_settings()["image"]
+    else:
+        image = dict(settings["image"])
+    if image_format is not None:
+        image["image_format"] = image_format
+        # An explicit format re-infers the type unless the type is also explicit
+        # (a stale stored type must not win over the live pattern).
+        if image_type is None:
+            image["image_type"] = infer_image_type(image_format)
+    if image_type is not None:
+        image["image_type"] = image_type
+    if num_images is not None:
+        image["n_views"] = num_images
+    return source, image
 
 
 def _normalize_to_uint8(img: np.ndarray) -> np.ndarray:
@@ -74,17 +115,17 @@ def read_calibration_image(
     Parameters
     ----------
     idx : int
-        Image index (1-based unless calibration_zero_based_indexing is True)
+        Image index (1-based unless the sidecar's zero_based_indexing is True)
     camera : int
         Camera number (1-based)
     config : Config
-        Configuration object with calibration settings
+        Configuration object supplying the calibration source pointer
     source_path_idx : int, optional
         Index into calibration_sources list, defaults to 0
     image_format : str, optional
-        Override for calibration_image_format from config
+        Override for the sidecar's image.image_format
     image_type : str, optional
-        Override for calibration_image_type from config
+        Override for the sidecar's image.image_type
     normalize_uint8 : bool, optional
         If True, normalize output to uint8 for OpenCV detection (default True)
 
@@ -96,27 +137,28 @@ def read_calibration_image(
     Raises
     ------
     FileNotFoundError
-        If the image file does not exist
+        If the image file does not exist, or the source has no settings
+        sidecar (and no explicit format/type overrides were given)
     ValueError
         If the image cannot be read or calibration_sources not configured
     """
-    # Use passed values or fall back to config
-    cal_image_type = (
-        image_type if image_type is not None else config.calibration_image_type
+    # Image sourcing comes from the source's settings sidecar (explicit args
+    # override); config supplies only the source pointer + rig camera count.
+    source, image = _resolve_image_settings(
+        config, source_path_idx, image_format, image_type
     )
-    fmt = image_format if image_format is not None else config.calibration_image_format
-
-    # Build calibration path using shared utility
-    camera_path = build_calibration_camera_path(config, source_path_idx, camera)
+    camera_path = build_calibration_camera_path(
+        source, image, camera, config.camera_count
+    )
 
     return read_calibration_frame_at(
         camera_path=camera_path,
         camera=camera,
         frame_idx=idx,
-        image_format=fmt,
-        image_type=cal_image_type,
-        zero_based_indexing=config.calibration_zero_based_indexing,
-        use_camera_subfolders=config.calibration_use_camera_subfolders,
+        image_format=image["image_format"],
+        image_type=image["image_type"],
+        zero_based_indexing=bool(image.get("zero_based_indexing", False)),
+        use_camera_subfolders=bool(image.get("use_camera_subfolders", False)),
         normalize_uint8=normalize_uint8,
         num_cameras=config.camera_count,
     )
@@ -206,15 +248,15 @@ def validate_calibration_images(
     camera : int
         Camera number (1-based)
     config : Config
-        Configuration object with calibration settings
+        Configuration object supplying the calibration source pointer
     source_path_idx : int, optional
         Index into calibration_sources list, defaults to 0
     image_format : str, optional
-        Override for calibration_image_format from config
+        Override for the sidecar's image.image_format
     num_images : int, optional
-        Override for calibration_image_count from config
+        Override for the sidecar's image.n_views
     image_type : str, optional
-        Override for calibration_image_type from config
+        Override for the sidecar's image.image_type
 
     Returns
     -------
@@ -231,17 +273,17 @@ def validate_calibration_images(
         - error: str or None - Error message if validation failed
         - suggested_pattern: str or None - Suggested pattern if files don't match
     """
-    # Use passed values or fall back to config
-    cal_image_type = (
-        image_type if image_type is not None else config.calibration_image_type
+    # Image sourcing comes from the source's settings sidecar (explicit args
+    # override); config supplies only the source pointer + rig camera count.
+    source, image = _resolve_image_settings(
+        config, source_path_idx, image_format, image_type, num_images
     )
-    fmt = image_format if image_format is not None else config.calibration_image_format
-    expected_count = (
-        num_images if num_images is not None else config.calibration_image_count
+    fmt = image["image_format"]
+    cal_image_type = image["image_type"]
+    expected_count = int(image.get("n_views") or 1)
+    camera_path = build_calibration_camera_path(
+        source, image, camera, config.camera_count
     )
-
-    # Build calibration path using shared utility
-    camera_path = build_calibration_camera_path(config, source_path_idx, camera)
 
     # Create a frame reader function for preview generation
     def read_frame(idx: int) -> np.ndarray:
@@ -261,7 +303,7 @@ def validate_calibration_images(
         image_format=fmt,
         image_type=cal_image_type,
         expected_count=expected_count,
-        zero_based_indexing=config.calibration_zero_based_indexing,
+        zero_based_indexing=bool(image.get("zero_based_indexing", False)),
         read_frame_fn=read_frame,
     )
 
@@ -287,19 +329,23 @@ def get_calibration_frame_count(
     int
         Number of calibration images found
     """
-    # Build calibration path using shared utility
-    camera_path = build_calibration_camera_path(config, source_path_idx, camera)
+    # Image sourcing comes from the source's settings sidecar.
+    source, image = _resolve_image_settings(config, source_path_idx)
+    camera_path = build_calibration_camera_path(
+        source, image, camera, config.camera_count
+    )
 
-    image_type = config.calibration_image_type
-    fmt = config.calibration_image_format
+    image_type = image["image_type"]
+    fmt = image["image_format"]
+    stored_count = int(image.get("n_views") or 1)
 
     if not camera_path.exists():
         return 0
 
     if image_type == "lavision_set":
         # For .set files, we would need to read the file to get count
-        # Return configured count as fallback
-        return config.calibration_image_count
+        # Return the stored count as fallback
+        return stored_count
 
     elif image_type == "cine":
         # Get frame count from .cine file
@@ -315,7 +361,7 @@ def get_calibration_frame_count(
                 return get_cine_frame_count(str(cine_path))
         except Exception:
             pass
-        return config.calibration_image_count
+        return stored_count
 
     elif image_type == "lavision_im7":
         pattern = format_to_glob(fmt)

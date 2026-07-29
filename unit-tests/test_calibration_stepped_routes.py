@@ -43,6 +43,7 @@ from test_calibration_stepped_stereo import (  # noqa: E402
 
 import pivtools_gui.calibration.app.stepped_views as sv
 from pivtools_cli.synthetic_calibration_common import make_camera_matrix
+from pivtools_core import calibration_settings as cs
 from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 
 # ---------------------------------------------------------------------------
@@ -51,19 +52,14 @@ from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedP
 
 
 class _FakeConfig:
-    """Minimal stand-in for the app config touched by the stepped routes."""
+    """Minimal stand-in for the app config touched by the stepped routes.
+
+    The calibration block is the pointer only — rig + board geometry live in
+    the source's settings sidecar (written by the ``client`` fixture).
+    """
 
     def __init__(self, source):
-        self.calibration = {
-            "camera": 1,
-            "camera_pair": [1, 2],
-            "source_idx": 0,
-            "stepped": {
-                "dot_spacing_mm": SPACING_MM,
-                "step_height_mm": STEP_MM,
-                "board_thickness_mm": 14.8,
-            },
-        }
+        self.calibration = {"source_idx": 0}
         self._source = source
 
     def get_calibration_source(self, idx):
@@ -108,6 +104,21 @@ def client(scene, tmp_path, monkeypatch):
     """Flask test client with the image reader + config seams mocked."""
     cfg = _FakeConfig(tmp_path)
     monkeypatch.setattr(sv, "get_config", lambda: cfg)
+    # Rig + geometry come from the source's settings sidecar now, not config.
+    cs.save_settings(
+        tmp_path,
+        {
+            "image": {"image_format": "calib%05d.tif", "image_type": "standard"},
+            "rig": {"camera": 1, "camera_pair": [1, 2], "dt": 1.0},
+            "methods": {
+                "stepped": {
+                    "dot_spacing_mm": SPACING_MM,
+                    "step_height_mm": STEP_MM,
+                    "board_thickness_mm": 14.8,
+                }
+            },
+        },
+    )
 
     def _fake_read(
         frame, camera, config, source_idx, image_format=None, image_type=None
@@ -238,7 +249,7 @@ def test_mono_generate_end_to_end(client, scene, tmp_path):
     sid, _ = _detect(client, [1])
     r = client.post(
         "/calibration/stepped/generate_model",
-        json={"sequence_id": sid, "stereo": False, "cameras": {"1": _spec(scene, 1)}},
+        json={"sequence_id": sid, "dt": 1.0, "stereo": False, "cameras": {"1": _spec(scene, 1)}},
     )
     body = r.get_json()
     assert r.status_code == 200, body
@@ -252,6 +263,10 @@ def test_mono_generate_end_to_end(client, scene, tmp_path):
     assert (tmp_path / "calibration").exists() or done["model_path"]
     assert any("reprojection" in f for f in done["figures"]), done["figures"]
     assert done["model_path"].endswith(".mat")
+    # generate stamps dt into the record (apply resolves request > model-stamped)
+    from pivtools_gui.calibration import record as REC
+
+    assert float(REC.load_mono(done["model_path"]).board_meta["dt"]) == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +282,7 @@ def test_stereo_generate_end_to_end(client, scene):
         json={
             "sequence_id": sid,
             "stereo": True,
+            "dt": 1.0,
             "stereo_config": "auto",
             "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
         },
@@ -281,6 +297,10 @@ def test_stereo_generate_end_to_end(client, scene):
     assert done["baseline_mm"] > 0
     assert any("cam1_reprojection" in f for f in done["figures"]), done["figures"]
     assert any("cameras_3d" in f for f in done["figures"]), done["figures"]
+    # generate stamps dt into the stereo record too
+    from pivtools_gui.calibration import record as REC
+
+    assert float(REC.load_stereo(done["model_path"]).board_meta["dt"]) == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +314,7 @@ def test_generate_missing_fiducial_fails_loudly(client, scene):
     spec["fiducials"] = {"origin": scene["fiducials"][1]["origin"]}  # missing +X/+Y
     r = client.post(
         "/calibration/stepped/generate_model",
-        json={"sequence_id": sid, "stereo": False, "cameras": {"1": spec}},
+        json={"sequence_id": sid, "dt": 1.0, "stereo": False, "cameras": {"1": spec}},
     )
     assert r.status_code == 400 and "fiducial" in r.get_json()["error"]
 
@@ -322,6 +342,7 @@ def test_restore_sequence_rehydrates_from_sidecar(client, scene):
         json={
             "sequence_id": sid,
             "stereo": True,
+            "dt": 1.0,
             "stereo_config": "auto",
             "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
         },
@@ -378,6 +399,7 @@ def test_generate_after_reload_from_sidecar(client, scene):
         json={
             "sequence_id": sid,
             "stereo": True,
+            "dt": 1.0,
             "stereo_config": "auto",
             "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
         },
@@ -403,6 +425,7 @@ def test_generate_after_reload_from_sidecar(client, scene):
         json={
             "sequence_id": restored_sid,
             "stereo": True,
+            "dt": 1.0,
             "stereo_config": "auto",
             "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
         },

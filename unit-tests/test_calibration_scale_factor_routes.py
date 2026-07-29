@@ -23,15 +23,14 @@ from pivtools_gui.calibration.pipeline import build_scale_factor_record
 
 
 class _FakeConfig:
+    camera_count = 1
+
     def __init__(self, base):
         self._base = base
         self.calibration = {}
 
     def get_calibration_source(self, idx):
         return self._base
-
-    def get_calibration_camera_folder(self, camera):
-        return ""
 
 
 @pytest.fixture
@@ -103,6 +102,7 @@ def test_generate_no_image_no_model_errors_clearly(env, monkeypatch):
             "use_image": False,
             "px_per_mm": 4.0,
             "origin_px": [30.0, 40.0],
+            "dt": 0.5,
         },
     )
     data = r.get_json()
@@ -127,6 +127,7 @@ def test_generate_default_still_loads_image(env, monkeypatch):
             "no_figures": True,
             "px_per_mm": 4.0,
             "origin_px": [30.0, 40.0],
+            "dt": 0.5,
         },
     )
     data = r.get_json()
@@ -173,7 +174,11 @@ def test_cli_default_still_loads_frame(tmp_path, monkeypatch):
         c2, "_load_one", lambda *a, **k: np.zeros((300, 400), np.uint8)
     )
 
-    path = c2.scale_factor_command(_cli_args(tmp_path, no_figures=True))
+    # image_format now has no silent default — the frame-loading path requires
+    # it from --image-format or the sidecar.
+    path = c2.scale_factor_command(
+        _cli_args(tmp_path, no_figures=True, image_format="calib%05d.png")
+    )
 
     record = rec.load_mono(path, "scale_factor")
     assert record.camera_model.image_size == (400, 300)

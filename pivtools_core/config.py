@@ -228,158 +228,32 @@ class Config:
 
         return dest_path
 
-    @staticmethod
-    def _paths_to_strings(obj):
-        """Recursively convert Path objects to strings for YAML serialization."""
-        if isinstance(obj, Path):
-            return str(obj)
-        if isinstance(obj, dict):
-            return {k: Config._paths_to_strings(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):
-            return [Config._paths_to_strings(item) for item in obj]
-        return obj
-
-    # Calibration method keys to filter from snapshots (only active method is saved)
-    _CALIBRATION_METHOD_KEYS = {
-        "scale_factor",
-        "dotboard",
-        "charuco",
-        "polynomial",
-        "stereo_dotboard",
-        "stereo_charuco",
-    }
-
-    def save_calibration_snapshot(self, base_path: Path) -> Path:
-        """Save a calibration snapshot to base_path/calibration/calibration_YYYY-MM-DD.yaml.
-
-        Captures the current calibration block with metadata so it can be
-        restored later if the user changes calibration sources. Only includes
-        the active calibration method's config (not all methods).
-
-        Args:
-            base_path: The output base directory (e.g. cfg.base_paths[0])
-
-        Returns:
-            Path to the saved snapshot file
-        """
-        import copy
-        from datetime import datetime
-
-        snapshot_dir = Path(base_path) / "calibration"
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-        now = datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
-        snapshot_path = snapshot_dir / f"calibration_{date_str}.yaml"
-
-        calibration_data = copy.deepcopy(self.data.get("calibration", {}))
-        active_method = self.active_calibration_method
-
-        # Strip inactive method configs — only keep the active method
-        filtered_cal = {}
-        for key, value in calibration_data.items():
-            if key in self._CALIBRATION_METHOD_KEYS and key != active_method:
-                continue
-            filtered_cal[key] = value
-
-        snapshot = {
-            "date": now.isoformat(),
-            "calibration_method": active_method,
-            "calibration": self._paths_to_strings(filtered_cal),
-        }
-
-        with open(snapshot_path, "w", encoding="utf-8") as f:
-            yaml.dump(snapshot, f, default_flow_style=False, sort_keys=False)
-
-        return snapshot_path
-
-    @staticmethod
-    def load_calibration_snapshot(base_path: Path) -> dict:
-        """Load the most recent calibration snapshot from base_path/calibration/.
-
-        Looks for calibration_YYYY-MM-DD.yaml files (sorted by name, newest first).
-        Falls back to legacy calibration.yaml if no dated files exist.
-
-        Args:
-            base_path: The output base directory
-
-        Returns:
-            Parsed snapshot dict with keys: date, calibration_method, calibration
-
-        Raises:
-            FileNotFoundError: If no snapshot exists
-        """
-        snapshot_dir = Path(base_path) / "calibration"
-
-        # Find dated snapshots (sorted descending = newest first)
-        dated_files = sorted(snapshot_dir.glob("calibration_*.yaml"), reverse=True)
-        if dated_files:
-            snapshot_path = dated_files[0]
-        else:
-            # Fallback to legacy filename
-            snapshot_path = snapshot_dir / "calibration.yaml"
-            if not snapshot_path.exists():
-                raise FileNotFoundError(f"No calibration snapshot in {snapshot_dir}")
-
-        with open(snapshot_path, "r") as f:
-            return yaml.safe_load(f)
+    # The YAML calibration block is a pointer only. Everything else (image format,
+    # board geometry, dt, global coordinates, ...) lives in the per-source
+    # settings sidecar — see pivtools_core.calibration_settings.
+    _CALIBRATION_POINTER_KEYS = ("calibration_sources", "source", "source_idx", "active")
 
     def _normalize_calibration_block(self):
-        """Reorder calibration block keys for consistent organization.
+        """Strip the calibration block to its pointer keys on save.
 
-        Groups image-related settings together at the top, followed by
-        active method selection, then method-specific configs.
+        Any non-pointer key found here predates the settings sidecar and is
+        stale by definition — drop it and log what was dropped at INFO.
         """
-        if "calibration" not in self.data:
+        cal = self.data.get("calibration")
+        if not isinstance(cal, dict):
             return
 
-        cal = self.data["calibration"]
+        dropped = [k for k in cal if k not in self._CALIBRATION_POINTER_KEYS]
+        if dropped:
+            logging.getLogger(__name__).info(
+                "Dropping stale calibration keys from config.yaml (calibration "
+                "state now lives in the per-source settings sidecar): %s",
+                ", ".join(sorted(dropped)),
+            )
 
-        # Define desired key order: image settings first, then method configs
-        image_settings = [
-            "image_format",
-            "num_images",
-            "image_type",
-            "zero_based_indexing",
-            "use_camera_subfolders",
-            "subfolder",
-            "camera_subfolders",
-            "path_order",
-        ]
-        meta_settings = ["active", "piv_type"]
-        method_configs = [
-            "scale_factor",
-            "dotboard",
-            "charuco",
-            "stereo_dotboard",
-            "polynomial",
-            "stereo_charuco",
-        ]
-
-        # Build ordered dict
-        ordered = {}
-
-        # Add image settings first
-        for key in image_settings:
-            if key in cal:
-                ordered[key] = cal[key]
-
-        # Add meta settings
-        for key in meta_settings:
-            if key in cal:
-                ordered[key] = cal[key]
-
-        # Add method configs
-        for key in method_configs:
-            if key in cal:
-                ordered[key] = cal[key]
-
-        # Add any remaining keys not in our lists
-        for key, value in cal.items():
-            if key not in ordered:
-                ordered[key] = value
-
-        self.data["calibration"] = ordered
+        self.data["calibration"] = {
+            k: cal[k] for k in self._CALIBRATION_POINTER_KEYS if k in cal
+        }
 
     def _get_config_path(self):
         """Path to config.yaml in the current working directory. No fallbacks."""
@@ -1341,106 +1215,10 @@ class Config:
         # Returns the post_processing block as a list, or empty list if not present
         return self.data.get("post_processing", [])
 
-    # --- Calibration specific settings ---
-    # All calibration settings are now unified under the 'calibration' block
-
-    @property
-    def calibration_image_format(self) -> str:
-        """Return calibration image filename pattern.
-
-        Now reads from unified calibration block.
-        Default 'calib%05d.tif'.
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        fmt = calib_block.get("image_format", None)
-        return fmt
-
-    def calibration_filename(self, index: int = 1) -> str:
-        """Generate calibration filename for a given index."""
-        fmt = self.calibration_image_format
-        try:
-            if "%" in fmt:
-                return fmt % index
-            return fmt
-        except Exception:
-            return fmt
-
-    @property
-    def calibration_image_count(self) -> int:
-        """Return number of calibration images/views expected.
-
-        Reads the unified ``n_views`` key (falls back to the legacy ``num_images`` for
-        old configs).
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("n_views", calib_block.get("num_images", 1))
-
-    @property
-    def calibration_image_type(self) -> str:
-        """Return calibration image type: 'standard', 'cine', 'lavision_set', 'lavision_im7'.
-
-        If explicitly set in config, returns that value.
-        Otherwise, auto-detects from calibration_image_format pattern.
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        explicit_type = calib_block.get("image_type")
-        if explicit_type:
-            return explicit_type
-        return self._detect_calibration_image_type()
-
-    def _detect_calibration_image_type(self) -> str:
-        """Auto-detect calibration image type from format string."""
-        fmt = self.calibration_image_format.lower()
-        if ".cine" in fmt:
-            return "cine"
-        elif ".set" in fmt:
-            return "lavision_set"
-        elif ".im7" in fmt:
-            return "lavision_im7"
-        elif ".ims" in fmt:
-            return "lavision_im7"
-        else:
-            return "standard"
-
-    @property
-    def calibration_is_container_format(self) -> bool:
-        """Return True if calibration format stores multiple frames in single container.
-
-        Note: IM7 files with % patterns (e.g., B%05d.im7) are individual files,
-        not containers. Only .set and .cine files are true multi-frame containers.
-        """
-        image_type = self.calibration_image_type
-        image_format = self.calibration_image_format
-
-        # IM7 files with % pattern are individual numbered files, not containers
-        if image_type == "lavision_im7" and "%" in image_format:
-            return False
-
-        # Only .set and .cine are true multi-frame containers
-        return image_type in ("cine", "lavision_set")
-
-    @property
-    def calibration_zero_based_indexing(self) -> bool:
-        """Return True if calibration image indices start at 0."""
-        calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("zero_based_indexing", False)
-
-    @property
-    def calibration_use_camera_subfolders(self) -> bool:
-        """Return True if calibration images use camera subfolders (Cam1/, Cam2/).
-
-        When True, calibration images are expected in camera subdirectories:
-        - calibration_source/Cam1/image.tif
-        - calibration_source/Cam2/image.tif
-
-        When False (default), all calibration images are in a single directory:
-        - calibration_source/image.tif
-
-        This applies to both standard formats (TIFF, PNG, etc.) and IM7 files.
-        Container formats (.set, .cine) never use camera subfolders.
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("use_camera_subfolders", False)
+    # --- Calibration pointer ---
+    # The YAML holds only the pointer to calibration data (sources, active
+    # method). Image format, board geometry, dt, etc. live in the per-source
+    # settings sidecar (pivtools_core.calibration_settings.load_settings).
 
     @property
     def calibration_sources(self) -> list:
@@ -1491,117 +1269,6 @@ class Config:
         return sources[source_path_idx]
 
     @property
-    def calibration_camera_subfolders(self) -> list:
-        """Return custom camera subfolder names for calibration images.
-
-        Independent from paths.camera_subfolders - specifically for calibration.
-        If not set, returns empty list (will use default Cam1, Cam2... pattern).
-
-        Example: ["camera1", "camera2"] for cameras in folders named camera1/, camera2/
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("camera_subfolders", [])
-
-    @property
-    def calibration_path_order(self) -> str:
-        """Return path order for calibration images.
-
-        Note: This property is deprecated. With calibration_sources, camera folders
-        are simply appended to the calibration source path when use_camera_subfolders
-        is True: calibration_source/camera_folder/file
-
-        Kept for backwards compatibility but no longer actively used by path resolution.
-
-        Returns
-        -------
-        str
-            Path order: 'camera_first' or 'calibration_first'
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("path_order", "camera_first")
-
-    def get_calibration_camera_folder(self, camera_num: int) -> str:
-        """Get the subfolder name for calibration images of a specific camera.
-
-        Container formats (.cine, .set) never use camera subfolders.
-        Standard and IM7 formats respect the calibration_use_camera_subfolders setting.
-
-        Uses calibration.camera_subfolders if set, otherwise falls back to
-        default Cam{N} pattern for multi-camera setups.
-        """
-        # SET and CINE never use camera subfolders
-        if self.calibration_image_type in ("lavision_set", "cine"):
-            return ""
-
-        # Standard and IM7 formats: check calibration_use_camera_subfolders
-        if not self.calibration_use_camera_subfolders:
-            return ""
-
-        # Use calibration-specific camera subfolders if available
-        subfolders = self.calibration_camera_subfolders
-        if subfolders:
-            idx = camera_num - 1  # camera_num is 1-based
-            if idx < len(subfolders) and subfolders[idx]:
-                return subfolders[idx]
-
-        # Generate default folder name for multi-camera setups
-        if self.camera_count > 1:
-            return f"Cam{camera_num}"
-
-        return ""
-
-    def get_calibration_image_path(
-        self, camera: int, index: int, source_path_idx: int = 0
-    ) -> Path:
-        """Build full path to a calibration image.
-
-        Uses calibration_sources for the base path, then applies camera subfolders
-        if applicable based on image type.
-
-        Parameters
-        ----------
-        camera : int
-            Camera number (1-based)
-        index : int
-            Image index (1-based or 0-based depending on calibration_zero_based_indexing)
-        source_path_idx : int
-            Index into calibration_sources list
-
-        Returns
-        -------
-        Path
-            Full path to the calibration image file
-        """
-        from pivtools_core.image_handling.path_utils import (
-            build_calibration_camera_path,
-        )
-
-        camera_path = build_calibration_camera_path(self, source_path_idx, camera)
-        image_type = self.calibration_image_type
-        fmt = self.calibration_image_format
-
-        # For container formats, the camera_path is already the full path
-        if image_type == "lavision_set":
-            return camera_path if camera_path.suffix else camera_path / fmt
-        elif image_type == "cine":
-            # CINE pattern uses %d for camera number
-            if camera_path.suffix:
-                return camera_path
-            if "%" in fmt:
-                return camera_path / (fmt % camera)
-            return camera_path / fmt
-        elif image_type == "lavision_im7":
-            # IM7 uses %d for frame index
-            if "%" in fmt:
-                return camera_path / (fmt % index)
-            return camera_path / fmt
-        else:
-            # Standard formats use %d for frame index
-            if "%" in fmt:
-                return camera_path / (fmt % index)
-            return camera_path / fmt
-
-    @property
     def calibration(self):
         """Return the full calibration block (dict) from config."""
         return self.data.get("calibration", {})
@@ -1611,201 +1278,6 @@ class Config:
         """Return the active calibration method name (e.g., 'dotboard', 'scale_factor')."""
         cal = self.calibration
         return cal.get("active", "scale_factor")
-
-    @property
-    def active_calibration_params(self):
-        """Return the parameters dict for the active calibration method."""
-        cal = self.calibration
-        active = cal.get("active", "scale_factor")
-        return cal.get(active, {})
-
-    @property
-    def scale_factor_calibration(self):
-        """Return scale factor calibration parameters."""
-        return self.calibration.get("scale_factor", {})
-
-    @property
-    def dotboard_calibration(self):
-        """Return dotboard calibration parameters."""
-        return self.calibration.get("dotboard", {})
-
-    @property
-    def stereo_calibration(self):
-        """Return stereo calibration parameters (shared stereo settings)."""
-        return self.calibration.get("stereo", {})
-
-    @property
-    def calibration_interpolator(self) -> str:
-        """Cam2 resample kernel for stereo 3C reconstruction: linear | cubic | lanczos.
-
-        Default 'lanczos'. 'linear' is the legacy bilinear path (rings); 'cubic'/'lanczos'
-        use cv2.remap to remove the grid-locked variance ringing. Validated on access.
-        """
-        method = self.calibration.get("interpolator", "lanczos")
-        if method not in ("linear", "cubic", "lanczos"):
-            raise ValueError(
-                f"calibration.interpolator must be linear|cubic|lanczos, got {method!r}"
-            )
-        return method
-
-    @property
-    def stereo_dotboard_calibration(self):
-        """Return stereo dotboard calibration parameters."""
-        return self.calibration.get("stereo_dotboard", {})
-
-    @property
-    def charuco_calibration(self):
-        """Return ChArUco board calibration parameters."""
-        return self.calibration.get("charuco", {})
-
-    @property
-    def polynomial_calibration(self):
-        """Return polynomial calibration parameters."""
-        return self.calibration.get("polynomial", {})
-
-    @property
-    def stereo_charuco_calibration(self):
-        """Return stereo ChArUco calibration parameters."""
-        return self.calibration.get("stereo_charuco", {})
-
-    @property
-    def calibration_piv_type(self) -> str:
-        """Return PIV type for calibration: 'instantaneous' or 'ensemble'.
-
-        This determines which vector data directory to use when calibrating vectors.
-        """
-        calib_block = self.data.get("calibration", {}) or {}
-        return calib_block.get("piv_type", "instantaneous")
-
-    def get_calibration_method_params(self, method: str):
-        """Get parameters for a specific calibration method."""
-        return self.calibration.get(method, {})
-
-    def set_active_calibration_method(self, method: str):
-        """Set the active calibration method."""
-        if method in [
-            "scale_factor",
-            "dotboard",
-            "stereo_dotboard",
-            "charuco",
-            "polynomial",
-            "stereo_charuco",
-        ]:
-            self.data["calibration"]["active"] = method
-        else:
-            raise ValueError(f"Unknown calibration method: {method}")
-
-    # Joint multi-camera clicked coords (datum + anchors) live in the sidecar inputs.mat next to
-    # the model, not in config — see calibration.inputs_store. No global_grid_config property.
-
-    # --- Global coordinate alignment properties ---
-
-    @property
-    def global_coordinates_config(self) -> dict:
-        """Return the global_coordinates sub-block of calibration."""
-        return self.calibration.get("global_coordinates", {})
-
-    @property
-    def global_coordinates_enabled(self) -> bool:
-        """Return True if global coordinate alignment is enabled."""
-        return self.global_coordinates_config.get("enabled", False)
-
-    @property
-    def global_coordinates_datum_pixel(self) -> Optional[List[float]]:
-        """Return datum pixel [x, y] on camera 1, or None if not set."""
-        return self.global_coordinates_config.get("datum_pixel")
-
-    @property
-    def global_coordinates_datum_physical(self) -> List[float]:
-        """Return desired physical [x_mm, y_mm] at the datum point."""
-        return self.global_coordinates_config.get("datum_physical", [0.0, 0.0])
-
-    @property
-    def global_coordinates_datum_frame(self) -> int:
-        """Return which calibration frame the datum was picked on."""
-        return self.global_coordinates_config.get("datum_frame", 1)
-
-    @property
-    def global_coordinates_overlap_points(self) -> list:
-        """Return list of overlap point definitions for multi-camera alignment (legacy format).
-
-        Each entry: {target_camera, pixel_on_datum_cam, pixel_on_target, target_frame}
-        """
-        return self.global_coordinates_config.get("overlap_points", [])
-
-    @property
-    def global_coordinates_overlap_pairs(self) -> list:
-        """Return list of overlap pair definitions for chain alignment.
-
-        Each entry: {camera_a, camera_b, pixel_on_a, pixel_on_b, frame_a, frame_b}
-        Falls back to converting old overlap_points format if overlap_pairs not present.
-        """
-        gc = self.global_coordinates_config
-        pairs = gc.get("overlap_pairs")
-        if pairs is not None:
-            return pairs
-        # Backward compat: convert old overlap_points to pairs
-        old_points = gc.get("overlap_points", [])
-        return [
-            {
-                "camera_a": 1,
-                "camera_b": op["target_camera"],
-                "pixel_on_a": op.get("pixel_on_datum_cam"),
-                "pixel_on_b": op.get("pixel_on_target"),
-                "frame_a": gc.get("datum_frame", 1),
-                "frame_b": op.get("target_frame", 1),
-            }
-            for op in old_points
-        ]
-
-    # --- Self-calibration properties ---
-    @property
-    def self_calibration_config(self) -> dict:
-        """Return self-calibration data from the file alongside the stereo model.
-
-        Checks: {base_path}/calibration/stereo_cam{A}_cam{B}/self_calibration.yaml
-        Returns empty dict if no file exists (no fallback to config.yaml —
-        stale values in config.yaml must not leak across datasets).
-        """
-        try:
-            pairs = self.stereo_pairs
-            if pairs and self.base_paths:
-                cam1, cam2 = pairs[0]
-                base = Path(str(self.base_paths[0]))
-                sc_path = (
-                    base
-                    / "calibration"
-                    / f"stereo_cam{cam1}_cam{cam2}"
-                    / "self_calibration.yaml"
-                )
-                if sc_path.exists():
-                    with open(sc_path) as f:
-                        data = yaml.safe_load(f) or {}
-                    return data
-        except Exception:
-            pass
-        return {}
-
-    @property
-    def self_calibration_z_offset(self) -> float:
-        """Return self-cal Z-offset of laser sheet from calibration plane (mm)."""
-        return self.self_calibration_config.get("z_offset", 0.0)
-
-    @property
-    def self_calibration_tilt_x(self) -> float:
-        """Return self-cal tilt about X-axis (radians)."""
-        return self.self_calibration_config.get("tilt_x", 0.0)
-
-    @property
-    def self_calibration_tilt_y(self) -> float:
-        """Return self-cal tilt about Y-axis (radians)."""
-        return self.self_calibration_config.get("tilt_y", 0.0)
-
-    @property
-    def has_self_calibration(self) -> bool:
-        """Return True if self-calibration has been run and converged."""
-        sc = self.self_calibration_config
-        return sc.get("converged", False) and "z_offset" in sc
 
     # --- Merging properties ---
     @property
@@ -1887,33 +1359,6 @@ class Config:
     def num_peaks(self):
         """Return number of peaks to detect in correlation."""
         return self.data.get("instantaneous_piv", {}).get("num_peaks", 1)
-
-    @property
-    def dt(self):
-        """Return time difference between frames.
-
-        The merged calibration block carries ``dt`` at the top level (this is what the
-        calibration apply path reads via ``resolve_dt``). Prefer it; fall back to the
-        legacy per-method ``dt`` for old configs.
-        """
-        top_level = self.calibration.get("dt")
-        if top_level is not None:
-            return top_level
-        # Legacy: dt lived inside the active method's sub-block.
-        active_method = self.active_calibration_method
-        if active_method == "stereo_dotboard":
-            return self.stereo_dotboard_calibration.get("dt", 1)
-        elif active_method == "dotboard":
-            return self.dotboard_calibration.get("dt", 1)
-        elif active_method == "scale_factor":
-            return self.scale_factor_calibration.get("dt", 1)
-        elif active_method == "charuco":
-            return self.charuco_calibration.get("dt", 1)
-        elif active_method == "stereo_charuco":
-            return self.stereo_charuco_calibration.get("dt", 1)
-        elif active_method == "polynomial":
-            return self.polynomial_calibration.get("dt", 1)
-        return 1
 
     @property
     def window_type(self):

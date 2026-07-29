@@ -39,9 +39,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from pivtools_core import calibration_settings as cs
 from pivtools_core.config import get_config
 from pivtools_core.image_handling.calibration_loader import read_calibration_frame_at
-from pivtools_core.image_handling.path_utils import infer_image_type
+from pivtools_core.image_handling.path_utils import (
+    calibration_camera_folder,
+    infer_image_type,
+)
 from pivtools_core.paths import vector_glob_from_format
 from pivtools_gui.calibration import global_coords as gc2
 from pivtools_gui.calibration import record as rec
@@ -78,7 +82,54 @@ logger = logging.getLogger(__name__)
 
 
 def _cfg2(config) -> dict:
+    """The YAML calibration block — now just the pointer (sources, source_idx, active)."""
     return config.calibration
+
+
+def _settings_cfg(source: Path) -> dict:
+    """Flat legacy-key view of the SOURCE's settings sidecar.
+
+    ``image`` + ``rig`` + ``fit`` knobs at top level, per-board method blocks
+    keyed by board name — the key shape the command bodies (and
+    ``_board_params`` / ``_resolve_datum_index`` / ``_loader_kwargs``) have
+    always consumed. Built from the source's sidecar (defaults template when
+    absent — required keys stay None there and fail loudly downstream); the
+    YAML config contributes nothing here.
+    """
+    settings = cs.try_load_settings(source) or cs.default_settings()
+    flat: Dict[str, Any] = {}
+    flat.update(settings.get("image") or {})
+    flat.update(settings.get("rig") or {})
+    flat.update(settings.get("fit") or {})
+    flat.update(settings.get("methods") or {})
+    return flat
+
+
+def _image_format_cli(args, scfg: dict, source: Path) -> str:
+    """``--image-format`` > sidecar ``image.image_format`` > loud error (no default)."""
+    v = getattr(args, "image_format", None) or scfg.get("image_format")
+    if not v:
+        raise SystemExit(
+            "calibration: image.image_format is required — pass --image-format "
+            f"or set it in {cs.settings_path(source)} "
+            "(`pivtools-cli calibration init-settings` seeds a template)"
+        )
+    return v
+
+
+def _n_views_cli(args, scfg: dict, source: Path) -> int:
+    """``--n-views`` > sidecar ``image.n_views`` > loud error.
+
+    The CLI detect commands load a fixed number of views, so unlike the GUI
+    (which frame-counts the source) an unset count has no fallback here.
+    """
+    v = getattr(args, "n_views", None) or scfg.get("n_views")
+    if not v:
+        raise SystemExit(
+            "calibration: image.n_views is required for CLI detection — pass "
+            f"--n-views or set it in {cs.settings_path(source)}"
+        )
+    return int(v)
 
 
 def _source(cfg: dict, override=None) -> Path:
@@ -133,6 +184,54 @@ def _resolve_datum_index(cfg: Dict[str, Any]) -> int:
     return 0
 
 
+def init_settings_command(args):
+    """Write a fresh per-source settings sidecar template (headless seeding).
+
+    Refuses to overwrite an existing file — settings are edited in place (GUI
+    or text editor), never regenerated over the top of real values.
+    """
+    config = get_config()
+    source = _source(_cfg2(config), getattr(args, "source", None))
+    # save_settings mkdirs parents, so a typo'd --source would silently create
+    # a sidecar in a directory tree that holds no calibration images.
+    if not (source.is_dir() or source.is_file()):
+        raise SystemExit(
+            f"calibration: source {source} does not exist — init-settings "
+            "seeds an existing calibration image location"
+        )
+    path = cs.settings_path(source)
+    if path.exists():
+        raise SystemExit(
+            f"calibration: {path} already exists — edit it directly "
+            "(init-settings never overwrites)"
+        )
+    cs.save_settings(source, {})
+    print(
+        f"calibration: wrote settings template {path}\n"
+        "Fill in image.image_format, image.image_type, rig.dt and the board "
+        "geometry under methods.<board> before detecting/generating."
+    )
+
+
+def _generate_dt_cli(args, source: Path) -> float:
+    """dt to stamp into a generated record: ``--dt`` > settings ``rig.dt`` > error.
+
+    Velocity scales linearly with dt so it has no safe default; every generated
+    record carries it, and apply resolves request > model-stamped > error.
+    """
+    v = getattr(args, "dt", None)
+    if v is not None:
+        return float(v)
+    settings = cs.try_load_settings(source)
+    dt = ((settings or {}).get("rig") or {}).get("dt")
+    if dt is None:
+        raise SystemExit(
+            "calibration: dt is required to generate a model — pass --dt or set "
+            f"rig.dt in {cs.settings_path(source)} (velocity has no safe default)"
+        )
+    return float(dt)
+
+
 # ---------------------------------------------------------------------------
 # Board registry — the single dispatch point for board types.
 #
@@ -156,8 +255,8 @@ def _require_geometry(d: dict, key: str, where: str):
     Board geometry (dot spacing, square count/size) has no safe default — a wrong value
     silently rescales every world coordinate, the exact failure that survives review
     unnoticed. So the CLI refuses to guess, unlike detector-tuning knobs (k_neighbors,
-    marker_ratio, ...) which keep defaults. ``init``-generated configs ship explicit
-    values, so this only bites a hand-written config that omitted the geometry block.
+    marker_ratio, ...) which keep defaults. This bites an unseeded or hand-edited
+    settings sidecar whose ``methods.<board>`` block omits the geometry.
 
     Raises ``ValueError`` (not ``SystemExit``): the board-param builders are shared with
     the Flask routes (``views._resolve_board`` / ``stepped_views`` call ``_board_params``),
@@ -166,17 +265,19 @@ def _require_geometry(d: dict, key: str, where: str):
     """
     if d.get(key) is None:
         raise ValueError(
-            f"calibration: {where}.{key} is required — set it in config "
-            f"(board geometry has no default)"
+            f"calibration: {where}.{key} is required — set it in the source's "
+            f"calibration/settings.yaml (GUI Calibration tab, or "
+            f"`pivtools-cli calibration init-settings` then edit), or pass the "
+            f"matching CLI flag (board geometry has no default)"
         )
     return d[key]
 
 
 def _charuco_params_from(d: dict) -> CharucoParams:
     return CharucoParams(
-        squares_h=int(_require_geometry(d, "squares_h", "calibration.charuco")),
-        squares_v=int(_require_geometry(d, "squares_v", "calibration.charuco")),
-        square_size_m=float(_require_geometry(d, "square_size", "calibration.charuco")),
+        squares_h=int(_require_geometry(d, "squares_h", "methods.charuco")),
+        squares_v=int(_require_geometry(d, "squares_v", "methods.charuco")),
+        square_size_m=float(_require_geometry(d, "square_size", "methods.charuco")),
         marker_ratio=float(d.get("marker_ratio", 0.5)),
         aruco_dict=str(d.get("aruco_dict", "DICT_4X4_1000")),
         min_corners=int(d.get("min_corners", 6)),
@@ -186,7 +287,7 @@ def _charuco_params_from(d: dict) -> CharucoParams:
 def _dotboard_params_from(d: dict) -> DotboardParams:
     return DotboardParams(
         dot_spacing_mm=float(
-            _require_geometry(d, "dot_spacing_mm", "calibration.dotboard")
+            _require_geometry(d, "dot_spacing_mm", "methods.dotboard")
         ),
         k_neighbors=int(d.get("k_neighbors", 9)),
     )
@@ -201,13 +302,13 @@ def _stepped_params_from(d: dict) -> SteppedParams:
     lo = d.get("level_offset_mm")
     return SteppedParams(
         dot_spacing_mm=float(
-            _require_geometry(d, "dot_spacing_mm", "calibration.stepped")
+            _require_geometry(d, "dot_spacing_mm", "methods.stepped")
         ),
         step_height_mm=float(
-            _require_geometry(d, "step_height_mm", "calibration.stepped")
+            _require_geometry(d, "step_height_mm", "methods.stepped")
         ),
         board_thickness_mm=float(
-            _require_geometry(d, "board_thickness_mm", "calibration.stepped")
+            _require_geometry(d, "board_thickness_mm", "methods.stepped")
         ),
         level_offset_mm=None if lo is None else float(lo),
     )
@@ -339,24 +440,25 @@ def _parse_fiducials(d: dict) -> Dict[str, List[float]]:
     return {k: [float(d[k][0]), float(d[k][1])] for k in ("origin", "x_axis", "y_axis")}
 
 
-def _cam_dir(config, source: Path, camera: int) -> Path:
+def _cam_dir(scfg: dict, source: Path, camera: int, num_cameras: int) -> Path:
     """Per-camera image directory: the CLI-resolved ``source`` + the loader's camera folder.
 
-    The folder name is delegated to ``Config.get_calibration_camera_folder`` — the same
+    The folder name is delegated to ``path_utils.calibration_camera_folder`` — the same
     resolver ``build_calibration_camera_path`` uses for the GUI/PIV image loaders — so the
     headless CLI lands on the same per-camera directory: the ``use_camera_subfolders`` gate
     and the ``camera_subfolders`` list are honoured, and a multi-camera rig with no explicit
     list falls back to ``Cam{N}``. Only ``source`` is CLI-specific (it may come from
-    ``--source``), so just the folder is delegated, not the whole path —
-    ``build_calibration_camera_path`` resolves its own source and would ignore ``--source``.
+    ``--source``), so just the folder is delegated, not the whole path.
 
-    Caveat: the container-format gate inside the resolver keys off ``calibration_image_type``
-    (the YAML type/format), NOT the per-call ``--image-format``. If a config's YAML format
-    class (container vs per-file) disagrees with a ``--image-format`` override, the subfolder
-    decision here can disagree with the file the loader then reads — a contradictory config
-    that surfaces as a loud FileNotFoundError, not silent wrong data.
+    Caveat: the container-format gate keys off the settings ``image_type``/``image_format``,
+    NOT the per-call ``--image-format``. If they disagree on format class (container vs
+    per-file), the subfolder decision here can disagree with the file the loader then
+    reads — a contradiction that surfaces as a loud FileNotFoundError, not silent wrong data.
     """
-    folder = config.get_calibration_camera_folder(int(camera))
+    image_type = scfg.get("image_type") or infer_image_type(
+        scfg.get("image_format") or ""
+    )
+    folder = calibration_camera_folder(scfg, image_type, int(camera), num_cameras)
     return Path(source) / folder if folder else Path(source)
 
 
@@ -516,18 +618,20 @@ def detect_mono_command(args):
     cfg = _cfg2(config)
     board = args.board or cfg.get("active", "charuco")
     source = _source(cfg, args.source)
-    camera = int(args.camera if args.camera is not None else cfg.get("camera", 1))
-    image_format = args.image_format or cfg.get("image_format", "calib%05d.png")
-    n_views = int(args.n_views or cfg.get("n_views", 10))
-    start_index = int(cfg.get("start_index", 1))
-    datum_index = _resolve_datum_index(cfg)
-    dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
-    model_type = args.model_type or cfg.get(board, {}).get("model_type", "pinhole")
-    fix_aspect = bool(cfg.get("fix_aspect_ratio", True))
-    fix_k2 = bool(cfg.get(board, {}).get("fix_k2", False))
-    use_ro = bool(cfg.get("use_release_object", False))
-    clicks = _load_clicks(args.world_frame or cfg.get("world_frame", "default"))
-    frame_grid = _load_grid(cfg.get("world_frame_grid"))
+    scfg = _settings_cfg(source)
+    camera = int(args.camera if args.camera is not None else scfg.get("camera") or 1)
+    image_format = _image_format_cli(args, scfg, source)
+    n_views = _n_views_cli(args, scfg, source)
+    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
+    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    datum_index = _resolve_datum_index(scfg)
+    dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
+    model_type = args.model_type or scfg.get(board, {}).get("model_type", "pinhole")
+    fix_aspect = bool(scfg.get("fix_aspect_ratio", True))
+    fix_k2 = bool(scfg.get(board, {}).get("fix_k2", False))
+    use_ro = bool(scfg.get("use_release_object", False))
+    clicks = _load_clicks(args.world_frame or scfg.get("world_frame", "default"))
+    frame_grid = _load_grid(scfg.get("world_frame_grid"))
 
     model_dir = rec.mono_model_dir_for_source(source, camera, board)
 
@@ -549,15 +653,17 @@ def detect_mono_command(args):
         None if getattr(args, "no_figures", False) else model_dir.parent / "figures"
     )
 
-    params = _board_params(cfg, board, overrides=_geometry_overrides(args))
+    # Resolve dt before the expensive detection pass — a missing dt must fail now.
+    gen_dt = _generate_dt_cli(args, source)
+    params = _board_params(scfg, board, overrides=_geometry_overrides(args))
     detector = _build_detector(board, params)
     images = _load_views(
-        _cam_dir(config, source, camera),
+        _cam_dir(scfg, source, camera, config.camera_count),
         image_format,
         n_views,
         start_index,
         camera=camera,
-        **_loader_kwargs(cfg, image_format),
+        **_loader_kwargs(scfg, image_format),
     )
 
     # Detection sidecar (parity with the GUI): reuse stored detections when the params match,
@@ -595,6 +701,9 @@ def detect_mono_command(args):
         origin_mm=origin_mm,
         detections=dets,
     )
+    record.board_meta["dt"] = gen_dt
+    if image_format:
+        record.board_meta["image_format"] = str(image_format)
     path = rec.save_mono(record, model_dir)
     isz = record.camera_model.image_size
     save_inputs(
@@ -620,29 +729,31 @@ def detect_stereo_command(args):
     cfg = _cfg2(config)
     board = args.board or cfg.get("active", "charuco")
     source = _source(cfg, args.source)
-    pair = args.camera_pair or cfg.get("camera_pair", [1, 2])
+    scfg = _settings_cfg(source)
+    pair = args.camera_pair or scfg.get("camera_pair") or [1, 2]
     if isinstance(pair, str):
         pair = [int(x) for x in pair.split(",")]
     cam1, cam2 = int(pair[0]), int(pair[1])
-    image_format = args.image_format or cfg.get("image_format", "calib%05d.png")
-    n_views = int(args.n_views or cfg.get("n_views", 10))
-    start_index = int(cfg.get("start_index", 1))
-    datum_index = _resolve_datum_index(cfg)
-    dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
-    fix_aspect = bool(cfg.get("fix_aspect_ratio", True))
-    fix_k2 = bool(cfg.get(board, {}).get("fix_k2", False))
+    image_format = _image_format_cli(args, scfg, source)
+    n_views = _n_views_cli(args, scfg, source)
+    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
+    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    datum_index = _resolve_datum_index(scfg)
+    dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
+    fix_aspect = bool(scfg.get("fix_aspect_ratio", True))
+    fix_k2 = bool(scfg.get(board, {}).get("fix_k2", False))
     # Flat same-side stereo defaults to release-object intrinsics (DaVis-style); the GUI
-    # route uses the StereoCalibrator default. An explicit config value still overrides.
-    use_ro = bool(cfg.get("use_release_object", True))
-    clicks = _load_clicks(args.world_frame or cfg.get("world_frame", "default"))
+    # route uses the StereoCalibrator default. An explicit settings value still overrides.
+    use_ro = bool(scfg.get("use_release_object", True))
+    clicks = _load_clicks(args.world_frame or scfg.get("world_frame", "default"))
     clicks2 = (
-        _load_clicks(cfg.get("world_frame_cam2", "default"))
+        _load_clicks(scfg.get("world_frame_cam2", "default"))
         if board == "dotboard"
         else None
     )
-    frame_grid = _load_grid(cfg.get("world_frame_grid"))
+    frame_grid = _load_grid(scfg.get("world_frame_grid"))
     frame_grid2 = (
-        _load_grid(cfg.get("world_frame_grid_cam2")) if board == "dotboard" else None
+        _load_grid(scfg.get("world_frame_grid_cam2")) if board == "dotboard" else None
     )
 
     model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
@@ -663,23 +774,25 @@ def detect_stereo_command(args):
         None if getattr(args, "no_figures", False) else model_dir.parent / "figures"
     )
 
-    params = _board_params(cfg, board, overrides=_geometry_overrides(args))
+    # Resolve dt before the expensive detection pass — a missing dt must fail now.
+    gen_dt = _generate_dt_cli(args, source)
+    params = _board_params(scfg, board, overrides=_geometry_overrides(args))
     detector = _build_detector(board, params)
     imgs1 = _load_views(
-        _cam_dir(config, source, cam1),
+        _cam_dir(scfg, source, cam1, config.camera_count),
         image_format,
         n_views,
         start_index,
         camera=cam1,
-        **_loader_kwargs(cfg, image_format),
+        **_loader_kwargs(scfg, image_format),
     )
     imgs2 = _load_views(
-        _cam_dir(config, source, cam2),
+        _cam_dir(scfg, source, cam2, config.camera_count),
         image_format,
         n_views,
         start_index,
         camera=cam2,
-        **_loader_kwargs(cfg, image_format),
+        **_loader_kwargs(scfg, image_format),
     )
 
     # Detection sidecar (parity with the GUI): reuse stored detections when params match,
@@ -730,6 +843,9 @@ def detect_stereo_command(args):
         det1=det1,
         det2=det2,
     )
+    record.board_meta["dt"] = gen_dt
+    if image_format:
+        record.board_meta["image_format"] = str(image_format)
     path = rec.save_stereo(record, model_dir)
     save_inputs(
         model_dir,
@@ -863,6 +979,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
     if board not in ("dotboard", "charuco"):
         raise SystemExit(f"detect-joint: board must be dotboard|charuco, got {board!r}")
     source = _source(cfg, args.source)
+    scfg = _settings_cfg(source)
     # Clicked coords (datum + anchors + camera_extends + cameras) come from the sidecar
     # inputs.mat the GUI wizard writes — not config. Same dict shape, so the gg.get(...) reads
     # below and _global_grid_spec_from_cfg are unchanged. ChArUco needs no clicks (corner ids
@@ -882,7 +999,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
         )
     datum_camera = int(gg.get("datum_camera", cameras[0]))
     datum_view = int(gg.get("datum_view", 0))
-    model_type = args.model_type or cfg.get(board, {}).get("model_type", "pinhole")
+    model_type = args.model_type or scfg.get(board, {}).get("model_type", "pinhole")
     if model_type not in ("pinhole", "polynomial"):
         raise SystemExit(
             f"detect-joint: model_type must be pinhole|polynomial, got {model_type!r}"
@@ -893,14 +1010,15 @@ def detect_joint_command(args) -> "Path | List[Path]":
             f"detect-joint: board_release must be full3d|z_only|none, got {board_release!r}"
         )
 
-    n_views = int(args.n_views or cfg.get("n_views", 10))
+    n_views = _n_views_cli(args, scfg, source)
     if n_views < 1:
         raise SystemExit("detect-joint: n_views must be >= 1")
-    start_index = int(cfg.get("start_index", 1))
-    image_format = args.image_format or cfg.get("image_format", "calib%05d.png")
+    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
+    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    image_format = _image_format_cli(args, scfg, source)
     # Distortion / fixed-aspect bind the pinhole bundle only; the polynomial map has no K/dist.
-    dm = DistortionModel(args.distortion or cfg.get("distortion_model", "standard"))
-    fix_aspect = bool(cfg.get("fix_aspect_ratio", True))
+    dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
+    fix_aspect = bool(scfg.get("fix_aspect_ratio", True))
     if model_type == "pinhole":
         if dm != DistortionModel.STANDARD:
             raise SystemExit(
@@ -915,12 +1033,14 @@ def detect_joint_command(args) -> "Path | List[Path]":
     # next to the clicks this command already reads) > config. So a config without geometry still
     # solves a previously-set-up joint rig.
     params = _board_params(
-        cfg,
+        scfg,
         board,
         overrides=_geometry_overrides(args),
         sidecar=(side.board_params if side else None),
     )
     spacing = _spacing_mm(board, params)
+    # Resolve dt before the expensive detection pass — a missing dt must fail now.
+    gen_dt = _generate_dt_cli(args, source)
 
     # Detect every view of every camera; tag each detection with the known spacing and record
     # the real image size (the joint solve seeds the principal point from it).
@@ -929,12 +1049,12 @@ def detect_joint_command(args) -> "Path | List[Path]":
     for cam in cameras:
         detector = _build_detector(board, params)
         images = _load_views(
-            _cam_dir(config, source, cam),
+            _cam_dir(scfg, source, cam, config.camera_count),
             image_format,
             n_views,
             start_index,
             camera=cam,
-            **_loader_kwargs(cfg, image_format),
+            **_loader_kwargs(scfg, image_format),
         )
         if not images:
             raise SystemExit(f"detect-joint: no images loaded for cam{cam}")
@@ -1014,6 +1134,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
         board=board,
         model_type=model_type,
         spacing_mm=spacing,
+        dt=gen_dt,
         datum_camera=datum_camera,
         datum_view=datum_view,
         board_release=board_release,
@@ -1049,31 +1170,30 @@ def apply_calibration_command(args):
     cfg = _cfg2(config)
     board = args.board or cfg.get("active", "charuco")
     source = _source(cfg, args.source)
-    z = float(cfg.get("z_world", 0.0))
-    tx = float(cfg.get("tilt_x", 0.0))
-    ty = float(cfg.get("tilt_y", 0.0))
+    # Light-sheet plane for a mono apply: flags > 0.0. Zero is the calibration-board
+    # plane — a geometric identity, not a guessed default. No config source.
+    z = float(args.z_world) if args.z_world is not None else 0.0
+    tx = float(args.tilt_x) if args.tilt_x is not None else 0.0
+    ty = float(args.tilt_y) if args.tilt_y is not None else 0.0
     vector_glob = vector_glob_from_format(config.vector_format)
     type_name = args.type_name or "instantaneous"
+    scfg = _settings_cfg(source)
     # Which record to load when several model types coexist in the model dir.
     # None -> the single one present (ambiguity raises before any unit runs).
-    model_type = _mono_model_type(args, cfg, board)
+    model_type = _mono_model_type(args, scfg, board)
 
-    # Explicit dirs (--args, then single config keys) -> one ad-hoc unit. Otherwise
-    # --all-paths derives every base_path x camera from config (mirrors the GUI).
+    # Explicit dirs (flags only) -> one ad-hoc unit. Otherwise --all-paths derives
+    # every base_path x camera from config (mirrors the GUI).
     explicit = None
     if args.uncalibrated_dir and args.calibrated_dir:
         explicit = {"uncal": args.uncalibrated_dir, "out": args.calibrated_dir}
-    elif (
-        not args.all_paths and cfg.get("uncalibrated_dir") and cfg.get("calibrated_dir")
-    ):
-        explicit = {"uncal": cfg["uncalibrated_dir"], "out": cfg["calibrated_dir"]}
     if explicit is None and not args.all_paths:
         raise SystemExit(
             "apply-calibration: pass --uncalibrated-dir + --calibrated-dir, or --all-paths "
             "to derive every base_path x camera from config"
         )
 
-    camera = args.camera if args.camera is not None else cfg.get("camera", 1)
+    camera = args.camera if args.camera is not None else scfg.get("camera") or 1
     units = runio.plan_apply_units(
         config,
         source,
@@ -1086,10 +1206,10 @@ def apply_calibration_command(args):
     )
     total = 0
     for u in units:
-        # dt: --dt override > model-stamped (scale-factor records carry it) > config. No
-        # silent 1.0 fallback — velocity scales with dt, so an unresolved dt raises. Per
+        # dt: --dt override > model-stamped. No config source and no silent 1.0
+        # fallback — velocity scales with dt, so an unresolved dt raises. Per
         # unit, so a multi-camera rig uses each camera's own stamped dt.
-        dt = runio.resolve_dt(args.dt, u["record"].board_meta.get("dt"), cfg.get("dt"))
+        dt = runio.resolve_dt(args.dt, u["record"].board_meta.get("dt"))
         written = runio.calibrate_mono_run(
             u["record"], u["uncal"], u["out"], dt, z, tx, ty, vector_glob=vector_glob
         )
@@ -1105,28 +1225,28 @@ def apply_stereo_command(args):
     cfg = _cfg2(config)
     board = args.board or cfg.get("active", "charuco")
     source = _source(cfg, args.source)
-    pair = args.camera_pair or cfg.get("camera_pair", [1, 2])
+    scfg = _settings_cfg(source)
+    pair = args.camera_pair or scfg.get("camera_pair") or [1, 2]
     if isinstance(pair, str):
         pair = [int(x) for x in pair.split(",")]
     cam1, cam2 = int(pair[0]), int(pair[1])
     type_name = args.type_name or "instantaneous"
 
-    # Explicit config dirs -> one ad-hoc unit; otherwise --all-paths derives every base path.
+    # Explicit dirs (flags only) -> one ad-hoc unit; otherwise --all-paths derives every base path.
     explicit = None
     if not args.all_paths:
-        if not (cfg.get("uncalibrated_dir_cam1") and cfg.get("uncalibrated_dir_cam2")):
+        if not (args.uncalibrated_dir_cam1 and args.uncalibrated_dir_cam2):
             raise SystemExit(
-                "apply-stereo: set uncalibrated_dir_cam1/uncalibrated_dir_cam2 in config, or --all-paths"
+                "apply-stereo: pass --uncalibrated-dir-cam1 + --uncalibrated-dir-cam2, or --all-paths"
             )
-        out = args.calibrated_dir or cfg.get("stereo_calibrated_dir")
-        if not out:
+        if not args.calibrated_dir:
             raise SystemExit(
-                "apply-stereo: set --calibrated-dir or stereo_calibrated_dir in config, or --all-paths"
+                "apply-stereo: pass --calibrated-dir, or --all-paths"
             )
         explicit = {
-            "uncal1": cfg["uncalibrated_dir_cam1"],
-            "uncal2": cfg["uncalibrated_dir_cam2"],
-            "out": out,
+            "uncal1": args.uncalibrated_dir_cam1,
+            "uncal2": args.uncalibrated_dir_cam2,
+            "out": args.calibrated_dir,
         }
 
     units = runio.plan_apply_units(
@@ -1137,20 +1257,28 @@ def apply_stereo_command(args):
         type_name,
         camera_pair=[cam1, cam2],
         explicit=explicit,
-        model_type=_stereo_model_type(args, cfg, board),
+        model_type=_stereo_model_type(args, scfg, board),
     )
-    # The laser sheet defaults from the saved self-cal unless config overrides (all stereo
-    # units share one record). Stereo records do not stamp dt; --dt > config, no 1.0 fallback.
+    # Laser-sheet plane: flags > the record's saved self-cal > 0.0 (an empty self_cal
+    # already means sheet-at-datum). All stereo units share one record; no config source.
     rec0 = units[0]["record"]
-    z = float(cfg["z_world"]) if "z_world" in cfg else rec0.sc_z_offset
-    tx = float(cfg["tilt_x"]) if "tilt_x" in cfg else rec0.sc_tilt_x
-    ty = float(cfg["tilt_y"]) if "tilt_y" in cfg else rec0.sc_tilt_y
+    z = float(args.z_world) if args.z_world is not None else rec0.sc_z_offset
+    tx = float(args.tilt_x) if args.tilt_x is not None else rec0.sc_tilt_x
+    ty = float(args.tilt_y) if args.tilt_y is not None else rec0.sc_tilt_y
     vector_glob = vector_glob_from_format(config.vector_format)
-    # --interpolator > config (validated via the property); flag is argparse-constrained.
-    interpolator = args.interpolator or config.calibration_interpolator
+    # --interpolator > the source's settings sidecar knob (defaulted there).
+    # argparse choices only constrain the flag — the sidecar value needs the
+    # same check so a typo'd rig.interpolator fails here, not mid-reconstruction.
+    interpolator = args.interpolator or scfg.get("interpolator") or "lanczos"
+    if interpolator not in ("linear", "cubic", "lanczos"):
+        raise SystemExit(
+            f"calibration: rig.interpolator must be linear|cubic|lanczos, "
+            f"got {interpolator!r} (fix it in {cs.settings_path(source)})"
+        )
     total = 0
     for u in units:
-        dt = runio.resolve_dt(args.dt, None, cfg.get("dt"))
+        # dt: --dt override > model-stamped (stereo records stamp dt at generate).
+        dt = runio.resolve_dt(args.dt, u["record"].board_meta.get("dt"))
         written = runio.reconstruct_stereo_run(
             u["record"],
             u["uncal1"],
@@ -1176,20 +1304,25 @@ def self_calibrate_command(args):
     cfg = _cfg2(config)
     board = args.board or cfg.get("active", "charuco")
     source = _source(cfg, args.source)
-    pair = args.camera_pair or cfg.get("camera_pair", [1, 2])
+    scfg = _settings_cfg(source)
+    pair = args.camera_pair or scfg.get("camera_pair") or [1, 2]
     if isinstance(pair, str):
         pair = [int(x) for x in pair.split(",")]
     cam1, cam2 = int(pair[0]), int(pair[1])
     base_idx = int(args.base_path_idx if args.base_path_idx is not None else 0)
     n_images = int(
-        args.n_images if args.n_images is not None else cfg.get("self_cal_n_images", 20)
+        args.n_images
+        if args.n_images is not None
+        else scfg.get("self_cal_n_images") or 20
     )
     window_size = int(args.window_size if args.window_size is not None else 64)
     overlap = float(args.overlap if args.overlap is not None else 50.0)
     apply_filters = not getattr(args, "no_filters", False)
 
     model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
-    record = rec.load_stereo(model_dir, model_type=_stereo_model_type(args, cfg, board))
+    record = rec.load_stereo(
+        model_dir, model_type=_stereo_model_type(args, scfg, board)
+    )
     figdir = (
         None
         if getattr(args, "no_figures", False)
@@ -1235,14 +1368,13 @@ def scale_factor_command(args):
     config = get_config()
     cfg = _cfg2(config)
     source = _source(cfg, args.source)
-    camera = int(args.camera if args.camera is not None else cfg.get("camera", 1))
-    image_format = args.image_format or cfg.get("image_format", "calib%05d.png")
-    start_index = int(cfg.get("start_index", 1))
+    scfg = _settings_cfg(source)
+    camera = int(args.camera if args.camera is not None else scfg.get("camera") or 1)
+    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
+    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
     frame = int(args.frame if args.frame is not None else start_index)
     px_per_mm = float(args.px_per_mm)
-    dt = float(
-        args.dt if args.dt is not None else cfg.get("scale_factor", {}).get("dt", 1.0)
-    )
+    dt = _generate_dt_cli(args, source)
     origin = [float(args.origin[0]), float(args.origin[1])]
     origin_mm = (
         (float(args.origin_mm[0]), float(args.origin_mm[1]))
@@ -1256,12 +1388,15 @@ def scale_factor_command(args):
         if image_size[0] <= 0 or image_size[1] <= 0:
             raise ValueError(f"--image-size must be positive, got {image_size}")
     else:
+        # image_format is only needed when a frame is actually loaded — the
+        # --image-size path builds the model with no images on disk at all.
+        image_format = _image_format_cli(args, scfg, source)
         image = _load_one(
-            _cam_dir(config, source, camera),
+            _cam_dir(scfg, source, camera, config.camera_count),
             image_format,
             frame,
             camera=camera,
-            **_loader_kwargs(cfg, image_format),
+            **_loader_kwargs(scfg, image_format),
         )
         h, w = np.asarray(image).shape[:2]
         image_size = (int(w), int(h))
@@ -1317,31 +1452,35 @@ def global_frame_command(args):
     """Bake the multi-camera global frame into each mono model (headless analogue of the
     GUI's "Compute + Save Global Frame").
 
-    Reads the datum + overlap-pair chain from ``config.calibration.global_coordinates``
-    (the same block the GUI persists), computes per-camera shifts via the shared chain
-    math, and writes ``world_offset_mm`` into each camera's model record so apply emits
-    the shared rig frame. Re-run after recalibrating any camera (regen clears the offset).
+    Reads the datum + overlap-pair chain from the source's settings sidecar
+    (``global_coordinates`` block — the same one the GUI persists), computes
+    per-camera shifts via the shared chain math, and writes ``world_offset_mm``
+    into each camera's model record so apply emits the shared rig frame.
+    Re-run after recalibrating any camera (regen clears the offset).
     """
     config = get_config()
     cfg = _cfg2(config)
     board = args.board or cfg.get("active", "charuco")
     source = _source(cfg, args.source)
-    gc = config.global_coordinates_config
-    datum_camera = int(gc.get("datum_camera", 1))
+    scfg = _settings_cfg(source)
+    settings = cs.try_load_settings(source) or cs.default_settings()
+    gc = settings.get("global_coordinates") or {}
+    datum_camera = int(gc.get("datum_camera") or 1)
     datum_pixel = gc.get("datum_pixel")
-    datum_physical = gc.get("datum_physical", [0.0, 0.0])
-    overlap_pairs = gc.get("overlap_pairs", []) or []
+    datum_physical = gc.get("datum_physical") or [0.0, 0.0]
+    overlap_pairs = gc.get("overlap_pairs") or []
     if not datum_pixel:
         raise SystemExit(
-            "[calibration] no datum_pixel in config.calibration.global_coordinates — "
-            "set the datum + overlap pairs in the GUI (or config) first"
+            "[calibration] no datum_pixel in the source's calibration settings "
+            f"({cs.settings_path(source)}, global_coordinates block) — set the "
+            "datum + overlap pairs in the GUI first"
         )
 
     cams = {datum_camera}
     for p in overlap_pairs:
         cams.add(int(p["camera_a"]))
         cams.add(int(p["camera_b"]))
-    model_type = _mono_model_type(args, cfg, board)
+    model_type = _mono_model_type(args, scfg, board)
     dirs = {cam: rec.mono_model_dir_for_source(source, cam, board) for cam in cams}
     records = {cam: rec.load_mono(d, model_type=model_type) for cam, d in dirs.items()}
     shifts = gc2.compute_camera_shifts(
@@ -1399,6 +1538,12 @@ def _add_common(p):
     )
     _add_geometry_args(p)
     p.add_argument("--board", default="charuco", choices=["charuco"])
+    p.add_argument(
+        "--dt",
+        type=float,
+        default=None,
+        help="frame dt stamped into the model (else rig.dt from settings.yaml)",
+    )
     p.add_argument("--image-format", default=None)
     p.add_argument("--n-views", type=int, default=None)
     p.add_argument(
@@ -1426,6 +1571,17 @@ def _add_common(p):
 
 
 def register_calibration_subparsers(subparsers):
+    p = subparsers.add_parser(
+        "init-settings",
+        help="calibration: write a settings.yaml template into the source's calibration folder",
+    )
+    p.add_argument(
+        "--source",
+        default=None,
+        help="calibration source dir (else calibration.source / calibration_sources[source_idx])",
+    )
+    p.set_defaults(func=init_settings_command)
+
     # CLI detection is ChArUco-only: ChArUco needs no interactive datum/anchor clicks, so it
     # solves headless. Dotboard and stepped calibration require the GUI (world-frame / fiducial /
     # level picking) and are intentionally not exposed here. The CLI can still APPLY any saved
@@ -1457,6 +1613,12 @@ def register_calibration_subparsers(subparsers):
     )
     p.add_argument("--image-format", default=None)
     p.add_argument("--n-views", type=int, default=None)
+    p.add_argument(
+        "--dt",
+        type=float,
+        default=None,
+        help="frame dt stamped into the model (else rig.dt from settings.yaml)",
+    )
     p.add_argument(
         "--model-type",
         default=None,
@@ -1490,6 +1652,14 @@ def register_calibration_subparsers(subparsers):
     )
     p.add_argument("--camera", type=int, default=None)
     p.add_argument("--dt", type=float, default=None)
+    p.add_argument(
+        "--z-world",
+        type=float,
+        default=None,
+        help="light-sheet plane Z in mm (default 0.0 = the calibration-board plane)",
+    )
+    p.add_argument("--tilt-x", type=float, default=None, help="sheet tilt (rad)")
+    p.add_argument("--tilt-y", type=float, default=None, help="sheet tilt (rad)")
     p.add_argument("--uncalibrated-dir", default=None)
     p.add_argument("--calibrated-dir", default=None)
     p.add_argument(
@@ -1518,11 +1688,21 @@ def register_calibration_subparsers(subparsers):
     p.add_argument("--camera-pair", default=None, help="'1,2'")
     p.add_argument("--dt", type=float, default=None)
     p.add_argument(
+        "--z-world",
+        type=float,
+        default=None,
+        help="light-sheet plane Z in mm (default: the record's self-cal, else 0.0)",
+    )
+    p.add_argument("--tilt-x", type=float, default=None, help="sheet tilt (rad)")
+    p.add_argument("--tilt-y", type=float, default=None, help="sheet tilt (rad)")
+    p.add_argument(
         "--interpolator",
         default=None,
         choices=["cubic", "lanczos"],
-        help="stereo cam2 resample kernel (default: lanczos / config)",
+        help="stereo cam2 resample kernel (default: lanczos / settings.yaml)",
     )
+    p.add_argument("--uncalibrated-dir-cam1", default=None)
+    p.add_argument("--uncalibrated-dir-cam2", default=None)
     p.add_argument("--calibrated-dir", default=None)
     p.add_argument(
         "--all-paths",
@@ -1633,7 +1813,7 @@ def register_calibration_subparsers(subparsers):
 
     p = subparsers.add_parser(
         "global-frame",
-        help="calibration: bake the multi-camera global frame (datum+overlap from config) into each model",
+        help="calibration: bake the multi-camera global frame (datum+overlap from the source's settings sidecar) into each model",
     )
     p.add_argument(
         "--source", default=None, help="calibration source dir (models live here)"
