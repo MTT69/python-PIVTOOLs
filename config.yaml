@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Synthetic_validation\Noisy_synthetic\inst_check
+  - E:\Results\planar_no_noise
   source_paths:
-  - E:\Synthetic\planar_noise
+  - E:\Synthetic\Planar_no_noise
   active_paths:
   - 0
   camera_numbers:
@@ -23,7 +23,7 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 100
+  num_images: 4000
   image_shape:
   - 2048
   - 2048
@@ -45,8 +45,8 @@ processing:
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -95,31 +95,29 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    vorticity: false
-    gamma2: false
-    mean_divergence: false
-    inst_vorticity: false
-    fluctuating_velocity: false
+    mean_vorticity: false
+    mean_stresses: true
+    divergence: false
     mean_tke: false
+    gamma2: false
+    inst_vorticity: false
     inst_divergence: false
     mean_velocity: true
-    inst_velocity: false
-    inst_gamma: false
-    mean_vorticity: false
     inst_stresses: false
-    mean_peak_height: false
-    mean_stresses: true
-    tke: false
-    divergence: false
+    inst_velocity: false
     gamma1: false
+    mean_divergence: false
+    tke: false
+    correlation_quality: true
+    fluctuating_velocity: false
+    inst_gamma: false
+    vorticity: false
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 64
-    - 96
   - - 64
     - 64
   - - 32
@@ -130,12 +128,9 @@ instantaneous_piv:
   - 50
   - 50
   - 50
-  - 50
   runs:
   - 1
-  - 2
   - 3
-  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -190,78 +185,10 @@ ensemble_piv:
   per_pair_normalization: false
   predictor_rounding: false
 calibration:
-  image_format: calib%05d.tif
-  num_images: 10
-  image_type: standard
-  zero_based_indexing: false
-  use_camera_subfolders: false
-  subfolder: enhanced
-  camera_subfolders:
-  - camera1
-  - camera2
-  path_order: camera_first
-  active: charuco
-  piv_type: ensemble
-  scale_factor:
-    dt: 0.0057553
-    px_per_mm: 13.653
-    source_path_idx: 0
-  dotboard:
-    dot_spacing_mm: 10
-    datum_frame: 1
-    model_type: polynomial
-    dt: 1
-    fix_k2: true
-  charuco:
-    squares_h: 10
-    squares_v: 7
-    square_size: 0.012
-    marker_ratio: 0.5
-    aruco_dict: DICT_4X4_1000
-    min_corners: 6
-    source_path_idx: 0
-    camera: 1
-    model_type: pinhole
-    dt: 1
-  stereo_dotboard:
-    dot_spacing_mm: 12.22
-    datum_camera: 1
-    datum_frame: 1
-  stereo_charuco:
-    datum_camera: 1
-    datum_frame: 1
   calibration_sources:
   - E:\Synthetic\calibration_charuco\planar\Cam1
-  global_coordinates:
-    enabled: true
-    datum_camera: 1
-    datum_pixel: null
-    datum_physical:
-    - 0
-    - 10
-    datum_frame: 1
-    overlap_points: []
-    invert_ux: false
-    overlap_pairs: []
-  n_views: 20
-  dt: 0.0057553
-  datum_frame: 1
-  camera_pair:
-  - 1
-  - 2
-  stepped:
-    dot_spacing_mm: 15
-    step_height_mm: 3
-    board_thickness_mm: 14.8
-  stepped_stereo:
-    stereo_config: auto
-    model_type: pinhole
-    fix_k2: true
-filters:
-- type: ssmin
-  size:
-  - 7
-  - 7
+  active: charuco
+filters: []
 masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat
@@ -269,7 +196,7 @@ masking:
   mode: rectangular
   rectangular:
     top: 0
-    bottom: 300
+    bottom: 0
     left: 0
     right: 0
 merging:

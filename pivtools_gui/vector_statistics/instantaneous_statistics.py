@@ -76,7 +76,6 @@ ENABLED_STATISTICS = {
     "mean_tke": True,
     "mean_vorticity": True,
     "mean_divergence": True,
-    "mean_peak_height": True,
     # Instantaneous (per-frame) statistics
     "inst_velocity": True,
     "inst_fluctuations": True,
@@ -347,8 +346,7 @@ class VectorStatisticsProcessor:
             "vv",
             "uv",
         ],  # Full stress tensor (+ ww, uw, vw for stereo)
-        "mean_peak_height": ["mean_peak_height"],
-        "correlation_quality": ["nan_pct", "peak_ratio_median"],
+        "correlation_quality": ["nan_pct", "peak_ratio_median", "peak_mag_mean"],
         # Instantaneous (per-frame) statistics
         "inst_velocity": ["ux", "uy"],  # Per-frame velocity
         "inst_stresses": ["uu_inst", "vv_inst", "uv_inst"],  # Per-frame stress tensor
@@ -367,6 +365,13 @@ class VectorStatisticsProcessor:
         "gamma2": ["gamma2"],
     }
 
+    # Statistics computable from an UNCALIBRATED run. The quality channels
+    # (peak_mag, peak_ratio, nan_mask, nan_reason) survive only in uncalibrated
+    # vector files — calibration-apply writes ux/uy/b_mask alone — so these are
+    # the only statistics an uncalibrated target may request, and conversely
+    # they cannot be computed from a calibrated one.
+    DIAGNOSTIC_STATISTICS = {"correlation_quality"}
+
     # Map frontend/config names to internal processing names
     # Identity mappings for new frontend keys + legacy mappings for backward compat
     STAT_NAME_MAPPING = {
@@ -376,7 +381,6 @@ class VectorStatisticsProcessor:
         "mean_divergence": "mean_divergence",
         "mean_tke": "mean_tke",
         "mean_stresses": "mean_stresses",  # New canonical name for stress tensor
-        "mean_peak_height": "mean_peak_height",
         "correlation_quality": "correlation_quality",
         # Instantaneous (identity mappings)
         "inst_velocity": "inst_velocity",
@@ -429,6 +433,7 @@ class VectorStatisticsProcessor:
         config=None,
         use_stereo: bool = False,
         stereo_camera_pair: Optional[Tuple[int, int]] = None,
+        use_uncalibrated: bool = False,
     ):
         """
         Initialize the statistics processor.
@@ -457,6 +462,11 @@ class VectorStatisticsProcessor:
             Whether processing stereo (3D) data
         stereo_camera_pair : tuple, optional
             Camera pair for stereo data (e.g., (1, 2))
+        use_uncalibrated : bool
+            Whether ``data_dir`` is an uncalibrated run. Routes the output to
+            the uncalibrated statistics tree; without it ``stats_dir`` would
+            resolve to the calibrated tree and px-unit results would overwrite
+            the m/s ones.
         """
         self.data_dir = Path(data_dir)
         self.base_dir = Path(base_dir)
@@ -469,6 +479,7 @@ class VectorStatisticsProcessor:
         self._config = config
         self.use_stereo = use_stereo
         self.stereo_camera_pair = stereo_camera_pair
+        self.use_uncalibrated = use_uncalibrated
 
         # Determine camera folder name
         if use_stereo and stereo_camera_pair:
@@ -492,6 +503,7 @@ class VectorStatisticsProcessor:
             use_merged=self.use_merged,
             use_stereo=self.use_stereo,
             stereo_camera_pair=self.stereo_camera_pair,
+            use_uncalibrated=self.use_uncalibrated,
         )
 
         self.stats_dir = paths["stats_dir"]
@@ -563,6 +575,18 @@ class VectorStatisticsProcessor:
 
             logger.info(f"[Statistics] Requested statistics: {original_stats}")
             logger.info(f"[Statistics] Normalized to: {active_stats}")
+
+            # Unrecognised names are matched by nothing downstream, so they
+            # would otherwise be dropped in silence — a stale config key or a
+            # typo would look like it was honoured. Name them.
+            unknown_stats = active_stats - set(self.VALID_STATISTICS)
+            if unknown_stats:
+                logger.warning(
+                    "[Statistics] Ignoring unrecognised statistic(s): %s — "
+                    "not in VALID_STATISTICS, nothing will be computed for "
+                    "them (stale config key or typo?)",
+                    ", ".join(sorted(unknown_stats)),
+                )
 
             if progress_callback:
                 progress_callback(2)
@@ -669,6 +693,7 @@ class VectorStatisticsProcessor:
                 # save/figure path.
                 for run_num, agg in corr_quality_results.items():
                     mean_results[run_num]["nan_pct"] = agg.nan_pct_map
+                    mean_results[run_num]["peak_mag_mean"] = agg.peak_mag_map
                     if agg.ratio_map is not None:
                         mean_results[run_num]["peak_ratio_median"] = agg.ratio_map
 
@@ -762,9 +787,6 @@ class VectorStatisticsProcessor:
         calc_inst_divergence = "inst_divergence" in active_stats
         calc_inst_gamma = "inst_gamma" in active_stats
 
-        # Peak height
-        calc_peak_height = "mean_peak_height" in active_stats
-
         # Correlation quality (uncalibrated-file sweep)
         calc_corr_quality = "correlation_quality" in active_stats
 
@@ -787,7 +809,6 @@ class VectorStatisticsProcessor:
             "calc_gamma1": calc_inst_gamma or "gamma1" in active_stats,
             "calc_gamma2": calc_inst_gamma or "gamma2" in active_stats,
             "gamma_radius": self.gamma_radius,
-            "calc_peak_height": calc_peak_height,
             "calc_corr_quality": calc_corr_quality,
             # Granular save flags for separate mean vs inst control
             "save_mean_vorticity": calc_mean_vorticity,
@@ -952,55 +973,6 @@ class VectorStatisticsProcessor:
                 dvdx = np.gradient(mean_uy, axis=1)
                 dudy = np.gradient(mean_ux, axis=0)
             result["vorticity"] = dvdx - dudy
-
-        # Mean peak height
-        if calc_flags.get("calc_peak_height", False):
-            # Load peak_mag from each frame file individually since it's not in the vector array
-            glob_pattern = re.sub(r"%[0-9]*[diuoxXfFeEgG]", "*", self.vector_format)
-            frame_files = sorted(list(self.data_dir.glob(glob_pattern)))
-
-            peak_sum = None
-            peak_count_arr = None
-
-            for file_path in frame_files:
-                try:
-                    mat_data = scipy.io.loadmat(
-                        str(file_path), squeeze_me=True, struct_as_record=False
-                    )
-                    if "piv_result" not in mat_data:
-                        continue
-                    piv_result_data = mat_data["piv_result"]
-                    if not isinstance(piv_result_data, np.ndarray):
-                        piv_result_data = np.array([piv_result_data])
-                    elif piv_result_data.ndim == 0:
-                        piv_result_data = np.array([piv_result_data.item()])
-                    if piv_result_data.ndim > 1:
-                        piv_result_data = piv_result_data.flatten()
-
-                    # Access the correct run
-                    run_idx = run_num - 1
-                    if run_idx >= piv_result_data.size:
-                        continue
-                    run_obj = piv_result_data[run_idx]
-
-                    if hasattr(run_obj, "peak_mag"):
-                        pm = np.array(run_obj.peak_mag, dtype=np.float64)
-                        if pm.size > 0 and pm.ndim == 2:
-                            if peak_sum is None:
-                                peak_sum = np.where(np.isnan(pm), 0.0, pm)
-                                peak_count_arr = (~np.isnan(pm)).astype(np.float64)
-                            else:
-                                valid = ~np.isnan(pm)
-                                peak_sum += np.where(valid, pm, 0.0)
-                                peak_count_arr += valid.astype(np.float64)
-                except Exception:
-                    continue
-
-            if peak_sum is not None and peak_count_arr is not None:
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    result["mean_peak_height"] = np.where(
-                        peak_count_arr > 0, peak_sum / peak_count_arr, np.nan
-                    )
 
         return result
 
@@ -1408,15 +1380,6 @@ class VectorStatisticsProcessor:
                             symmetric=True,
                         )
 
-            if "mean_peak_height" in active_stats and "mean_peak_height" in res:
-                save_field(
-                    res["mean_peak_height"],
-                    "Mean_Peak_Height",
-                    "-",
-                    cmap="viridis",
-                    symmetric=False,
-                )
-
             if corr_quality_results and run_num in corr_quality_results:
                 agg = corr_quality_results[run_num]
                 title = f"{self.cam_folder} — pass {run_num}"
@@ -1426,6 +1389,14 @@ class VectorStatisticsProcessor:
                         "CorrQuality_NaN_Pct",
                         "%",
                         cmap="magma",
+                        symmetric=False,
+                    )
+                if "peak_mag_mean" in res and res["peak_mag_mean"] is not None:
+                    save_field(
+                        res["peak_mag_mean"],
+                        "CorrQuality_Peak_Mag",
+                        "-",
+                        cmap="viridis",
                         symmetric=False,
                     )
                 plot_timeseries(
@@ -1465,9 +1436,9 @@ class VectorStatisticsProcessor:
             ("tke", object),
             ("divergence", object),
             ("vorticity", object),
-            ("mean_peak_height", object),
             ("nan_pct", object),
             ("peak_ratio_median", object),
+            ("peak_mag_mean", object),
         ]
         if stereo:
             dt_fields.extend(
@@ -1504,9 +1475,9 @@ class VectorStatisticsProcessor:
                 "tke",
                 "divergence",
                 "vorticity",
-                "mean_peak_height",
                 "nan_pct",
                 "peak_ratio_median",
+                "peak_mag_mean",
             ]:
                 if field in res and res[field] is not None:
                     piv_result[idx][field] = res[field]
@@ -1764,6 +1735,7 @@ if __name__ == "__main__":
     # Data source toggles
     process_cameras = config.statistics_process_cameras
     process_merged = config.statistics_process_merged
+    process_uncalibrated = config.statistics_process_uncalibrated
 
     logger.info(f"Source: {source_dir}")
     logger.info(f"Output: {base_dir}")
@@ -1773,6 +1745,7 @@ if __name__ == "__main__":
     logger.info(f"Gamma radius: {gamma_radius}")
     logger.info(f"Process cameras: {process_cameras}")
     logger.info(f"Process merged: {process_merged}")
+    logger.info(f"Process uncalibrated: {process_uncalibrated}")
 
     failed_sources = []
 
@@ -1877,6 +1850,64 @@ if __name__ == "__main__":
             failed_sources.append("Merged")
     else:
         logger.info("Skipping merged data (process_merged=False)")
+
+    # Process uncalibrated data if enabled. Diagnostics only: the quality
+    # channels the correlation_quality statistic reads exist nowhere else, and
+    # flow statistics in px/frame are not a product we offer.
+    if process_uncalibrated:
+        logger.info("\n--- Processing Uncalibrated Data (diagnostics) ---")
+        for camera_num in camera_nums:
+            logger.info(f"\nProcessing Camera {camera_num} (uncalibrated)...")
+
+            try:
+                paths = get_data_paths(
+                    base_dir=base_dir,
+                    num_frame_pairs=num_frame_pairs,
+                    cam=camera_num,
+                    type_name=type_name,
+                    use_uncalibrated=True,
+                )
+
+                processor = VectorStatisticsProcessor(
+                    data_dir=paths["data_dir"],
+                    base_dir=base_dir,
+                    num_frame_pairs=num_frame_pairs,
+                    vector_format=vector_format,
+                    type_name=type_name,
+                    use_merged=False,
+                    camera=camera_num,
+                    gamma_radius=gamma_radius,
+                    config=config,
+                    use_uncalibrated=True,
+                )
+
+                result = processor.process(
+                    requested_statistics=sorted(
+                        VectorStatisticsProcessor.DIAGNOSTIC_STATISTICS
+                    ),
+                    save_figures=save_figures,
+                )
+
+                if result["success"]:
+                    logger.info(
+                        f"Camera {camera_num} (uncalibrated) completed: "
+                        f"{result['num_runs']} runs, output: {result['output_file']}"
+                    )
+                else:
+                    logger.error(
+                        f"Camera {camera_num} (uncalibrated) failed: "
+                        f"{result.get('error', 'Unknown error')}"
+                    )
+                    failed_sources.append(f"Cam{camera_num} (uncalibrated)")
+
+            except Exception as e:
+                logger.error(f"Camera {camera_num} (uncalibrated) failed: {str(e)}")
+                import traceback
+
+                traceback.print_exc()
+                failed_sources.append(f"Cam{camera_num} (uncalibrated)")
+    else:
+        logger.info("Skipping uncalibrated data (process_uncalibrated=False)")
 
     logger.info("=" * 60)
     if failed_sources:

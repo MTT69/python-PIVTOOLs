@@ -920,7 +920,6 @@ class Config:
             "mean_tke": True,
             "mean_vorticity": True,
             "mean_divergence": True,
-            "mean_peak_height": False,
             "correlation_quality": False,
             # Instantaneous (per-frame) statistics
             "inst_velocity": True,
@@ -1055,6 +1054,21 @@ class Config:
             True to process merged data (default False)
         """
         return self.statistics.get("process_merged", False)
+
+    @property
+    def statistics_process_uncalibrated(self) -> bool:
+        """Return whether to process uncalibrated data (diagnostics only).
+
+        An uncalibrated run computes the correlation-quality diagnostics and
+        nothing else — the quality channels (peak_mag, peak_ratio, nan_reason)
+        exist only in uncalibrated vector files.
+
+        Returns
+        -------
+        bool
+            True to process uncalibrated data (default False)
+        """
+        return self.statistics.get("process_uncalibrated", False)
 
     @property
     def instantaneous_runs(self):

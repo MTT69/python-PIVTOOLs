@@ -67,10 +67,10 @@ VARIABLE_UNITS = {
     # Peak detectability peak1/peak2 (dimensionless, PIVware SNR type 2)
     "peak_ratio": "-",
     "peakheight": "-",
-    "mean_peak_height": "-",
     # Correlation-quality maps (correlation_quality statistic)
     "nan_pct": "%",
     "peak_ratio_median": "-",
+    "peak_mag_mean": "-",
     # Ensemble diagnostics
     "nan_reason": "-",
     "b_mask": "-",

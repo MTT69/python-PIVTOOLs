@@ -668,7 +668,6 @@ statistics:
     mean_tke: true
     mean_vorticity: true
     mean_divergence: true
-    mean_peak_height: false
     correlation_quality: false
     inst_velocity: true
     inst_stresses: true

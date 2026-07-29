@@ -642,6 +642,14 @@ def validate():
             num_images=data.get("frame_total"),
             image_type=data.get("image_type"),
         )
+    except FileNotFoundError as exc:
+        # The only FileNotFoundError reaching here is the missing settings
+        # sidecar (validate_images_generic returns read failures in its result
+        # dict, and get_calibration_source raises ValueError/IndexError). That
+        # is the expected first-visit state of every pre-sidecar source, not a
+        # fault — the message is already actionable, so no traceback.
+        logger.warning("calibration validate: %s", exc)
+        return jsonify({"valid": False, "error": str(exc)}), 200
     except Exception as exc:
         logger.exception("calibration validate failed")
         return jsonify({"valid": False, "error": str(exc)}), 200

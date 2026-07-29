@@ -514,6 +514,49 @@ def _write_quality_mat(
     scipy.io.savemat(str(path), {"piv_result": piv_result})
 
 
+def _write_quality_mat_passes(path, passes):
+    """Write an uncalibrated-style frame file carrying several passes.
+
+    ``passes`` is a list of dicts with keys peak_mag/nan_mask/b_mask/
+    nan_reason/peak_ratio, one per pass.
+    """
+    dt = np.dtype(
+        [
+            ("ux", object),
+            ("uy", object),
+            ("b_mask", object),
+            ("nan_mask", object),
+            ("nan_reason", object),
+            ("peak_mag", object),
+            ("peak_ratio", object),
+        ]
+    )
+    piv_result = np.empty((len(passes),), dtype=dt)
+    for i, p in enumerate(passes):
+        shape = np.asarray(p["peak_mag"]).shape
+        piv_result[i]["ux"] = np.ones(shape, dtype=np.float64)
+        piv_result[i]["uy"] = np.ones(shape, dtype=np.float64)
+        piv_result[i]["b_mask"] = np.asarray(p["b_mask"], dtype=np.uint8)
+        piv_result[i]["nan_mask"] = np.asarray(p["nan_mask"], dtype=np.uint8)
+        piv_result[i]["nan_reason"] = np.asarray(p["nan_reason"], dtype=np.int8)
+        piv_result[i]["peak_mag"] = np.asarray(p["peak_mag"], dtype=np.float32)
+        piv_result[i]["peak_ratio"] = np.asarray(p["peak_ratio"], dtype=np.float32)
+    scipy.io.savemat(str(path), {"piv_result": piv_result})
+
+
+def _write_coords(data_dir, shape, n_passes=1):
+    """Write a coordinates.mat alongside synthetic frame files."""
+    coords_x, coords_y = _make_coords(shape)
+    dt_c = np.dtype([("x", object), ("y", object)])
+    coordinates = np.empty((n_passes,), dtype=dt_c)
+    for i in range(n_passes):
+        coordinates[i]["x"] = coords_x.astype(np.float64)
+        coordinates[i]["y"] = coords_y.astype(np.float64)
+    scipy.io.savemat(
+        str(Path(data_dir) / "coordinates.mat"), {"coordinates": coordinates}
+    )
+
+
 class TestCorrelationQualityCompute:
     """Compute-layer tests: extract_frame_record + aggregate on known data."""
 
@@ -724,3 +767,207 @@ class TestCorrelationQualityProcessor:
             "correlation quality skipped" in r.getMessage() for r in caplog.records
         )
         assert not (proc.mean_stats_dir / "corr_quality_timeseries.mat").exists()
+
+
+class TestUncalibratedDiagnosticsTarget:
+    """An uncalibrated run files its diagnostics in the uncalibrated tree."""
+
+    @staticmethod
+    def _build_uncal_run(base_dir, shape=(3, 3), n_frames=3, n_passes=1):
+        """Write an uncalibrated run whose peak_mag varies frame to frame.
+
+        Frame 0 carries a NaN at window (2, 1) and window (0, 0) is statically
+        masked, so the time-mean differs at both — which is what distinguishes
+        a b_mask-aware reduction from a naive one.
+        """
+        uncal_dir = (
+            base_dir
+            / "uncalibrated_piv"
+            / str(n_frames)
+            / "Cam1"
+            / "instantaneous"
+        )
+        uncal_dir.mkdir(parents=True, exist_ok=True)
+
+        b_mask = np.zeros(shape, dtype=bool)
+        b_mask[0, 0] = True
+
+        for i in range(n_frames):
+            passes = []
+            for _ in range(n_passes):
+                peak_mag = np.full(shape, 0.5 + 0.1 * i, dtype=np.float32)
+                nan_mask = np.zeros(shape, dtype=bool)
+                nan_reason = np.zeros(shape, dtype=np.int8)
+                nan_mask[b_mask] = True
+                nan_reason[b_mask] = -1
+                if i == 0:
+                    nan_mask[2, 1] = True
+                    nan_reason[2, 1] = 1
+                    peak_mag[2, 1] = np.nan
+                passes.append(
+                    {
+                        "peak_mag": peak_mag,
+                        "nan_mask": nan_mask,
+                        "b_mask": b_mask,
+                        "nan_reason": nan_reason,
+                        "peak_ratio": np.full(shape, 2.0, dtype=np.float32),
+                    }
+                )
+            _write_quality_mat_passes(uncal_dir / f"B{i+1:05d}.mat", passes)
+
+        _write_coords(uncal_dir, shape, n_passes=n_passes)
+        return uncal_dir
+
+    def test_outputs_land_in_uncalibrated_tree(self, tmp_path):
+        n_frames = 3
+        uncal_dir = self._build_uncal_run(tmp_path, n_frames=n_frames)
+
+        proc = VectorStatisticsProcessor(
+            data_dir=uncal_dir,
+            base_dir=tmp_path,
+            num_frame_pairs=n_frames,
+            vector_format="B%05d.mat",
+            type_name="instantaneous",
+            camera=1,
+            use_uncalibrated=True,
+        )
+        result = proc.process(
+            requested_statistics=["correlation_quality"], save_figures=False
+        )
+        assert result["success"], result.get("error")
+
+        expected = (
+            tmp_path
+            / "statistics"
+            / "uncalibrated"
+            / str(n_frames)
+            / "Cam1"
+            / "instantaneous"
+        )
+        assert proc.stats_dir == expected
+        assert (proc.mean_stats_dir / "mean_stats.mat").exists()
+        assert (proc.mean_stats_dir / "corr_quality_timeseries.mat").exists()
+
+        # The calibrated statistics tree must be untouched
+        assert not (tmp_path / "statistics" / str(n_frames) / "Cam1").exists()
+
+    def test_peak_mag_mean_is_b_mask_aware(self, tmp_path):
+        """peak_mag_mean is the nanmean over frames, NaN on masked windows.
+
+        This is the quantity the deleted mean_peak_height used to compute, but
+        that one included statically masked windows in the mean.
+        """
+        n_frames = 3
+        uncal_dir = self._build_uncal_run(tmp_path, n_frames=n_frames)
+
+        proc = VectorStatisticsProcessor(
+            data_dir=uncal_dir,
+            base_dir=tmp_path,
+            num_frame_pairs=n_frames,
+            vector_format="B%05d.mat",
+            type_name="instantaneous",
+            camera=1,
+            use_uncalibrated=True,
+        )
+        assert proc.process(
+            requested_statistics=["correlation_quality"], save_figures=False
+        )["success"]
+
+        mat = scipy.io.loadmat(
+            str(proc.mean_stats_dir / "mean_stats.mat"),
+            struct_as_record=False,
+            squeeze_me=True,
+        )
+        piv = mat["piv_result"]
+        if isinstance(piv, np.ndarray) and piv.dtype == object:
+            piv = piv[0]
+        peak_mag_mean = np.asarray(piv.peak_mag_mean)
+
+        # Masked window: NaN, not the mean of its underlying values
+        assert np.isnan(peak_mag_mean[0, 0])
+        # Window NaN in frame 0 only: mean of 0.6 and 0.7
+        np.testing.assert_allclose(peak_mag_mean[2, 1], 0.65, rtol=1e-5)
+        # Everywhere else: mean of 0.5, 0.6, 0.7
+        np.testing.assert_allclose(peak_mag_mean[1, 2], 0.6, rtol=1e-5)
+
+    def test_every_pass_gets_maps_series_and_figures(self, tmp_path):
+        """All saved passes are reduced, stored and plotted, not just pass 1."""
+        n_frames, n_passes = 3, 2
+        uncal_dir = self._build_uncal_run(
+            tmp_path, n_frames=n_frames, n_passes=n_passes
+        )
+
+        proc = VectorStatisticsProcessor(
+            data_dir=uncal_dir,
+            base_dir=tmp_path,
+            num_frame_pairs=n_frames,
+            vector_format="B%05d.mat",
+            type_name="instantaneous",
+            camera=1,
+            use_uncalibrated=True,
+        )
+        assert proc.process(
+            requested_statistics=["correlation_quality"], save_figures=True
+        )["success"]
+
+        ts_file = proc.mean_stats_dir / "corr_quality_timeseries.mat"
+        for run in range(1, n_passes + 1):
+            agg = load_timeseries_mat(ts_file, run=run)
+            assert agg.frames.size == n_frames
+
+        mat = scipy.io.loadmat(
+            str(proc.mean_stats_dir / "mean_stats.mat"),
+            struct_as_record=False,
+            squeeze_me=True,
+        )
+        piv = np.atleast_1d(mat["piv_result"])
+        assert piv.size == n_passes
+        for entry in piv:
+            assert np.asarray(entry.nan_pct).size > 0
+            assert np.asarray(entry.peak_mag_mean).size > 0
+
+        for run in range(1, n_passes + 1):
+            for name in (
+                "CorrQuality_NaN_Pct",
+                "CorrQuality_Peak_Mag",
+                "CorrQuality_Timeseries",
+                "CorrQuality_NanReasons",
+            ):
+                assert (
+                    proc.figures_dir / f"Run_{run}_{name}.png"
+                ).exists(), f"missing Run_{run}_{name}.png"
+
+    def test_unknown_statistic_name_warns(self, tmp_path, caplog):
+        """A stale config key must be named, not silently ignored."""
+        import logging as _logging
+
+        n_frames = 2
+        uncal_dir = self._build_uncal_run(tmp_path, n_frames=n_frames)
+
+        proc = VectorStatisticsProcessor(
+            data_dir=uncal_dir,
+            base_dir=tmp_path,
+            num_frame_pairs=n_frames,
+            vector_format="B%05d.mat",
+            type_name="instantaneous",
+            camera=1,
+            use_uncalibrated=True,
+        )
+        with caplog.at_level(_logging.WARNING):
+            result = proc.process(
+                requested_statistics=["correlation_quality", "mean_peak_height"],
+                save_figures=False,
+            )
+        assert result["success"], result.get("error")
+        assert any(
+            "mean_peak_height" in r.getMessage() and "unrecognised" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_mean_peak_height_is_gone(self):
+        """The dead statistic must not come back."""
+        assert "mean_peak_height" not in VectorStatisticsProcessor.VALID_STATISTICS
+        assert "mean_peak_height" not in VectorStatisticsProcessor.STAT_NAME_MAPPING
+        assert VectorStatisticsProcessor.DIAGNOSTIC_STATISTICS == {
+            "correlation_quality"
+        }

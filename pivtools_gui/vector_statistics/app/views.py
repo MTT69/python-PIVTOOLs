@@ -103,13 +103,57 @@ def calculate_statistics():
     base_path_idx = int(data.get("base_path_idx", 0))
     type_name = data.get("type_name", "instantaneous")
     requested_statistics = data.get("requested_statistics", None)
+    source_endpoint = data.get("source_endpoint", "regular")
+
+    # Uncalibrated runs compute the correlation-quality diagnostics and nothing
+    # else — the quality channels exist in no other tree, and a flow statistic
+    # in px/frame is not a product we offer.
+    is_uncalibrated_target = source_endpoint == "uncalibrated"
 
     try:
         cfg = get_config()
         base_paths = cfg.base_paths
 
-        # Update config with requested statistics if provided
-        if requested_statistics:
+        # An uncalibrated run must name its diagnostics explicitly. Falling back
+        # to the config's enabled list would pull in flow statistics and compute
+        # them, in px/frame, into the uncalibrated tree.
+        job_statistics = None
+        if is_uncalibrated_target:
+            allowed = VectorStatisticsProcessor.DIAGNOSTIC_STATISTICS
+            not_diagnostic = sorted(set(requested_statistics or []) - allowed)
+            if not_diagnostic:
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                "Uncalibrated runs compute diagnostics only — "
+                                f"cannot compute {', '.join(not_diagnostic)} "
+                                "from uncalibrated vectors. Allowed: "
+                                f"{', '.join(sorted(allowed))}"
+                            )
+                        }
+                    ),
+                    400,
+                )
+            job_statistics = sorted(set(requested_statistics or []) & allowed)
+            if not job_statistics:
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                "No diagnostics selected — tick at least one of: "
+                                f"{', '.join(sorted(allowed))}"
+                            )
+                        }
+                    ),
+                    400,
+                )
+
+        # Update config with requested statistics if provided. Skipped for
+        # uncalibrated runs: enabled_methods is shared with the calibrated
+        # panel, so persisting a diagnostics-only selection would untick every
+        # flow statistic there.
+        if requested_statistics and not is_uncalibrated_target:
             known_stats = set(VectorStatisticsProcessor.VALID_STATISTICS.keys())
             enabled_methods = {}
             for stat_name in known_stats:
@@ -130,9 +174,12 @@ def calculate_statistics():
 
         # Get workflow
         workflow = data.get("workflow")
-        source_endpoint = data.get("source_endpoint", "regular")
         if workflow is None:
             workflow = cfg.statistics_workflow
+        if is_uncalibrated_target:
+            # Uncalibrated PIV output is per-camera only — there is no merged
+            # or stereo uncalibrated tree to target.
+            workflow = "per_camera"
         logger.info(f"[Statistics] Using workflow: {workflow}")
 
         # Check if stereo setup (config-based)
@@ -154,7 +201,11 @@ def calculate_statistics():
             workflow = "stereo"
 
         # Validate workflow - allow stereo if data exists
-        if is_stereo_config and not has_stereo_data:
+        if is_uncalibrated_target:
+            # Already pinned to per_camera above; a stereo-configured project
+            # must not have that overridden back to the stereo workflow.
+            valid_workflows = ("per_camera",)
+        elif is_stereo_config and not has_stereo_data:
             # Config-only stereo (no data yet) - only stereo workflow
             valid_workflows = ("stereo",)
             workflow = "stereo"
@@ -231,12 +282,13 @@ def calculate_statistics():
             )
         else:  # per_camera (default)
             # Process all cameras from config.camera_numbers
+            suffix = " (uncalibrated)" if is_uncalibrated_target else ""
             for cam in cfg.camera_numbers:
                 targets.append(
                     {
                         "camera": cam,
                         "is_merged": False,
-                        "label": f"Cam{cam}",
+                        "label": f"Cam{cam}{suffix}",
                     }
                 )
 
@@ -269,6 +321,7 @@ def calculate_statistics():
                 use_merged=use_merged,
                 use_stereo=use_stereo,
                 stereo_camera_pair=stereo_camera_pair,
+                use_uncalibrated=is_uncalibrated_target,
             )
 
             data_dir = target_paths["data_dir"]
@@ -306,6 +359,8 @@ def calculate_statistics():
                     type_name,
                     use_merged,
                     cam_num,
+                    is_uncalibrated_target,
+                    job_statistics,
                     use_stereo,
                     stereo_camera_pair,
                 ),
@@ -341,6 +396,8 @@ def _run_statistics_job(
     type_name: str,
     use_merged: bool,
     camera: int,
+    use_uncalibrated: bool = False,
+    requested_statistics: list = None,
     use_stereo: bool = False,
     stereo_camera_pair: tuple = None,
 ):
@@ -354,6 +411,8 @@ def _run_statistics_job(
             cam_folder = f"Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
         elif use_merged:
             cam_folder = "Merged"
+        elif use_uncalibrated:
+            cam_folder = f"Cam{camera} (uncalibrated)"
         else:
             cam_folder = f"Cam{camera}"
         logger.info(f"[Statistics] Starting job {job_id} for {cam_folder}")
@@ -374,10 +433,12 @@ def _run_statistics_job(
             camera=camera,
             use_stereo=use_stereo,
             stereo_camera_pair=stereo_camera_pair,
+            use_uncalibrated=use_uncalibrated,
             config=get_config(),
         )
 
         result = processor.process(
+            requested_statistics=requested_statistics,
             save_figures=True,
             progress_callback=progress_callback,
         )
