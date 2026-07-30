@@ -179,7 +179,7 @@ def _missing_message(source: Path, path: Path) -> str:
     return (
         f"No calibration settings for source '{source}' (expected {path}). "
         "Open this source in the GUI Calibration tab (which seeds and saves "
-        "settings) or run 'pivtools-cli calibration init-settings "
+        "settings) or run 'pivtools-cli init-settings "
         f"--source \"{source}\"' and fill in the required fields."
     )
 

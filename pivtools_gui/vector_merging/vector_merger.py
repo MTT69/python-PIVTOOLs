@@ -2,7 +2,7 @@
 """
 vector_merger.py
 
-Multi-camera vector field merging using Hanning blend.
+Multi-camera vector field merging with distance-weighted overlap blending.
 Can be used standalone (CLI) or via GUI with progress callbacks.
 
 This class abstracts the vector merging logic from the GUI layer,
@@ -134,7 +134,7 @@ def _process_frame_worker(args: tuple) -> tuple:
 
 class VectorMerger:
     """
-    Multi-camera vector field merging using Hanning blend.
+    Multi-camera vector field merging with distance-weighted overlap blending.
 
     This class can be used standalone for CLI operations or via the GUI
     with progress callbacks. It follows the same pattern as MultiViewCalibrator.
@@ -341,10 +341,10 @@ class VectorMerger:
     @staticmethod
     def merge_n_camera_fields(camera_data_dict: dict) -> tuple:
         """
-        Merge n cameras using unified grid with distance-based Hanning blend.
+        Merge n cameras onto a unified grid with distance-weighted blending.
 
         This is the core algorithm for vector field merging. It creates a unified
-        grid spanning all cameras and uses Hanning window weighting for smooth
+        grid spanning all cameras and weights each by distance-to-edge for smooth
         blending in overlap regions.
 
         Args:
@@ -1072,7 +1072,7 @@ class VectorMerger:
             if skip_run:
                 continue
 
-            # Merge using Hanning blend algorithm
+            # Merge with distance-weighted overlap blending
             logger.debug(f"Merging {len(run_data)} cameras for run {run_num}")
             X_merged, Y_merged, ux_merged, uy_merged, uz_merged = (
                 self.merge_n_camera_fields(run_data)

@@ -17,7 +17,7 @@ from scipy.signal import convolve2d
 
 def peak_magnitude_detection(
     peak_mag: np.ndarray,
-    threshold: float = 0.5,
+    threshold: float = 0.2,
 ) -> np.ndarray:
     """
     Detect outliers based on peak magnitude threshold.
@@ -29,7 +29,13 @@ def peak_magnitude_detection(
     peak_mag : np.ndarray
         Peak magnitude array from PIV correlation.
     threshold : float, optional
-        Minimum acceptable peak magnitude, defaults to 0.5.
+        Minimum acceptable peak magnitude, defaults to 0.2 (matching the
+        shipped config template). This signature default is not what a
+        pipeline run uses: the only production call site passes ``threshold``
+        explicitly from the config method dict, and that read falls back to
+        0.5 when the ``peak_mag`` entry omits a ``threshold`` key
+        (``detect_outliers`` below). A config that names the method without a
+        threshold therefore gets 0.5, not the 0.2 documented here.
 
     Returns
     -------

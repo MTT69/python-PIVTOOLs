@@ -1,31 +1,39 @@
 """pivtools_cli.calibration_cli — CLI for the unified calibration package.
 
-Fully YAML-driven (config block ``calibration:``) with argparse overrides, mirroring
-the v1 command pattern but writing models into the calibration SOURCE folder. New
-subcommands: ``detect-planar``, ``detect-charuco``, ``detect-stereo``, ``apply-calibration``, ``apply-stereo``.
+Registers the calibration subcommands onto the top-level ``pivtools-cli`` parser
+via :func:`register_calibration_subparsers`, writing models into the calibration
+SOURCE folder. The tree is flat: the working form is ``pivtools-cli detect-charuco``,
+never ``pivtools-cli calibration detect-charuco``.
 
-Example config:
+Subcommands: ``init-settings``, ``detect-charuco``, ``detect-stereo``,
+``detect-joint``, ``apply-calibration``, ``apply-stereo``, ``self-calibrate``,
+``scale-factor``, ``global-frame``.
+
+Detection is ChArUco-only by design. Dotboard and stepped calibration need the
+GUI's interactive world-frame, fiducial and per-pose-level clicks, so there is no
+``detect-dotboard`` or ``detect-stepped``. Any saved model can still be applied
+here regardless of how it was calibrated.
+
+Config surface
+--------------
+The ``calibration:`` block in ``config.yaml`` is a POINTER ONLY. On every save,
+``Config._normalize_calibration_block`` reduces it to four keys and logs the rest
+as stale, so anything else written there is silently discarded:
 
     calibration:
-      active: charuco            # charuco | dotboard
-      source: /data/calib        # directory of calibration images (model saved here)
-      image_format: "calib%05d.png"
-      n_views: 10
-      start_index: 1
-      datum_index: 0
-      distortion_model: standard
-      fix_aspect_ratio: true
-      world_frame: default       # "default" or path to clicks JSON {origin,x_axis,y_axis}
-      dt: 1.0
-      camera: 1
-      camera_pair: [1, 2]
-      use_camera_subfolders: true       # gate: subfolders only apply when this is true
-      camera_subfolders: [cam1, cam2]   # per-camera dirs (index = camera-1); else Cam{N} fallback
-      charuco: {squares_h: 10, squares_v: 7, square_size: 0.03, marker_ratio: 0.5,
-                aruco_dict: DICT_4X4_1000, min_corners: 6}
-      dotboard: {dot_spacing_mm: 15.0}
-      uncalibrated_dir: /proc/uncalibrated_piv/.../Cam1/instantaneous
-      calibrated_dir:   /proc/calibrated_piv/.../Cam1/instantaneous
+      calibration_sources: []    # known calibration source dirs
+      source: ''                 # explicit source dir; '' -> calibration_sources[source_idx]
+      source_idx: 0
+      active: charuco            # which saved model downstream code should use
+
+Everything else — image format, board geometry, ``rig.dt``, world-frame clicks,
+global coordinates — lives in the per-source sidecar at
+``<source>/calibration/settings.yaml``. Seed one with ``pivtools-cli init-settings``
+or from the GUI calibration tab; see :mod:`pivtools_core.calibration_settings` for
+the schema and which fields are required at load versus at generate time.
+
+Board geometry is keyed by board under ``methods:`` in that sidecar (one block per
+physical board, shared by its mono and stereo flows), not under ``calibration:``.
 """
 
 from __future__ import annotations
@@ -112,7 +120,7 @@ def _image_format_cli(args, scfg: dict, source: Path) -> str:
         raise SystemExit(
             "calibration: image.image_format is required — pass --image-format "
             f"or set it in {cs.settings_path(source)} "
-            "(`pivtools-cli calibration init-settings` seeds a template)"
+            "(`pivtools-cli init-settings` seeds a template)"
         )
     return v
 
@@ -267,7 +275,7 @@ def _require_geometry(d: dict, key: str, where: str):
         raise ValueError(
             f"calibration: {where}.{key} is required — set it in the source's "
             f"calibration/settings.yaml (GUI Calibration tab, or "
-            f"`pivtools-cli calibration init-settings` then edit), or pass the "
+            f"`pivtools-cli init-settings` then edit), or pass the "
             f"matching CLI flag (board geometry has no default)"
         )
     return d[key]

@@ -71,14 +71,14 @@ USE_MERGED = False
 ENABLED_STATISTICS = {
     # Mean/time-averaged statistics
     "mean_velocity": True,
-    "reynolds_stress": True,
-    "normal_stress": True,
+    "mean_stresses": True,
     "mean_tke": True,
     "mean_vorticity": True,
     "mean_divergence": True,
+    "correlation_quality": False,
     # Instantaneous (per-frame) statistics
     "inst_velocity": True,
-    "inst_fluctuations": True,
+    "inst_stresses": True,
     "inst_vorticity": True,
     "inst_divergence": True,
     "inst_gamma": True,
@@ -118,7 +118,9 @@ def apply_cli_settings_to_config():
     config.data["paths"]["camera_numbers"] = CAMERA_NUMS
 
     # Images settings
-    config.data["images"]["num_frame_pairs"] = NUM_FRAME_PAIRS
+    # num_frame_pairs is popped by the config loader (fully computed from
+    # num_images + the stride model), so writing it here would be discarded.
+    config.data["images"]["num_images"] = NUM_FRAME_PAIRS
     config.data["images"]["vector_format"] = [VECTOR_FORMAT]
 
     # Statistics settings

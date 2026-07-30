@@ -2,20 +2,28 @@
 """
 PIVTOOLs CLI - Command line interface for PIVTOOLs
 
-Commands:
+Commands (registered here; the calibration ones come from calibration_cli):
   init                 - Initialize a new PIVTOOLs workspace
   instantaneous        - Run instantaneous PIV processing
   ensemble             - Run ensemble PIV processing
-  detect-planar        - Detect dot/circle grid, generate camera model
-  detect-charuco       - Detect ChArUco board, generate camera model
-  detect-stereo-planar - Detect dot/circle grid, generate stereo model
-  detect-stereo-charuco- Detect ChArUco board, generate stereo model
-  apply-calibration    - Apply calibration to vectors (pixels to m/s)
-  align-coordinates    - Apply global coordinate alignment to calibrated vectors
   transform            - Apply geometric transforms to vectors
   merge                - Merge multi-camera vector fields
   statistics           - Compute PIV statistics
   video                - Create visualization videos
+
+  init-settings        - Write a settings.yaml template into a calibration source
+  detect-charuco       - Detect ChArUco board, generate camera model
+  detect-stereo        - Detect ChArUco board, generate stereo model
+  detect-joint         - Joint multi-camera solve on a shared board
+  apply-calibration    - Apply calibration to vectors (pixels to m/s)
+  apply-stereo         - Stereo 3D reconstruction (ux, uy, uz)
+  self-calibrate       - Correct laser-sheet misalignment (Wieneke)
+  scale-factor         - Build a uniform px-to-mm mono model
+  global-frame         - Bake the multi-camera global frame into each model
+
+CLI detection is ChArUco-only by design: dotboard and stepped calibration need
+the GUI's interactive world-frame, fiducial and level picking. The CLI can
+still apply any saved model regardless of how it was calibrated.
 """
 
 import argparse
@@ -155,7 +163,7 @@ def transform_command(args):
 
 
 def merge_command(args):
-    """Merge multi-camera vector fields using Hanning blend."""
+    """Merge multi-camera vector fields with blended overlaps."""
     from pivtools_core.config import get_config
     from pivtools_gui.vector_merging.vector_merger import VectorMerger
 
@@ -604,6 +612,16 @@ processing:
   dask_memory_limit: 12GB
   dask_max_in_flight_per_worker: 3
   cluster_type: local
+  # Required when cluster_type is slurm - nnodes has no default and raises if
+  # unset. Uncomment and set before switching cluster_type.
+  # slurm:
+  #   nnodes: 4
+  #   walltime: '01:00:00'
+  #   memory_limit: 100GB
+  #   partition: normal
+  #   interface: ib0
+  #   job_extra: []
+  #   prologue: []
   open_dashboard: false
   dask_nanny: false
   post_processing_workers: null
@@ -678,6 +696,10 @@ statistics:
   save_figures: true
   type_name: instantaneous
   source_endpoint: regular
+  # Run the diagnostic statistics (correlation_quality) against uncalibrated
+  # vectors, writing to statistics/uncalibrated/. The quality channels exist
+  # only in uncalibrated files, so this is the sole route to them.
+  process_uncalibrated: false
 instantaneous_piv:
   window_size:
   - - 128
@@ -696,10 +718,12 @@ instantaneous_piv:
   runs:
   - 3
   - 4
-  time_resolved: false
   window_type: gaussian
   num_peaks: 1
   peak_finder: gauss6
+  # batch = SIMD multi-width LM fitter (needs a clang build); scalar = portable
+  # fallback. A non-clang build raises on `batch` and names `scalar` in the error.
+  peak_fit_impl: batch
   secondary_peak: false
   predictor_smoothing: true
   image_warp_interpolation: cubic
@@ -767,11 +791,19 @@ calibration:
   # Pointer only. Everything else (image format, board geometry, dt, global
   # coordinates) lives in the per-source settings sidecar at
   # <source>/calibration/settings.yaml — seed one with
-  # `pivtools-cli calibration init-settings` or via the GUI calibration tab.
+  # `pivtools-cli init-settings` or via the GUI calibration tab.
   calibration_sources: []
   source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
   source_idx: 0
-  active: charuco            # charuco | dotboard | scale_factor (stereo chosen per command)
+  # Which saved model downstream code should use. Stored values are the GUI tab
+  # ids: charuco | dotboard | stepped | scale_factor | stereo_charuco |
+  # stereo_dotboard | stepped_stereo.
+  # NOT validated - a typo selects nothing rather than raising.
+  # Config.is_stereo_setup matches ONLY 'stereo_dotboard' and 'stereo_charuco'.
+  # 'stepped_stereo' is a valid value here but is not recognised as stereo by
+  # that property, so the GUI gates keyed on it (merge block, statistics and
+  # transform stereo detection) do not fire for a stepped-stereo setup.
+  active: charuco
 filters: []
 preprocessing:
   # gain_normalisation: per-frame laser-gain divide (two-pass regression against
@@ -954,7 +986,12 @@ def main():
         "--operations",
         "-o",
         default=None,
-        help="Comma-separated transforms: flip_ud,flip_lr,rotate_90_cw,rotate_90_ccw,rotate_180",
+        help=(
+            "Comma-separated transforms. Geometric: flip_ud, flip_lr, rotate_90_cw, "
+            "rotate_90_ccw, rotate_180. Component: swap_ux_uy, invert_ux, invert_uy, "
+            "invert_ux_uy. Parametric (require a :factor suffix): scale_velocity:N, "
+            "scale_coords:N -- e.g. scale_velocity:1000 for m/s to mm/s"
+        ),
     )
     transform_parser.add_argument(
         "--merged",
@@ -979,7 +1016,7 @@ def main():
 
     # merge command
     merge_parser = subparsers.add_parser(
-        "merge", help="Merge multi-camera vector fields using Hanning blend"
+        "merge", help="Merge multi-camera vector fields with blended overlaps"
     )
     merge_parser.add_argument(
         "--cameras",
