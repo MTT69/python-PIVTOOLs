@@ -45,7 +45,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-import bench_common as bc
+from . import bench_common as bc
 
 # CSV schema: the proven scaling columns plus provenance so two result sets can
 # be compared honestly (see bench_common.build_provenance / compare_provenance).

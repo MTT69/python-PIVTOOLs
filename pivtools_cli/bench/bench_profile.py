@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-import bench_common as bc
+from . import bench_common as bc
 import numpy as np
 
 from pivtools_cli.piv.piv_backend.cpu_instantaneous import InstantaneousCorrelatorCPU

@@ -70,6 +70,7 @@ Issues = "https://github.com/MTT69/python-PIVTOOLs/issues"
 [project.scripts]
 pivtools-cli = "pivtools_cli.cli:main"
 pivtools-gui = "pivtools_gui.app:main"
+pivtools-bench = "pivtools_cli.bench.bench:main"
 
 [tool.setuptools]
 include-package-data = true

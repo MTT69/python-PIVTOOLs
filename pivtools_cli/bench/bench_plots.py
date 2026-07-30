@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Optional
 
-import bench_common as bc
+from . import bench_common as bc
 import matplotlib
 
 matplotlib.use("Agg")  # headless: write files, never open a window
@@ -438,6 +438,52 @@ def plot_scaling(csv_path: Path, out_dir: Path) -> list[Path]:
         fig.savefig(p, dpi=130)
         plt.close(fig)
         written.append(p)
+
+        # --- publication-style figure (matches the SoftwareX paper layout):
+        # throughput vs workers against the ideal linear bound, and parallel
+        # efficiency as a line, both serif-styled.
+        pairs_per_s = [v["pairs_per_s"] for _, v in data]
+        base_pps = pairs_per_s[workers.index(1)]
+        with plt.rc_context({
+            "font.family": "serif",
+            "font.serif": ["CMU Serif", "Computer Modern Roman", "DejaVu Serif"],
+            "mathtext.fontset": "cm",
+            "axes.labelsize": 17,
+            "axes.titlesize": 18,
+            "legend.fontsize": 13,
+            "xtick.labelsize": 13,
+            "ytick.labelsize": 13,
+        }):
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
+            ax1.plot(
+                workers,
+                [base_pps * w for w in workers],
+                "--",
+                color="black",
+                label="Ideal (linear)",
+            )
+            ax1.plot(workers, pairs_per_s, "o-", color="tab:blue", ms=8, lw=2,
+                     label="Measured")
+            ax1.set_xlabel("Workers")
+            ax1.set_ylabel(r"Throughput (pairs s$^{-1}$)")
+            ax1.set_xticks(workers)
+            ax1.legend()
+            ax1.grid(alpha=0.3, ls=":")
+
+            ax2.axhline(100, color="black", ls="--", label="Ideal (100%)")
+            ax2.plot(workers, eff, "o-", color="tab:blue", ms=8, lw=2,
+                     label="Measured")
+            ax2.set_xlabel("Workers")
+            ax2.set_ylabel("Parallel efficiency (%)")
+            ax2.set_xticks(workers)
+            ax2.legend()
+            ax2.grid(alpha=0.3, ls=":")
+
+            fig.tight_layout()
+            p = out_dir / f"{stem}_paper.png"
+            fig.savefig(p, dpi=200)
+            plt.close(fig)
+            written.append(p)
 
     for p in written:
         print(f"  saved {p}")

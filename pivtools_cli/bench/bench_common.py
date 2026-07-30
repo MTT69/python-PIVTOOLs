@@ -36,8 +36,11 @@ from pivtools_core.config import Config
 
 # --- locations -------------------------------------------------------------
 
-PROFILE_DIR = Path(__file__).resolve().parent
-RESULTS_DIR = PROFILE_DIR / "results"
+
+def results_dir() -> Path:
+    """Output directory for results and figures: ``bench_results/`` under the
+    invoking working directory (never inside the installed package)."""
+    return Path.cwd() / "bench_results"
 
 # The one FFTW symbol guaranteed present in any FFTW build and absent from the
 # codelet build. Verified against both worktrees' libbulkxcorr2d.so.
@@ -363,10 +366,11 @@ def resolve_config(
 
 
 def timestamped_path(stem: str, ext: str) -> Path:
-    """``results/<stem>_YYYYMMDD_HHMMSS.<ext>`` (results dir created if absent)."""
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    """``bench_results/<stem>_YYYYMMDD_HHMMSS.<ext>`` (dir created if absent)."""
+    out = results_dir()
+    out.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return RESULTS_DIR / f"{stem}_{ts}.{ext}"
+    return out / f"{stem}_{ts}.{ext}"
 
 
 def write_csv_header(csv_path: Path, fields: Sequence[str]) -> None:

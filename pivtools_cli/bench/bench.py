@@ -23,21 +23,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
-# Make sibling modules importable however bench.py is invoked, and ensure the
-# worktree root is on the path so `import pivtools_cli` resolves to *this* worktree.
-_PROFILE_DIR = Path(__file__).resolve().parent
-_WORKTREE_ROOT = _PROFILE_DIR.parent
-for _p in (str(_PROFILE_DIR), str(_WORKTREE_ROOT)):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+from . import bench_common as bc
 
-import bench_common as bc  # noqa: E402
 
-_FIGURES_DIR = _WORKTREE_ROOT / "figures" / "debug"
+def _figures_dir() -> Path:
+    """Figure output directory: ``bench_results/`` under the invoking cwd."""
+    return bc.results_dir()
 
 
 def _split_csv_arg(value: str | None) -> list[str] | None:
@@ -51,8 +45,8 @@ def _split_csv_arg(value: str | None) -> list[str] | None:
 
 
 def cmd_scaling(args: argparse.Namespace) -> int:
-    import bench_plots
-    import bench_scaling as bs
+    from . import bench_plots
+    from . import bench_scaling as bs
 
     if args.plots_only:
         bench_plots.plot_scaling(
@@ -109,8 +103,8 @@ def cmd_scaling(args: argparse.Namespace) -> int:
 
 
 def cmd_profile(args: argparse.Namespace) -> int:
-    import bench_plots
-    import bench_profile as bp
+    from . import bench_plots
+    from . import bench_profile as bp
 
     if not Path(args.dataset).is_dir():
         print(f"ERROR: dataset directory not found: {args.dataset}")
@@ -161,7 +155,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
 def bp_plot_path(payload: dict) -> Path:
     backend = payload.get("provenance", {}).get("fft_backend", "x")
     day = datetime.now().strftime("%Y-%m-%d")
-    return _FIGURES_DIR / f"{day}-bench-profile-budget-{backend}.png"
+    return _figures_dir() / f"{day}-bench-profile-budget-{backend}.png"
 
 
 # --- compare ---------------------------------------------------------------
@@ -212,10 +206,10 @@ def _provenance_from_csv(csv_path: Path) -> dict:
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
-    import bench_plots
+    from . import bench_plots
 
     a, b = _resolve_result(args.a), _resolve_result(args.b)
-    out_dir = Path(args.out_dir) if args.out_dir else _FIGURES_DIR
+    out_dir = Path(args.out_dir) if args.out_dir else _figures_dir()
     day = datetime.now().strftime("%Y-%m-%d")
 
     # Provenance guard — prefer the richer profile-JSON stamp; fall back to CSV.
@@ -394,7 +388,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--a", required=True, help="Result A (CSV/JSON file or results dir)")
     c.add_argument("--b", required=True, help="Result B (CSV/JSON file or results dir)")
     c.add_argument(
-        "--out-dir", default=None, help="Figure output dir (default: figures/debug)"
+        "--out-dir", default=None, help="Figure output dir (default: ./bench_results)"
     )
     c.set_defaults(func=cmd_compare)
 

@@ -7,8 +7,8 @@ guard. Run with ``pytest profile/test_bench.py`` from the worktree root.
 
 from __future__ import annotations
 
-import bench_common as bc
-import bench_scaling as bs
+from pivtools_cli.bench import bench_common as bc
+from pivtools_cli.bench import bench_scaling as bs
 
 # --- sweep generation ------------------------------------------------------
 
