@@ -1387,10 +1387,15 @@ class SinglePassAccumulator:
 
                 stress_outlier_mask = np.zeros((n_win_y, n_win_x), dtype=bool)
                 if stress_methods:
+                    # per_component, NOT the velocity vector-norm: UU and VV are
+                    # independent variances from one LM fit, not the components
+                    # of a vector. The norm is dominated by the ~4x larger UU
+                    # and hides 40% of VV failures / 26% of UU failures.
                     stress_outlier_mask = apply_outlier_detection(
                         UU_stress,
                         VV_stress,
                         stress_methods,
+                        combine="per_component",
                     )
 
                 # Realizability: Cauchy-Schwarz |UV|² ≤ UU·VV

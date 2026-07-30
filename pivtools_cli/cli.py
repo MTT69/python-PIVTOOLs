@@ -615,7 +615,7 @@ outlier_detection:
   methods:
   - threshold: 0.2
     type: peak_mag
-  - epsilon: 0.2
+  - epsilon: 0.1
     threshold: 2
     size: 5
     type: median_2d
@@ -630,7 +630,7 @@ infilling:
 ensemble_outlier_detection:
   enabled: true
   methods:
-  - epsilon: 0.2
+  - epsilon: 0.1
     threshold: 2
     size: 5
     type: median_2d

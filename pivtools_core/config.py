@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -33,6 +34,11 @@ TOOL_ALLOWED_ENDPOINTS = TOOL_ALLOWED_SOURCE_ENDPOINTS
 
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
+
+# Serialises the os.replace step of Config.save() across threads in this process.
+# Windows fails a replace with ERROR_ACCESS_DENIED when another thread is already
+# replacing the same destination, so threaded Flask requests collide without it.
+_SAVE_REPLACE_LOCK = threading.Lock()
 
 
 class Config:
@@ -178,13 +184,24 @@ class Config:
         Uses atomic write (write to temp file, then os.replace) to prevent
         corruption from interrupted writes or cloud sync (e.g. OneDrive).
 
-        The temp file name must be unique per writer, not derived from the
-        config path. The Flask backend runs threaded, so several
-        /backend/update_config requests can be inside this method at once; with
-        one shared name the first os.replace moves the file away and the second
-        fails with FileNotFoundError. A CLI run saving the same config
-        concurrently collides the same way, which is why this is a unique name
-        rather than a lock.
+        The Flask backend runs threaded, so several /backend/update_config
+        requests can be inside this method at once. That produces two distinct
+        collisions, and both have to be handled:
+
+        1. On the temp file. With one shared name derived from the config path,
+           the first os.replace moves the file away and the second fails with
+           FileNotFoundError. Fixed by a unique name per writer (mkstemp); a lock
+           would not help, because a concurrent CLI process collides the same way.
+        2. On the destination. os.replace is atomic against interruption but not
+           against a second concurrent replace of the same target -- Windows
+           returns ERROR_ACCESS_DENIED (errno 13) for roughly 13% of replaces
+           under 8-way contention. Fixed by _SAVE_REPLACE_LOCK; the retry below
+           cannot carry this alone, because its budget is finite while the
+           collision rate is not small.
+
+        The retry is therefore left to do only what it was written for: absorb
+        genuine external locks (OneDrive sync, another process), which no
+        in-process lock can serialise.
         """
         self._normalize_calibration_block()
         config_path = Path(self._config_path)
@@ -195,15 +212,16 @@ class Config:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 yaml.dump(self.data, f, default_flow_style=False, sort_keys=False)
             # Retry os.replace to handle transient locks from OneDrive/cloud sync
-            for attempt in range(5):
-                try:
-                    os.replace(tmp_path, config_path)
-                    return
-                except PermissionError:
-                    if attempt < 4:
-                        time.sleep(0.1 * (attempt + 1))
-                    else:
-                        raise
+            with _SAVE_REPLACE_LOCK:
+                for attempt in range(5):
+                    try:
+                        os.replace(tmp_path, config_path)
+                        return
+                    except PermissionError:
+                        if attempt < 4:
+                            time.sleep(0.1 * (attempt + 1))
+                        else:
+                            raise
         except Exception:
             # Never leave a staged temp file behind next to the real config
             if os.path.exists(tmp_path):

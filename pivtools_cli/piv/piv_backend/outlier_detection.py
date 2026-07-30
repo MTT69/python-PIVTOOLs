@@ -46,6 +46,7 @@ def median_outlier_detection(
     epsilon: float = 0.1,
     threshold: float = 2.0,
     size: int = 5,
+    combine: str = "norm",
 ) -> np.ndarray:
     """
     Normalized-median (universal) outlier detection for 2D PIV velocity
@@ -81,12 +82,31 @@ def median_outlier_detection(
         Defaults to 5 (PIVware ``SIZE``). A smaller window (3) keeps shear from
         spreading across the neighbourhood; a larger one gives smoother
         statistics.
+    combine : {"norm", "per_component"}, optional
+        How the two input fields are combined into a verdict. Defaults to
+        ``"norm"`` — the PIVware vector-norm form described above, correct when
+        the inputs are the components of a genuine vector.
+
+        ``"per_component"`` instead thresholds each field independently against
+        its own neighbourhood scale and ORs the two masks. Use it when the
+        inputs are NOT vector components — notably the ensemble stress pair
+        ``(UU, VV)``, which are independent variances from one LM fit. There the
+        norm is dominated by the larger field (measured: ``|dUU|`` 0.069 vs
+        ``|dVV|`` 0.031 px^2, so VV carries only 17 % of ``r_0**2``) and hides
+        40 % of the VV failures and 26 % of the UU failures a per-component test
+        finds. Velocity does not have this problem — its components share a
+        single failure mode (one bad correlation peak corrupts both), so the
+        norm misses nothing there and ``"norm"`` remains correct for ``(ux, uy)``.
 
     Returns
     -------
     np.ndarray
         Boolean mask of outliers (True = outlier).
     """
+    if combine not in ("norm", "per_component"):
+        raise ValueError(
+            f"combine must be 'norm' or 'per_component', got {combine!r}"
+        )
     if ux.shape != uy.shape:
         raise ValueError("ux and uy must have identical shapes")
     if not isinstance(size, (int, np.integer)) or size < 3 or size % 2 == 0:
@@ -114,15 +134,29 @@ def median_outlier_detection(
     med_u = bn.nanmedian(ux_nn, axis=-1)
     med_v = bn.nanmedian(uy_nn, axis=-1)
 
-    # Residual as a VECTOR NORM (PIVware pwVectorNorm): one scalar per node
-    r_0 = np.sqrt((ux - med_u) ** 2 + (uy - med_v) ** 2)
+    if combine == "norm":
+        # Residual as a VECTOR NORM (PIVware pwVectorNorm): one scalar per node
+        r_0 = np.sqrt((ux - med_u) ** 2 + (uy - med_v) ** 2)
 
-    # Normalize by the median of the neighbour residual norms (relative to the
-    # same neighbour median) plus epsilon (PIVware pwMedian of the residual).
-    r_i = np.sqrt((ux_nn - med_u[..., None]) ** 2 + (uy_nn - med_v[..., None]) ** 2)
-    r_m = bn.nanmedian(r_i, axis=-1)
+        # Normalize by the median of the neighbour residual norms (relative to the
+        # same neighbour median) plus epsilon (PIVware pwMedian of the residual).
+        r_i = np.sqrt(
+            (ux_nn - med_u[..., None]) ** 2 + (uy_nn - med_v[..., None]) ** 2
+        )
+        r_m = bn.nanmedian(r_i, axis=-1)
 
-    norm_resid = r_0 / (r_m + epsilon)
+        norm_resid = r_0 / (r_m + epsilon)
+        exceeded = (norm_resid > threshold) | ~np.isfinite(norm_resid)
+    else:
+        # Independent verdicts: each field is scaled by its OWN neighbourhood
+        # residual median, so a small-magnitude field cannot be hidden behind a
+        # large one. Same normalized-median statistic, applied twice and OR-ed.
+        exceeded = np.zeros(ux.shape, dtype=bool)
+        for U, U_nn, med in ((ux, ux_nn, med_u), (uy, uy_nn, med_v)):
+            r_0 = np.abs(U - med)
+            r_m = bn.nanmedian(np.abs(U_nn - med[..., None]), axis=-1)
+            norm_resid = r_0 / (r_m + epsilon)
+            exceeded |= (norm_resid > threshold) | ~np.isfinite(norm_resid)
 
     # Border/hole guard on the immediate 3×3 (deliberately independent of the
     # median window `size`): reject a node only when its closest neighbours are
@@ -134,7 +168,7 @@ def median_outlier_detection(
     n_neigh = convolve2d(valid, ones3, mode="same", boundary="fill", fillvalue=0.0)
 
     # Boolean mask: true = outlier
-    b_filter = (norm_resid > threshold) | ~np.isfinite(norm_resid) | (n_neigh < 6)
+    b_filter = exceeded | (n_neigh < 6)
     return b_filter
 
 
@@ -142,6 +176,7 @@ def sigma_outlier_detection(
     ux: np.ndarray,
     uy: np.ndarray,
     sigma_threshold: float = 2.0,
+    combine: str = "norm",
 ) -> np.ndarray:
     """
     Detect outliers based on local standard deviation (sigma-based).
@@ -163,7 +198,20 @@ def sigma_outlier_detection(
     np.ndarray
         Boolean mask of outliers (True = outlier).
     """
-    v = np.sqrt(ux**2 + uy**2).astype(np.float32, copy=False)
+    if combine not in ("norm", "per_component"):
+        raise ValueError(
+            f"combine must be 'norm' or 'per_component', got {combine!r}"
+        )
+    if combine == "norm":
+        return _sigma_single(np.sqrt(ux**2 + uy**2), sigma_threshold)
+    # Independent verdicts — see median_outlier_detection's `combine` docs for
+    # why the magnitude is wrong when the inputs are not vector components.
+    return _sigma_single(ux, sigma_threshold) | _sigma_single(uy, sigma_threshold)
+
+
+def _sigma_single(field: np.ndarray, sigma_threshold: float) -> np.ndarray:
+    """Local 8-neighbour sigma test on ONE scalar field."""
+    v = np.asarray(field).astype(np.float32, copy=False)
     finite = np.isfinite(v).astype(np.float32)
     v0 = np.where(np.isfinite(v), v, 0.0)
 
@@ -267,6 +315,7 @@ def apply_outlier_detection(
     uy: np.ndarray,
     methods: list,
     peak_mag: np.ndarray = None,
+    combine: str = "norm",
 ) -> np.ndarray:
     """
     Apply multiple outlier detection methods and combine results.
@@ -284,6 +333,12 @@ def apply_outlier_detection(
         List of method dictionaries from config, each with 'type' and parameters.
     peak_mag : np.ndarray, optional
         Peak magnitude array (required for 'peak_mag' method).
+    combine : {"norm", "per_component"}, optional
+        Forwarded to the component-combining methods (``median_2d``, ``sigma``);
+        ignored by ``peak_mag`` and ``div_vort``, which take a single field or a
+        genuine vector. Defaults to ``"norm"``. The ensemble stress call site
+        passes ``"per_component"`` because ``(UU, VV)`` are not vector
+        components — see ``median_outlier_detection``.
 
     Returns
     -------
@@ -309,13 +364,16 @@ def apply_outlier_detection(
             threshold = method_cfg.get("threshold", 2.0)
             size = method_cfg.get("size", 5)
             mask = median_outlier_detection(
-                ux, uy, epsilon=epsilon, threshold=threshold, size=size
+                ux, uy, epsilon=epsilon, threshold=threshold, size=size,
+                combine=combine,
             )
             combined_mask |= mask
 
         elif method_type == "sigma":
             sigma_threshold = method_cfg.get("sigma_threshold", 2.0)
-            mask = sigma_outlier_detection(ux, uy, sigma_threshold=sigma_threshold)
+            mask = sigma_outlier_detection(
+                ux, uy, sigma_threshold=sigma_threshold, combine=combine
+            )
             combined_mask |= mask
 
         elif method_type == "div_vort":

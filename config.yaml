@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Results\planar_no_noise
+  - E:\Results\experimental
   source_paths:
-  - E:\Synthetic\Planar_no_noise
+  - E:\alk235\cam4_all_512_tiff\cam4_normalised
   active_paths:
   - 0
   camera_numbers:
@@ -23,12 +23,12 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   num_loops: 1
-  num_images: 4000
+  num_images: 2100
   image_shape:
-  - 2048
-  - 2048
+  - 1836
+  - 512
 batches:
-  size: 5
+  size: 20
 logging:
   file: pypiv.log
   level: INFO
@@ -54,7 +54,7 @@ outlier_detection:
     type: peak_mag
   - type: median_2d
     epsilon: 0.1
-    threshold: 3
+    threshold: 2
 infilling:
   mid_pass:
     method: nearest
@@ -65,7 +65,11 @@ infilling:
     parameters: {}
 ensemble_outlier_detection:
   enabled: true
-  methods: []
+  methods:
+  - type: median_2d
+    epsilon: 0.1
+    threshold: 2
+    size: 5
 ensemble_infilling:
   mid_pass:
     method: biharmonic
@@ -95,41 +99,41 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    mean_vorticity: false
-    mean_stresses: true
-    divergence: false
-    mean_tke: false
-    gamma2: false
     inst_vorticity: false
+    gamma2: false
     inst_divergence: false
     mean_velocity: true
+    vorticity: false
+    mean_vorticity: false
+    tke: false
+    inst_gamma: false
+    mean_tke: false
+    correlation_quality: true
     inst_stresses: false
+    divergence: false
     inst_velocity: false
     gamma1: false
+    mean_stresses: true
     mean_divergence: false
-    tke: false
-    correlation_quality: true
     fluctuating_velocity: false
-    inst_gamma: false
-    vorticity: false
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
   source_endpoint: regular
 instantaneous_piv:
   window_size:
-  - - 64
-    - 64
   - - 32
-    - 32
+    - 96
   - - 16
-    - 16
+    - 96
+  - - 8
+    - 96
   overlap:
   - 50
   - 50
   - 50
   runs:
-  - 1
+  - 2
   - 3
   time_resolved: false
   window_type: gaussian
@@ -180,20 +184,22 @@ ensemble_piv:
   sum_fitting_window:
   - 16
   - 16
-  resume_from_pass: 0
+  resume_from_pass: 3
   window_type: square
-  predictor_boundary_conditions:
-  - y_position: 0
-    ux: 0
-    uy: 0
-    edge: bottom
+  predictor_boundary_conditions: []
   per_pair_normalization: false
   predictor_rounding: false
+  envelope_divide: false
 calibration:
   calibration_sources:
-  - E:\Synthetic\calibration_charuco\planar\Cam1
+  - E:\alk235\cam4_all_512_tiff\calibration
   active: charuco
-filters: []
+filters:
+- type: time
+- type: ssmin
+  size:
+  - 7
+  - 7
 masking:
   enabled: false
   mask_file_pattern: mask_Cam%d.mat
