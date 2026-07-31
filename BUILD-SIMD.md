@@ -109,7 +109,7 @@ cd pivtools_cli/lib
   7, Ubuntu 18.04, dated HPC login nodes) pip falls back to the sdist, which
   compiles locally and needs clang + OpenMP.
 - No library links FFTW or GSL any more: `libkspace` and `libmarquadt` were
-  removed (2026-06-23) and ensemble fitting moved to pure NumPy, so the BSD-3
-  wheel claim is now honest.
+  removed (2026-06-23) and ensemble fitting moved to pure NumPy. The wheel
+  ships under `GPL-3.0-or-later` and links only OpenMP and libm.
 - Only **instantaneous** PIV is validated end-to-end so far; the batched
   ensemble/triple loops are built but pending joint validation.

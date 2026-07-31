@@ -78,9 +78,9 @@ If you use PIVtools in your research, please cite:
 
 ## License
 
-BSD 3-Clause License — see [LICENSE](LICENSE) for details.
+GNU General Public License v3.0 or later (`GPL-3.0-or-later`) — see [LICENSE](LICENSE) for the full text.
 
-**Note:** The compiled binaries link no GPL-licensed libraries (FFTW3 was replaced by a permissive self-owned codelet FFT, and the GSL fitters by a pure-NumPy implementation), so the distribution is BSD-3-Clause throughout with no copyleft obligations. See the [LICENSE](LICENSE) and [NOTICE](NOTICE) files for details.
+**Note:** Redistribution of PIVtools, modified or unmodified, must be under the same licence and must make the corresponding source available. The compiled C libraries (`libbulkxcorr2d`, `libfusedwarp`, `libkspacefit`) are original work built from sources shipped in the sdist and link only OpenMP and libm — no third-party numerical library is bundled or linked. See the [LICENSE](LICENSE) and [NOTICE](NOTICE) files for details.
 
 ## Contributing
 

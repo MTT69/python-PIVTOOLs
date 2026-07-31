@@ -7,7 +7,7 @@ name = "pivtools"
 version = "0.6.0"
 description = "PIVTOOLs - Particle Image Velocimetry Tools with CLI and GUI"
 readme = "README.md"
-license = "BSD-3-Clause"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.12"
 authors = [
     {name = "Morgan Taylor", email = "m.t.taylor@soton.ac.uk"}

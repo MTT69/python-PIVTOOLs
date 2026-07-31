@@ -121,6 +121,14 @@ class BuildCLibraries(build):
             self.extra_compile = [
                 "-O3",
                 "-fPIC",
+                # No PLT: external calls go through the GOT directly. patchelf
+                # (0.17.2 AND 0.18.0, i.e. auditwheel wheel repair) corrupts
+                # the PLT relocation of a lib whose PLT has a single entry —
+                # libkspacefit's only external call is omp_get_max_threads, and
+                # the repaired wheel SIGSEGVs on the first call through it
+                # (manylinux repro, 2026-07-31). No PLT, nothing to corrupt.
+                # Second patchelf battle; the first is -nostartfiles below.
+                "-fno-plt",
                 "-fopenmp",
                 f"-I{self.python_include}",
             ]
@@ -151,7 +159,7 @@ class BuildCLibraries(build):
         # Resolve the Stage B SIMD width + flags for libbulkxcorr2d.
         self._resolve_fft_isa()
 
-        # --- Build libbulkxcorr2d (FFTW-free: permissive codelet FFT) ---
+        # --- Build libbulkxcorr2d (FFTW-free: self-owned codelet FFT) ---
         # Generate the fixed-size FFT codelet header for the supported window
         # sizes, then compile. This library links no FFTW (the codelet engine
         # replaces it); no library in the build links FFTW or GSL any more.

@@ -4,7 +4,7 @@
 #include "codelet_fft.h"
 
 /**** data structures ****/
-/* Cross-correlation plan: a thin wrapper over a codelet_plan (the permissive,
+/* Cross-correlation plan: a thin wrapper over a codelet_plan (the self-owned,
  * FFTW-free transform engine). Internal to the library -- it never crosses the
  * Python/ctypes boundary. NOT thread-safe to share; create one per OMP thread,
  * exactly as the old FFTW-backed sPlan was used. */

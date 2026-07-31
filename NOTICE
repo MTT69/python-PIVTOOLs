@@ -11,17 +11,31 @@ Principal Developer:
                               LICENSING NOTICE
 ================================================================================
 
-PIVTools source code is licensed under the BSD 3-Clause License.
+PIVTools is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
 
-No GPL Dependencies:
---------------------
-As of 2026-06-23 the compiled binaries link no GPL-licensed libraries. The
-correlation engine uses a permissive self-owned codelet FFT (FFTW3 removed),
-and the ensemble fitter is pure NumPy (the GSL-based fitters were removed).
-The two C libraries (libbulkxcorr2d, libfusedwarp) link only OpenMP and libm.
+PIVTools is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program. If not, see <https://www.gnu.org/licenses/>.
+
+The full licence text is in the LICENSE file (SPDX: GPL-3.0-or-later).
+
+Corresponding Source:
+---------------------
+The three compiled C libraries (libbulkxcorr2d, libfusedwarp, libkspacefit)
+are original work of this project. Their complete source is distributed in the
+sdist under pivtools_cli/lib/, together with the codelet generator that emits
+the FFT kernels at build time. They link only OpenMP and the C math library;
+no third-party numerical library is bundled or statically linked.
 
 Other Dependencies:
 -------------------
 This software uses various third-party open-source libraries (NumPy, SciPy,
 OpenCV, Flask, etc.) which are distributed under permissive licenses (BSD,
-MIT, Apache 2.0). See each package's documentation for specific license terms.
+MIT, Apache 2.0). These are compatible with the GPLv3 terms above. See each
+package's documentation for specific license terms.

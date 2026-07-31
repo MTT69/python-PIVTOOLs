@@ -1,6 +1,6 @@
 /****************************************************************************
- * codelet_fft.h -- permissive (BSD-clean) fixed-size 2D FFT for the PIV
- * cross-correlation hot path. Replaces GPL FFTW in libbulkxcorr2d.
+ * codelet_fft.h -- self-owned, FFTW-free fixed-size 2D FFT for the PIV
+ * cross-correlation hot path. Replaces the FFTW dependency in libbulkxcorr2d.
  *
  * A 2D real->complex FFT is assembled separably from generated, fully-unrolled
  * 1D codelets (codelets_gen.h): rfft along the W-length rows, cfft along the

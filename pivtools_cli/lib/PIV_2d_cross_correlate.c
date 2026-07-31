@@ -1,7 +1,7 @@
 #include "PIV_2d_cross_correlate.h"
 #include "common.h"
 #include "xcorr.h"
-#include "codelet_fft.h"           /* permissive FFTW-free transform engine */
+#include "codelet_fft.h"           /* self-owned FFTW-free transform engine */
 #include "peak_locate_lm.h"        /* Fast LM solver instead of GSL */
 #include "peak_locate_lm_batch.h"  /* lockstep one-window-per-lane LM fitter */
 #include <omp.h>
