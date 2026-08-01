@@ -939,6 +939,14 @@ def reduce_stereo_ensemble_results(r1: dict, r2: dict) -> dict:
         "CoC_sum": r1["CoC_sum"] + r2["CoC_sum"],
         "cam1_AB_AC_sum": r1["cam1_AB_AC_sum"] + r2["cam1_AB_AC_sum"],
         "cam2_AB_AC_sum": r1["cam2_AB_AC_sum"] + r2["cam2_AB_AC_sum"],
+        "CoC_AA_sum": r1["CoC_AA_sum"] + r2["CoC_AA_sum"],
+        # Store-only cross-camera disparity correlations (CoC_A/CoC_B). Present
+        # in every chunk dict (zero-filled when store_planes is off); must be
+        # summed through the tree reduction or they never reach finalize_pass.
+        **({"CoC_A_sum": r1["CoC_A_sum"] + r2["CoC_A_sum"]}
+           if "CoC_A_sum" in r1 and "CoC_A_sum" in r2 else {}),
+        **({"CoC_B_sum": r1["CoC_B_sum"] + r2["CoC_B_sum"]}
+           if "CoC_B_sum" in r1 and "CoC_B_sum" in r2 else {}),
         "warp_1A_sum": r1["warp_1A_sum"] + r2["warp_1A_sum"],
         "warp_1B_sum": r1["warp_1B_sum"] + r2["warp_1B_sum"],
         "warp_2A_sum": r1["warp_2A_sum"] + r2["warp_2A_sum"],

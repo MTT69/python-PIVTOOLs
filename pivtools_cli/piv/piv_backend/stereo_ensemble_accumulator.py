@@ -48,7 +48,12 @@ class StereoEnsembleAccumulator:
     ):
         self.config = config
         self.mm_per_pixel = mm_per_pixel
-        self.stereo_angle = stereo_angle  # sin(theta)
+        # tan(half-angle) between camera optical axes — the Frame-B
+        # (dewarped) trig factor. Per-camera Var(d_world) = R_xx·dt²
+        # + tan²α·R_zz·dt², so Σ → R conversions below divide by tan²α
+        # (or tan α for the cross terms). See _compute_stereo_angle()
+        # in pivtools_core/stereo_ensemble.py for the derivation.
+        self.stereo_angle = stereo_angle  # tan(half-angle)
         self.vector_masks = vector_masks or []
         self.n_images = 0
         self.passes_data: List[dict] = []
@@ -124,8 +129,8 @@ class StereoEnsembleAccumulator:
         coc_h, coc_w = coc_size
         n_px_coc = coc_h * coc_w
 
-        sin_theta = self.stereo_angle
-        sin2_theta = sin_theta * sin_theta
+        tan_theta = self.stereo_angle
+        tan2_theta = tan_theta * tan_theta
         mm_per_px = self.mm_per_pixel
         dt = config.dt
 
@@ -150,6 +155,27 @@ class StereoEnsembleAccumulator:
         # the ensemble is a redundant 2S estimator).
         cam1_AB_autocorr = pass_data["cam1_AB_AC_sum"].reshape(n_windows, n_px_coc) / N
         cam2_AB_autocorr = pass_data["cam2_AB_AC_sum"].reshape(n_windows, n_px_coc) / N
+        # Per-frame xcorr(cam1_AA(f), cam2_AA(f)) ensemble — leak-only
+        # reference plane. Used by the F1-fix path of `_fit_coc_kspace_ac`.
+        # Wiki: 2026-05-10-coc-matched-pair-leak.md §E.
+        if "CoC_AA_sum" in pass_data:
+            coc_aa_avg = pass_data["CoC_AA_sum"].reshape(n_windows, n_px_coc) / N
+        else:
+            # Backward-compat: older accumulator output without CoC_AA.
+            coc_aa_avg = None
+        # Store-only cross-camera sub-image correlations at instant A / B.
+        # Raw ensemble mean (no bg subtraction, no normalization), identical
+        # treatment to coc_aa_avg. Never fed to any fit/velocity/stress path
+        # — written to the planes file for inspection only. Zeros when the
+        # C kernel ran with store_planes off (planes block is gated too).
+        if "CoC_A_sum" in pass_data:
+            coc_a_avg = pass_data["CoC_A_sum"].reshape(n_windows, n_px_coc) / N
+        else:
+            coc_a_avg = None
+        if "CoC_B_sum" in pass_data:
+            coc_b_avg = pass_data["CoC_B_sum"].reshape(n_windows, n_px_coc) / N
+        else:
+            coc_b_avg = None
 
         # ── Diagnostic: save raw planes before any bg subtraction ──────
         diag_coc_raw = coc_avg.copy()
@@ -162,6 +188,20 @@ class StereoEnsembleAccumulator:
         # ── Step 1b: CoC structured background subtraction ────────────
         # Cross-correlate the mean AB planes WITHOUT mean subtraction to match
         # the C code (which now uses xcorr_preplanned instead of xcorr_meansub).
+        #
+        # 2026-05-28 — bg subtraction DISABLED on the CoC path.
+        # Empirical width test (T=0 walldown, pass 1, mid-channel window)
+        # showed coc_raw (no bg-sub) ≈ AC ref to <0.5% on both peak amplitude
+        # and corner pedestal:
+        #     coc_raw peak  = 3.178e13   AC ref peak  = 3.178e13
+        #     coc_raw corner = -6.44e10  AC ref corner = -6.44e10
+        # The structured-bg subtraction was narrowing the CoC by Δσxx ≈ 0.32
+        # (σxx 1.829 → 1.512), making CoC narrower than AC. That drove the
+        # k-space log|T(k)| upward, giving systematically negative Σ_diff
+        # (true value ≈ 0 for T=0). 0/1935 windows passed the strict-PD gate.
+        # With the subtraction removed, coc_raw and AC ref are statistically
+        # identical (correct for T=0 → Σ_oop = 0) and the bounded solver
+        # below recovers Σ_diff ≈ 0 ± noise cleanly.
         bg_method = config.stereo_ensemble_background_subtraction_method
         if bg_method == "correlation":
             coc_bg = self._cross_correlate_planes(
@@ -169,10 +209,21 @@ class StereoEnsembleAccumulator:
                 corr_h, corr_w, coc_h, coc_w,
             )
             diag_coc_bg = coc_bg.copy()
-            coc_avg = coc_avg - coc_bg
-            logger.debug("  CoC structured background subtracted")
+            # coc_avg = coc_avg - coc_bg   # DISABLED — see comment above.
+            logger.debug("  CoC structured background computed (for diagnostics) but NOT subtracted")
 
         # ── Step 2: Per-camera background subtraction ─────────────────
+        # OPTION-2 TEST 2026-05-27: skip the per-camera bg subtract. The C
+        # kernel's per-frame, per-window image mean-sub (xcorr_meansub)
+        # already produces zero-mean cam_AB/AA/BB. The bg estimate produced
+        # by _correlate_mean_images turns out to be a near-flat constant
+        # for SIG-like uniform-lighting data; subtracting it from already-
+        # zero-mean planes only introduces a spurious negative pedestal
+        # which destabilises the k-space joint fit (sends A→0 and Σ→
+        # degenerate). Re-enable for real-world data with structured
+        # illumination if the per-camera bg is empirically peaked rather
+        # than flat. The CoC bg-sub (Step 1b above) is preserved — its
+        # bg estimate is structured and the subtract is needed.
         if bg_method == "correlation":
             cam1_AB_bg, cam1_AA_bg, cam1_BB_bg = self._correlate_mean_images(
                 pass_data["warp_1A_sum"] / N,
@@ -184,14 +235,17 @@ class StereoEnsembleAccumulator:
                 pass_data["warp_2B_sum"] / N,
                 pass_idx, correlator, config,
             )
+            # Keep diag copies so diagnostics_pass_N.mat still records what
+            # the bg estimate WOULD have been (for comparison).
             diag_cam1_AB_bg = cam1_AB_bg.copy()
             diag_cam2_AB_bg = cam2_AB_bg.copy()
-            cam1_AB = cam1_AB - cam1_AB_bg
-            cam1_AA = cam1_AA - cam1_AA_bg
-            cam1_BB = cam1_BB - cam1_BB_bg
-            cam2_AB = cam2_AB - cam2_AB_bg
-            cam2_AA = cam2_AA - cam2_AA_bg
-            cam2_BB = cam2_BB - cam2_BB_bg
+            # Subtractions deliberately disabled — see comment above.
+            # cam1_AB = cam1_AB - cam1_AB_bg
+            # cam1_AA = cam1_AA - cam1_AA_bg
+            # cam1_BB = cam1_BB - cam1_BB_bg
+            # cam2_AB = cam2_AB - cam2_AB_bg
+            # cam2_AA = cam2_AA - cam2_AA_bg
+            # cam2_BB = cam2_BB - cam2_BB_bg
 
         # ── Step 3: Normalization (geometric mean of autocorr peaks) ────
         # Save bg-subtracted (unnormalized) auto-correlations for CoC fitting.
@@ -273,6 +327,16 @@ class StereoEnsembleAccumulator:
 
         # ── Step 4: Per-camera k-space fitting ──────────────────────────
 
+        # Keep the interpolation-noise model in lockstep with the C image warp.
+        # Without this, setting stereo_ensemble_piv.image_warp_interpolation: lanczos
+        # would Lanczos-warp images but still build |H_bicubic(k,f)|² for the noise
+        # subtraction in kspace_fitting.c — a silent model-vs-truth mismatch.
+        interp_kernel = (
+            'lanczos3'
+            if config.stereo_ensemble_image_warp_interpolation == 'lanczos'
+            else 'bicubic'
+        )
+
         def _fit_camera(R_AA, R_BB, R_AB, cam_label):
             """Fit one camera's correlation planes via k-space transfer function.
 
@@ -285,6 +349,7 @@ class StereoEnsembleAccumulator:
                 use_soft_weighting=config.stereo_ensemble_kspace_soft_weighting,
                 k_max_cap=config.stereo_ensemble_kspace_k_max_cap,
                 predictor_displacements=predictor_displacements,
+                interp_kernel=interp_kernel,
                 return_diagnostics=True,
             )
             gauss_flat, status_flat, _, diagnostics = result
@@ -327,15 +392,29 @@ class StereoEnsembleAccumulator:
         cam1_fit = _fit_camera(cam1_AA, cam1_BB, cam1_AB, "cam1")
         cam2_fit = _fit_camera(cam2_AA, cam2_BB, cam2_AB, "cam2")
 
-        # ── Step 5: Fit CoC k-space transfer function with AC F_ref ──
-        # Σ_diff = Σ_11 + Σ_22 − 2·Σ_12 from log-curvature of
-        # |F[CoC]| / √(|F[cam1_AB_autocorr]|·|F[cam2_AB_autocorr]|).
-        # AC F_ref cancels both particle width AND within-frame variance
-        # so the recovered Σ_diff is the clean displacement covariance.
+        # ── Step 5: Fit CoC k-space transfer function ─────────────────
+        # Σ_diff = Σ_11 + Σ_22 − 2·Σ_12 from log-curvature of |F[CoC]| / F_ref.
+        # When CoC_AA accumulator is present (post-2026-05-10 lib build), use
+        # |F[coc_aa_avg]| as the F1 leak-aware reference — single fit cancels
+        # both particle width / within-frame variance AND the matched-pair
+        # leak. Otherwise fall back to the legacy AC reference.
+        # Wiki: 2026-05-10-coc-matched-pair-leak.md §E.
         k_max_cap = config.stereo_ensemble_kspace_k_max_cap or 0.35
+        coc_ref_choice = config.stereo_ensemble_coc_reference
+        if coc_ref_choice == "coc_aa" and coc_aa_avg is None:
+            raise RuntimeError(
+                "stereo_ensemble_coc_reference='coc_aa' requires the per-frame "
+                "CoC_AA accumulator, but no 'CoC_AA_sum' buffer is present "
+                "(library predates the 2026-05-10 build, or this .mat was "
+                "produced before it). Rebuild the stereo_coc C library "
+                "(python setup.py build) and re-run, or set "
+                "stereo_ensemble_coc_reference='ac'."
+            )
+        logger.info(f"  CoC reference selected by config: {coc_ref_choice}")
         coc_kspace_ac = self._fit_coc_kspace_ac(
             coc_avg, cam1_AB_autocorr, cam2_AB_autocorr,
             coc_h, coc_w, n_windows, mask_flat, k_max=k_max_cap,
+            coc_aa_planes=(coc_aa_avg if coc_ref_choice == "coc_aa" else None),
         )
         n_coc_ok = int(np.sum(coc_kspace_ac["status"] == 0))
         logger.info(f"  CoC k-space AC fit: {n_coc_ok}/{n_windows} windows OK")
@@ -378,6 +457,16 @@ class StereoEnsembleAccumulator:
                 # the Σ_12 extraction identity.
                 "cam1_AB_autocorr": cam1_AB_autocorr.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32),
                 "cam2_AB_autocorr": cam2_AB_autocorr.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32),
+                # F1 leak-aware reference plane (added 2026-05-10).
+                **({"coc_aa_avg": coc_aa_avg.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32)}
+                   if coc_aa_avg is not None else {}),
+                # Store-only cross-camera sub-image correlations at instant
+                # A / B (static-disparity correlation). Diagnostic only —
+                # never consumed by any fit/velocity/stress path.
+                **({"coc_a_avg": coc_a_avg.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32)}
+                   if coc_a_avg is not None else {}),
+                **({"coc_b_avg": coc_b_avg.reshape(n_win_y, n_win_x, coc_h, coc_w).astype(np.float32)}
+                   if coc_b_avg is not None else {}),
                 # Geometry + provenance.
                 "corr_size": np.array(corr_size, dtype=np.int32),
                 "coc_size": np.array(coc_size, dtype=np.int32),
@@ -429,7 +518,9 @@ class StereoEnsembleAccumulator:
         # 3D velocity in dewarped pixels
         ux_px = (d1_x + d2_x) / 2.0         # in-plane x
         uy_px = (d1_y + d2_y) / 2.0         # in-plane y
-        uz_px = (d1_x - d2_x) / (2.0 * sin_theta)  # out-of-plane
+        # Dewarped frame: d1_x − d2_x = 2·w·dt·tan α (NOT sin α). The image
+        # warp orthorectifies onto the common plane before correlation.
+        uz_px = (d1_x - d2_x) / (2.0 * tan_theta)  # out-of-plane
 
         # 3/4 window displacement validation
         max_disp_x = 0.75 * corr_w
@@ -492,20 +583,27 @@ class StereoEnsembleAccumulator:
                 f"    Σ₁₂ = (Σ₁₁+Σ₂₂-Σ_diff)/2:     {np.median(Sigma_12_xx[valid_mask]):.6f}"
             )
 
-        # Standard observables from T(k) turbulence variances
-        A = (Sigma_11_xx + Sigma_22_xx) / 2.0  # = R_xx + sin²θ·R_zz
+        # Standard observables from T(k) turbulence variances.
+        # In the dewarped (Frame B) frame d1_x = u·dt + w·dt·tan α, so:
+        #   Var(d1_x) = R_xx·dt² + tan²α·R_zz·dt² + 2·tan α·R_xz·dt²
+        # ⇒ A = (Σ₁₁ + Σ₂₂)/2 = R_xx + tan²α·R_zz
+        # ⇒ Σ₁₂ ≡ Cov(d1_x, d2_x) = R_xx − tan²α·R_zz
+        # ⇒ R_zz = (A − Σ₁₂) / (2·tan²α);  R_xz = (Σ₁₁−Σ₂₂) / (4·tan α)
+        # The historical sin-based formulas over-predicted R_zz by
+        # tan²/sin² = 1/cos² (= 2 at ±45°).
+        A = (Sigma_11_xx + Sigma_22_xx) / 2.0  # = R_xx + tan²α·R_zz
 
         # CoC decoupling: R_xx and R_zz
         R_xx_px2 = (A + Sigma_12_xx) / 2.0
         R_zz_px2 = np.where(
-            sin2_theta > 1e-12,
-            (A - Sigma_12_xx) / (2.0 * sin2_theta),
+            tan2_theta > 1e-12,
+            (A - Sigma_12_xx) / (2.0 * tan2_theta),
             0.0,
         )
         R_yy_px2 = (Sigma_11_yy + Sigma_22_yy) / 2.0
         R_xy_px2 = (Sigma_11_xy + Sigma_22_xy) / 2.0
-        R_xz_px2 = (Sigma_11_xx - Sigma_22_xx) / (4.0 * sin_theta) if sin_theta > 1e-12 else np.zeros_like(A)
-        R_yz_px2 = (Sigma_11_xy - Sigma_22_xy) / (2.0 * sin_theta) if sin_theta > 1e-12 else np.zeros_like(A)
+        R_xz_px2 = (Sigma_11_xx - Sigma_22_xx) / (4.0 * tan_theta) if tan_theta > 1e-12 else np.zeros_like(A)
+        R_yz_px2 = (Sigma_11_xy - Sigma_22_xy) / (2.0 * tan_theta) if tan_theta > 1e-12 else np.zeros_like(A)
 
         # Clamp negative normal stresses
         R_xx_px2 = np.maximum(R_xx_px2, 0.0)
@@ -692,7 +790,7 @@ class StereoEnsembleAccumulator:
             peakheight=peakheight,
             nan_reason=nan_reason,
             b_mask=b_mask,
-            stereo_angle=sin_theta,
+            stereo_angle=tan_theta,
             mm_per_pixel=mm_per_px,
             window_size=tuple(corr_size),
             win_ctrs_x=correlator.win_ctrs_x[pass_idx],
@@ -842,18 +940,33 @@ class StereoEnsembleAccumulator:
         n_windows: int,
         mask_flat: np.ndarray,
         k_max: float = 0.35,
+        coc_aa_planes: np.ndarray | None = None,
     ) -> Dict[str, np.ndarray]:
-        """Fit Σ_diff per window from the CoC k-space transfer function with AC F_ref.
+        """Fit Σ_diff per window from the CoC k-space transfer function.
 
         Σ_diff = Σ_11 + Σ_22 − 2·Σ_12 is recovered from the log-quadratic
-        curvature of |F[CoC]| / F_ref, where the AC reference
+        curvature of log|F[CoC]| − log F_ref. Two references are supported:
 
-            F_ref(k) = √(|F[cam1_AB_autocorr]|(k) · |F[cam2_AB_autocorr]|(k))
+        1. **(default if ``coc_aa_planes`` is None)** AC reference
 
-        cancels both the particle image width and the within-frame variance,
-        leaving Σ_disp uncontaminated. See ``manual_tools/coc_kspace_vs_gaussian.py``
-        (``fit_kspace_quadratic``) and ``manual_tools/coc_vs_ab_autocorr_inspector.py``
-        (``_kspace_sigma_diff_one_window``) for the reference implementation.
+               F_ref(k) = √(|F[cam1_AB_autocorr]|(k) · |F[cam2_AB_autocorr]|(k))
+
+           Cancels particle image width + within-frame variance. Does NOT
+           cancel the matched-pair leak from within-frame z-spread, so the
+           fitted Σ_diff is contaminated by 4·tan²α·Var(z_q − z_p) per pair.
+
+        2. **(used when ``coc_aa_planes`` is provided — the F1-fix path)**
+           CoC_AA reference
+
+               F_ref(k) = |F[CoC_AA_avg]|(k)
+               where CoC_AA_avg = ⟨xcorr(cam1_AA(f), cam2_AA(f))⟩_f
+
+           Single-fit equivalent of (production CoC fit) − (CoC_AA fit with
+           same AB-AC reference). The AB-AC reference cancels by linearity.
+           The remaining curvature isolates motion variance only — both PSF
+           and matched-pair leak are absorbed into the new reference.
+
+           Wiki: ``2026-05-10-coc-matched-pair-leak.md`` §E.
 
         Parameters
         ----------
@@ -866,6 +979,11 @@ class StereoEnsembleAccumulator:
             1 = skip the window (status forced to 1), 0 = fit.
         k_max : float
             Fit ring upper bound in cycles per pixel.
+        coc_aa_planes : ndarray or None
+            Per-window CoC_AA = ⟨xcorr(cam1_AA(f), cam2_AA(f))⟩_f, same dims
+            as coc_planes. When provided, replaces the AC reference with
+            |F[CoC_AA]| (the F1 leak-aware reference). When None, falls
+            back to the AC reference for backward compatibility.
 
         Returns
         -------
@@ -885,8 +1003,6 @@ class StereoEnsembleAccumulator:
         # The accumulator holds planes with the correlation peak at the
         # centre (fftshifted), so we undo the shift before FFT.
         coc_2d = coc_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
-        ac1_2d = cam1_AC_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
-        ac2_2d = cam2_AC_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
 
         def _batched_fft_mag(planes: np.ndarray) -> np.ndarray:
             shifted = np.fft.ifftshift(planes, axes=(-2, -1))
@@ -894,12 +1010,25 @@ class StereoEnsembleAccumulator:
             return np.fft.fftshift(np.abs(F), axes=(-2, -1))
 
         F_coc = _batched_fft_mag(coc_2d)
-        F_ac1 = _batched_fft_mag(ac1_2d)
-        F_ac2 = _batched_fft_mag(ac2_2d)
-        F_ref_AC = np.sqrt(F_ac1 * F_ac2)
+
+        if coc_aa_planes is not None:
+            # F1 fix: leak-aware reference is |F[CoC_AA_avg]|. Single fit
+            # cancels (by algebra linearity) both the AB-AC reference and the
+            # matched-pair leak in one pass. See wiki §E.
+            coc_aa_2d = coc_aa_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
+            F_ref = _batched_fft_mag(coc_aa_2d)
+            ref_label = "|F[CoC_AA_avg]| (F1 leak-aware)"
+        else:
+            ac1_2d = cam1_AC_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
+            ac2_2d = cam2_AC_planes.reshape(n_windows, coc_h, coc_w).astype(np.float64)
+            F_ac1 = _batched_fft_mag(ac1_2d)
+            F_ac2 = _batched_fft_mag(ac2_2d)
+            F_ref = np.sqrt(F_ac1 * F_ac2)
+            ref_label = "AB-AC (legacy, leak-contaminated)"
 
         eps = 1e-30
-        log_T = np.log(np.maximum(F_coc, eps)) - np.log(np.maximum(F_ref_AC, eps))
+        log_T = np.log(np.maximum(F_coc, eps)) - np.log(np.maximum(F_ref, eps))
+        logger.info(f"  CoC k-space fit reference: {ref_label}")
 
         # ── k-grid (cycles/pixel, fftshifted) ──────────────────────────
         ky = np.fft.fftshift(np.fft.fftfreq(coc_h))
@@ -926,33 +1055,70 @@ class StereoEnsembleAccumulator:
             log_T_flat = log_T.reshape(n_windows, coc_h * coc_w)
             valid_flat = valid.ravel()
             log_T_v = log_T_flat[:, valid_flat]  # shape (n_windows, n_valid)
-            finite_rows = np.all(np.isfinite(log_T_v), axis=1) & (mask_flat != 1)
+
+            # Degenerate-input gate: windows whose CoC plane is essentially
+            # zero everywhere have no signal to fit. Without this guard the
+            # bounded LSQ would happily return σ = 0 with status=0, masking
+            # a genuinely bad input. Flag them here before the solver runs.
+            coc_norm = np.linalg.norm(
+                coc_2d.reshape(n_windows, -1), axis=1
+            )
+            non_degen = coc_norm > 1e-20
+
+            finite_rows = (
+                np.all(np.isfinite(log_T_v), axis=1)
+                & (mask_flat != 1)
+                & non_degen
+            )
 
             inv_2pi2 = 1.0 / (2.0 * np.pi * np.pi)
             inv_4pi2 = 1.0 / (4.0 * np.pi * np.pi)
 
             if finite_rows.any():
-                # numpy ≥ 2 emits benign divide/invalid warnings from
-                # pinv/matmul internals even on well-conditioned inputs.
-                # Suppress them; failure is caught by the status check.
+                # 2026-05-28 — bounded LSQ replaces the prior unconstrained
+                # pinv + strict-PD gate. Constraints b1 ≤ 0 and b2 ≤ 0 enforce
+                # σxx ≥ 0 and σyy ≥ 0 *inside* the solve, so the solver
+                # returns the closest feasible answer instead of failing on
+                # at-noise-floor windows where the unconstrained σ would
+                # cross zero. Off-diagonal σxy is left free (det ≥ 0 is a
+                # non-linear constraint we don't enforce here; in practice
+                # σxy ≈ 0 for our cases and det violations are rare).
+                from scipy.optimize import lsq_linear
+
+                log_T_v_clean = log_T_v[finite_rows]  # (n_finite, n_valid)
+                n_finite = log_T_v_clean.shape[0]
+                # Coefficient bounds for [b0, b1, b2, b3]:
+                lb = np.array([-np.inf, -np.inf, -np.inf, -np.inf])
+                ub = np.array([ np.inf,    0.0,    0.0,  np.inf])
+
+                sxx_clean = np.empty(n_finite, dtype=np.float64)
+                syy_clean = np.empty(n_finite, dtype=np.float64)
+                sxy_clean = np.empty(n_finite, dtype=np.float64)
+                rn_clean = np.empty(n_finite, dtype=np.float64)
+                solver_ok = np.ones(n_finite, dtype=bool)
+
                 with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-                    pinv = np.linalg.pinv(M)
-                    log_T_v_clean = log_T_v[finite_rows]  # (n_finite, n_valid)
-                    coeffs_clean = pinv @ log_T_v_clean.T  # (4, n_finite)
-                    b1 = coeffs_clean[1]
-                    b2 = coeffs_clean[2]
-                    b3 = coeffs_clean[3]
-                    sxx_clean = -b1 * inv_2pi2
-                    syy_clean = -b2 * inv_2pi2
-                    sxy_clean = -b3 * inv_4pi2
+                    for j in range(n_finite):
+                        b = log_T_v_clean[j]
+                        try:
+                            res_j = lsq_linear(M, b, bounds=(lb, ub), method="bvls")
+                            coeffs = res_j.x
+                            sxx_clean[j] = -coeffs[1] * inv_2pi2
+                            syy_clean[j] = -coeffs[2] * inv_2pi2
+                            sxy_clean[j] = -coeffs[3] * inv_4pi2
+                            rn_clean[j] = float(
+                                np.linalg.norm(M @ coeffs - b)
+                                / np.sqrt(M.shape[0])
+                            )
+                        except Exception:
+                            sxx_clean[j] = np.nan
+                            syy_clean[j] = np.nan
+                            sxy_clean[j] = np.nan
+                            rn_clean[j] = np.inf
+                            solver_ok[j] = False
 
-                    res = M @ coeffs_clean - log_T_v_clean.T
-                    rn_clean = np.linalg.norm(res, axis=0) / np.sqrt(M.shape[0])
-
-                det = sxx_clean * syy_clean - sxy_clean * sxy_clean
-                pd = (sxx_clean > 0) & (syy_clean > 0) & (det > 0)
                 ok_clean = (
-                    pd
+                    solver_ok
                     & np.isfinite(sxx_clean)
                     & np.isfinite(syy_clean)
                     & np.isfinite(sxy_clean)

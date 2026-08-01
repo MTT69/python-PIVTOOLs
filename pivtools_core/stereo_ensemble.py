@@ -72,7 +72,21 @@ def signal_handler(signum, frame):
 
 
 def _compute_stereo_angle(cam1, cam2) -> float:
-    """Compute sin(half-angle) between two camera optical axes.
+    """Return tan(half-angle) between two camera optical axes.
+
+    This is the geometric factor used by the stereo-ensemble decoder to
+    convert dewarped per-camera displacement variances into out-of-plane
+    Reynolds-stress components. The image warp orthorectifies each camera
+    onto the common world plane, so per-camera dewarped displacements are
+    `d_world = u·dt ± w·dt·tan α` (Frame B). Verified against the
+    static-disparity ladder (2026-05-18) which measured
+    `Var(δ_x) = (2·tan α / mmpp)² · Var(z)` to 0.04 %.
+
+    NB: the historical value returned here was sin(half-angle). That was
+    correct for raw-image (pre-warp) displacements only — the instantaneous
+    stereo path, which correlates before warping, still derives its
+    sin α independently. See `wiki/concepts/stereo-coc-extraction.md`
+    (frame-vs-trig table) for the derivation.
 
     Parameters
     ----------
@@ -81,8 +95,8 @@ def _compute_stereo_angle(cam1, cam2) -> float:
 
     Returns
     -------
-    sin_theta : float
-        sin of the half-angle between camera viewing directions.
+    tan_theta : float
+        tan of the half-angle between camera viewing directions.
     """
     # Optical axis in world frame: R^T @ [0, 0, 1]
     axis1 = cam1.R.T @ np.array([0.0, 0.0, 1.0])
@@ -97,7 +111,7 @@ def _compute_stereo_angle(cam1, cam2) -> float:
     full_angle = np.arccos(cos_full)
     half_angle = full_angle / 2.0
 
-    return float(np.sin(half_angle))
+    return float(np.tan(half_angle))
 
 
 def process_stereo_pass(
@@ -289,9 +303,12 @@ def run_stereo_ensemble_piv(
     tilt_y = config.self_calibration_tilt_y
     logger.info(f"  Self-cal: z_offset={z_offset:.3f}mm, tilt_x={tilt_x:.4f}rad, tilt_y={tilt_y:.4f}rad")
 
-    # Stereo geometry
-    sin_theta = _compute_stereo_angle(cam1, cam2)
-    logger.info(f"  Stereo half-angle: sin(θ)={sin_theta:.4f} (θ={np.degrees(np.arcsin(sin_theta)):.1f}°)")
+    # Stereo geometry — tan(half-angle) is the Frame-B (dewarped) factor
+    # used by stereo_ensemble_accumulator for Σ → R conversion. The inst
+    # PIV path computes its own sin α independently (different frame).
+    tan_theta = _compute_stereo_angle(cam1, cam2)
+    half_angle_deg = float(np.degrees(np.arctan(tan_theta)))
+    logger.info(f"  Stereo half-angle: tan(α)={tan_theta:.4f} (α={half_angle_deg:.1f}°)")
 
     # ── 2. Compute world bounds and dewarp maps ─────────────────────────
     world_bounds = config.stereo_ensemble_world_bounds
@@ -425,7 +442,7 @@ def run_stereo_ensemble_piv(
     num_passes = config.stereo_ensemble_num_passes
     accumulator = StereoEnsembleAccumulator(
         config, mm_per_pixel=mm_per_pixel,
-        stereo_angle=sin_theta, vector_masks=vector_masks,
+        stereo_angle=tan_theta, vector_masks=vector_masks,
     )
     predictor_field = None
 
@@ -441,7 +458,7 @@ def run_stereo_ensemble_piv(
         vector_masks=vector_masks,
         dewarp_maps={cam_a: maps_cam1, cam_b: maps_cam2},
         mm_per_pixel=mm_per_pixel,
-        stereo_angle=sin_theta,
+        stereo_angle=tan_theta,
     )
 
     logger.info(f"Processing {num_passes} passes with {num_chunks} chunks each...")
@@ -480,7 +497,7 @@ def run_stereo_ensemble_piv(
             dewarp_maps_cam1=scattered_maps_cam1,
             dewarp_maps_cam2=scattered_maps_cam2,
             mm_per_pixel=mm_per_pixel,
-            stereo_angle=sin_theta,
+            stereo_angle=tan_theta,
         )
 
         corr_elapsed = time.time() - pass_start

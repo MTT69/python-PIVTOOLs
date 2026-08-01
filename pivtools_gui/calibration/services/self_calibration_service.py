@@ -251,6 +251,7 @@ def run_self_cal_job(
     overlap: float = 50.0,
     convergence_threshold: float = 0.1,
     quality_threshold: float = 0.3,
+    skip_below_px: float = 0.0,
     progress_callback: Optional[Callable] = None,
     save_figures: bool = True,
 ) -> SelfCalibrationResult:
@@ -295,6 +296,7 @@ def run_self_cal_job(
         overlap=overlap,
         convergence_threshold=convergence_threshold,
         quality_threshold=quality_threshold,
+        skip_below_px=skip_below_px,
     )
 
     if save_figures:

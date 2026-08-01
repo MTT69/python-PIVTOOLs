@@ -1,17 +1,15 @@
 paths:
   base_paths:
-  - /Users/morgan/Downloads/stereo_ensemble/processed
+  - /Users/morgan/Downloads/andre_stepped_
   source_paths:
   - /Users/morgan/Library/CloudStorage/OneDrive-UniversityofSouthampton/Documents/#current_processing/4000_images_channel/stereo_images
   camera_numbers:
   - 1
   - 2
   camera_count: 2
-  camera_subfolders:
-  - camera1
-  - camera2
+  camera_subfolders: []
 images:
-  num_images: 298
+  num_images: 300
   image_format:
   - B%05d_A.tif
   - B%05d_B.tif
@@ -35,8 +33,8 @@ logging:
   level: INFO
   console: true
 processing:
-  instantaneous: true
-  ensemble: false
+  instantaneous: false
+  ensemble: true
   backend: cpu
   debug: false
   auto_compute_params: false
@@ -137,17 +135,17 @@ ensemble_piv:
 stereo_ensemble_piv:
   background_subtraction_method: none
 calibration:
-  image_format: planar_calibration_plate_%02d.tif
-  num_images: 20
-  image_type: standard
+  image_format: B%05d.im7
+  num_images: 1
+  image_type: lavision_im7
   zero_based_indexing: false
   use_camera_subfolders: true
   subfolder: enhanced
   camera_subfolders:
-  - cam1
-  - cam2
+  - camera1
+  - camera2
   path_order: camera_first
-  active: stereo_dotboard
+  active: stepped_board
   piv_type: instantaneous
   scale_factor:
     dt: 1
@@ -176,7 +174,7 @@ calibration:
   active_paths: []
   cameras: []
   calibration_sources:
-  - /Users/morgan/Downloads/stereo_ensemble/calibrationimages
+  - /Users/morgan/Downloads/andre_stepped_/Calibration
   global_coordinates:
     enabled: true
     datum_camera: 1
@@ -201,24 +199,24 @@ calibration:
     datum_camera: 1
     cam1_fiducials:
       origin:
-      - 3311.537353515625
-      - 751.3444213867188
+      - 4002.6769617244236
+      - 780.2258356480761
       x_axis:
-      - 3904.228515625
-      - 751.1295776367188
+      - 4595.812096618555
+      - 773.4471483921432
       y_axis:
-      - 3307.075927734375
-      - 542.399658203125
+      - 3989.1195872125577
+      - 570.0865307141553
     cam2_fiducials:
       origin:
-      - 1985.91259765625
-      - 638.464111328125
+      - 1294.924999792995
+      - 620.3395547414059
       x_axis:
-      - 1684.95361328125
-      - 638.5454711914062
+      - 686.4444114651575
+      - 620.3395547414059
       y_axis:
-      - 1990.9290771484375
-      - 435.236572265625
+      - 1313.1794174428303
+      - 407.37134882666277
     cam1_clicked_level: peak
     cam2_clicked_level: trough
     cam1_pose_levels:
@@ -227,7 +225,7 @@ calibration:
     cam2_pose_levels:
       '1': trough
       '2': trough
-    num_calibration_frames: 2
+    num_calibration_frames: 1
   self_calibration: {}
   stepped_planar:
     dot_spacing_mm: 15
@@ -286,14 +284,14 @@ statistics:
     inst_stresses: false
     tke: false
     inst_divergence: false
-  source_endpoint: stereo
+  source_endpoint: regular
 transforms:
   base_path_idx: 0
   type_name: instantaneous
   active_paths: []
   include_merged: false
   cameras: {}
-  source_endpoint: stereo
+  source_endpoint: regular
 video:
   base_path_idx: 0
   camera: 1
@@ -310,4 +308,4 @@ video:
   active_paths: []
   cameras: []
   include_merged: false
-  source_endpoint: stereo
+  source_endpoint: regular

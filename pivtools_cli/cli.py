@@ -289,6 +289,7 @@ def self_calibrate_command(args):
     n_images = args.n_images or sc_cfg.get("n_images", 20)
     window_size = args.window_size or sc_cfg.get("window_size", 64)
     overlap = sc_cfg.get("overlap", 50.0)
+    skip_below_px = args.skip_below_px or sc_cfg.get("skip_below_px", 0.0)
 
     base_dir = str(config.base_paths[0])
 
@@ -317,6 +318,7 @@ def self_calibrate_command(args):
             n_images=n_images,
             window_size=window_size,
             overlap=overlap,
+            skip_below_px=skip_below_px,
             progress_callback=progress_cb,
         )
 
@@ -1960,6 +1962,9 @@ ensemble_piv:
   predictor_boundary_conditions: []
   persist_images: false
   window_type: square
+stereo_ensemble_piv:
+  coc_reference: ac
+  image_warp_interpolation: cubic   # 'cubic' (bicubic, default) or 'lanczos'
 calibration:
   image_format: calib_%02d.tif
   num_images: 1
@@ -2560,6 +2565,11 @@ def main():
     selfcal_parser.add_argument(
         "--window-size", "-w", type=int, default=None,
         help="Correlation window size in pixels (default: 64)"
+    )
+    selfcal_parser.add_argument(
+        "--skip-below-px", type=float, default=0.0,
+        help="If initial RMS disparity is below this many pixels, apply no "
+             "correction (calibration already aligned). Default 0 = always run."
     )
     selfcal_parser.add_argument(
         "--active-paths", "-p", default=None,

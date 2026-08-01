@@ -1126,17 +1126,17 @@ def save_stereo_ensemble_result(
     for i in range(n_passes):
         pr = stereo_result.get_pass(i)
 
-        # Sign flips on uy, UV_stress, VW_stress to convert from
-        # image-down dewarp pixel space (+dy = down a row = physically
-        # downward) to physics-up disk convention (+uy = upward). This
-        # matches the standard ensemble save path exactly. UU, VV, WW,
-        # UW are even under a y-flip and pass through unchanged.
-        # UV = u'v' picks up one minus from v' → -v'; VW = v'w' picks
-        # up one minus from v' → -v'. ux, uz, Sigma_12_xx, peakheight
-        # carry no y-component — straight through.
-        uy_physical = -pr.uy if pr.uy is not None else None
-        UV_physical = -pr.UV_stress if pr.UV_stress is not None else None
-        VW_physical = -pr.VW_stress if pr.VW_stress is not None else None
+        # NO sign flip: the dewarp now builds world_y ASCENDING with row
+        # (compute_dewarp_maps, self_calibration.py), so dewarped pixel
+        # space is already physics-up (+dy = up a row = physically
+        # upward = +uy). The previous -uy/-UV/-VW negations were for the
+        # old descending dewarp build and would now INVERT v (verified:
+        # they flipped R_uv sign vs gt_field). UU, VV, WW, UW are even
+        # under a y-flip; ux, uz, Sigma_12_xx, peakheight carry no
+        # y-component — all straight through.
+        uy_physical = pr.uy
+        UV_physical = pr.UV_stress
+        VW_physical = pr.VW_stress
 
         result_struct['ux'][i] = _convert_to_half_precision(pr.ux, 'ux')
         result_struct['uy'][i] = _convert_to_half_precision(uy_physical, 'uy')
@@ -1170,18 +1170,17 @@ def save_stereo_ensemble_result(
         pred_x = pr.pred_x if pr.pred_x is not None else np.array([])
         pred_y = pr.pred_y if pr.pred_y is not None else np.array([])
         result_struct['pred_x'][i] = _convert_to_half_precision(pred_x, 'pred_x')
-        # pred_y lives in the same image-down dewarped pixel frame as uy
-        # — negate to write physics-up to disk, matching standard ensemble.
-        result_struct['pred_y'][i] = _convert_to_half_precision(-pred_y if pred_y.size else pred_y, 'pred_y')
+        # pred_y is in the same (now ascending = physics-up) dewarped
+        # pixel frame as uy — no negation (matches the uy/UV/VW change).
+        result_struct['pred_y'][i] = _convert_to_half_precision(pred_y, 'pred_y')
 
         # Padded (pre-remap) predictor on previous pass grid + boundary
-        # padding. Same image-down → physics-up flip as pred_y / uy.
+        # padding. Same (now ascending = physics-up) frame as pred_y / uy
+        # — no negation.
         padded_pred_x = pr.padded_pred_x if pr.padded_pred_x is not None else np.array([])
         padded_pred_y = pr.padded_pred_y if pr.padded_pred_y is not None else np.array([])
         result_struct['padded_pred_x'][i] = _convert_to_half_precision(padded_pred_x, 'padded_pred_x')
-        result_struct['padded_pred_y'][i] = _convert_to_half_precision(
-            -padded_pred_y if padded_pred_y.size else padded_pred_y, 'padded_pred_y'
-        )
+        result_struct['padded_pred_y'][i] = _convert_to_half_precision(padded_pred_y, 'padded_pred_y')
 
     scipy.io.savemat(
         filepath,
@@ -1237,12 +1236,13 @@ def save_stereo_ensemble_coordinates(
         ctrs_y = win_ctrs_y_list[i]
 
         # Convert dewarped pixel indices to physical mm.
-        # The dewarp lays world_y as np.linspace(y_max, y_min, out_h) so
-        # row 0 = y_max (physical top) and row out_h-1 = y_min (bottom).
+        # The dewarp lays world_y as np.linspace(y_min, y_max, out_h) so
+        # row 0 = y_min (physical bottom) and row out_h-1 = y_max (top).
         # ctrs_y is in dewarped pixel units (ascending from row 0), so
-        # the corresponding world Y descends from y_max as ctrs_y grows.
+        # the corresponding world Y ascends from y_min as ctrs_y grows
+        # (locked to the ascending dewarp build; matches gt_field/inst).
         x_mm = x_min + ctrs_x * mm_per_pixel
-        y_mm = y_max - ctrs_y * mm_per_pixel
+        y_mm = y_min + ctrs_y * mm_per_pixel
 
         x_grid, y_grid = np.meshgrid(x_mm, y_mm, indexing='xy')
         coords_struct['x'][i] = x_grid.astype(np.float32)

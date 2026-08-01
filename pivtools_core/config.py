@@ -2936,6 +2936,33 @@ video:
         return bm if bm is not None else self.ensemble_background_subtraction_method
 
     @property
+    def stereo_ensemble_coc_reference(self) -> str:
+        """Reference for the stereo-CoC k-space fit (stereo-only; no ensemble_piv fallback).
+
+        - 'ac'     : legacy per-camera reference
+                     F_ref = sqrt(|F[cam1_AB_autocorr]| * |F[cam2_AB_autocorr]|).
+                     Original method; leak-contaminated under disparity but does
+                     not over-subtract within-window variance on clean cases.
+        - 'coc_aa' : F1 leak-aware cross-camera reference
+                     F_ref = |F[<xcorr(cam1_AA(f), cam2_AA(f))>_f]|.
+                     Requires the per-frame CoC_AA accumulator (post-2026-05-10 lib).
+
+        Unlike the other stereo_ensemble_* options this does NOT fall back to an
+        ensemble_piv equivalent: CoC is stereo-only, there is no
+        ensemble_coc_reference. Defaults directly to 'ac'.
+
+        Default: 'ac'
+        """
+        ref = self.data.get("stereo_ensemble_piv", {}).get("coc_reference", "ac")
+        valid = {"ac", "coc_aa"}
+        if ref not in valid:
+            raise ValueError(
+                f"Invalid stereo_ensemble_coc_reference '{ref}'. "
+                f"Must be one of {valid}"
+            )
+        return ref
+
+    @property
     def stereo_ensemble_gradient_correction(self) -> bool:
         """Gradient correction for stresses. Falls back to ensemble_piv."""
         gc = self.data.get("stereo_ensemble_piv", {}).get("gradient_correction")

@@ -53,6 +53,11 @@
 #define STATUS_BIG_DISP 3
 #define STATUS_NEG_VAR  5
 
+/* ===== DBG INSTRUMENTATION (additive; behaviourally inert) ===== */
+static long DBG_nc_joint = 0, DBG_nc_kmask = 0, DBG_nc_mwork = 0, DBG_nc_mfit = 0;
+static long DBG_jinfo_hist[8] = {0};   /* joint driver return code histogram */
+static long DBG_mfit_emaxiter = 0;     /* main: EMAXITER but cost/n>=1 */
+
 // ============================================================================
 // Interpolation kernel noise PSD (shared header with kspace_coc_fitting.c)
 // ============================================================================
@@ -871,11 +876,13 @@ PIV_EXPORT int fit_kspace_batch(
 
             int joint_ok = 0;
             double N0_abs = 0.0;
+            int dbg_jinit = joint_init_status, dbg_jdrv = -999, dbg_jinfo = -999;
 
             if (joint_init_status == GSL_SUCCESS) {
                 int info;
                 int joint_status = gsl_multifit_nlinear_driver(
                     JOINT_MAX_ITER, XTOL, GTOL, FTOL, NULL, NULL, &info, joint_work);
+                dbg_jdrv = joint_status; dbg_jinfo = info;
 
                 if (joint_status == GSL_SUCCESS || joint_status == GSL_EMAXITER) {
                     gsl_vector *x_result = gsl_multifit_nlinear_position(joint_work);
@@ -899,6 +906,22 @@ PIV_EXPORT int fit_kspace_batch(
             }
 
             if (!joint_ok) {
+                #pragma omp atomic
+                DBG_nc_joint++;
+                {
+                    int hb = (dbg_jdrv >= 0 && dbg_jdrv < 8) ? dbg_jdrv : 7;
+                    #pragma omp atomic
+                    DBG_jinfo_hist[hb]++;
+                }
+                #pragma omp critical
+                {
+                    if (diag_count < 6) {
+                        fprintf(stderr, "[kspace-dbg] win %d NOCONV@JOINT "
+                                "jinit=%d jdrv=%d jinfo=%d F_max=%.3e\n",
+                                i, dbg_jinit, dbg_jdrv, dbg_jinfo, F_max);
+                        diag_count++;
+                    }
+                }
                 out_status[i] = STATUS_NO_CONVERGE;
                 continue;
             }
@@ -1027,6 +1050,17 @@ PIV_EXPORT int fit_kspace_batch(
             }
 
             if (n_valid < 10) {
+                #pragma omp atomic
+                DBG_nc_kmask++;
+                #pragma omp critical
+                {
+                    if (diag_count < 6) {
+                        fprintf(stderr, "[kspace-dbg] win %d NOCONV@KMASK "
+                                "n_valid=%zu kmx=%.4f kmy=%.4f\n",
+                                i, n_valid, k_max_x, k_max_y);
+                        diag_count++;
+                    }
+                }
                 out_status[i] = STATUS_NO_CONVERGE;
                 continue;
             }
@@ -1087,6 +1121,8 @@ PIV_EXPORT int fit_kspace_batch(
             main_work = gsl_multifit_nlinear_alloc(T_gsl, &fdf_params_main,
                                                     2 * n_valid, MAIN_NPARAMS);
             if (!main_work) {
+                #pragma omp atomic
+                DBG_nc_mwork++;
                 out_status[i] = STATUS_NO_CONVERGE;
                 continue;
             }
@@ -1098,11 +1134,14 @@ PIV_EXPORT int fit_kspace_batch(
             int fit_ok = 0;
             double mu_x_fit = mu_x_init, mu_y_fit = mu_y_init;
             double Sxx_fit = Sxx_init, Syy_fit = Syy_init, Sxy_fit = 0.0;
+            int dbg_minit = main_init_status, dbg_mdrv = -999, dbg_minfo = -999;
+            double dbg_mcostn = -1.0;
 
             if (main_init_status == GSL_SUCCESS) {
                 int info;
                 int main_status = gsl_multifit_nlinear_driver(
                     MAIN_MAX_ITER, XTOL, GTOL, FTOL, NULL, NULL, &info, main_work);
+                dbg_mdrv = main_status; dbg_minfo = info;
 
                 if (main_status == GSL_SUCCESS || main_status == GSL_EMAXITER) {
                     gsl_vector *x_result = gsl_multifit_nlinear_position(main_work);
@@ -1117,8 +1156,12 @@ PIV_EXPORT int fit_kspace_batch(
                     double cost = 0.0;
                     gsl_vector *f_vec = gsl_multifit_nlinear_residual(main_work);
                     gsl_blas_ddot(f_vec, f_vec, &cost);
+                    dbg_mcostn = cost / (double)n_valid;
                     if (main_status == GSL_SUCCESS || cost / (double)n_valid < 1.0) {
                         fit_ok = 1;
+                    } else {
+                        #pragma omp atomic
+                        DBG_mfit_emaxiter++;
                     }
                 }
             }
@@ -1127,6 +1170,19 @@ PIV_EXPORT int fit_kspace_batch(
             main_work = NULL;
 
             if (!fit_ok) {
+                #pragma omp atomic
+                DBG_nc_mfit++;
+                #pragma omp critical
+                {
+                    if (diag_count < 6) {
+                        fprintf(stderr, "[kspace-dbg] win %d NOCONV@MFIT "
+                                "minit=%d mdrv=%d minfo=%d cost/n=%.4g n_valid=%zu "
+                                "Sxx0=%.3f Syy0=%.3f\n",
+                                i, dbg_minit, dbg_mdrv, dbg_minfo, dbg_mcostn,
+                                n_valid, Sxx_init, Syy_init);
+                        diag_count++;
+                    }
+                }
                 out_status[i] = STATUS_NO_CONVERGE;
                 continue;
             }
@@ -1200,6 +1256,15 @@ PIV_EXPORT int fit_kspace_batch(
     free(K_Y);
 
     fprintf(stderr, "[kspace] completed: %d/%zu succeeded\n", success_count, num_windows);
+    fprintf(stderr, "[kspace-dbg] NOCONV breakdown: joint=%ld kmask=%ld "
+            "mwork=%ld mfit=%ld (mfit_emaxiter_rejected=%ld)\n",
+            DBG_nc_joint, DBG_nc_kmask, DBG_nc_mwork, DBG_nc_mfit,
+            DBG_mfit_emaxiter);
+    fprintf(stderr, "[kspace-dbg] joint driver-return histogram "
+            "[0..7] (idx=GSL code; 7=other): %ld %ld %ld %ld %ld %ld %ld %ld\n",
+            DBG_jinfo_hist[0], DBG_jinfo_hist[1], DBG_jinfo_hist[2],
+            DBG_jinfo_hist[3], DBG_jinfo_hist[4], DBG_jinfo_hist[5],
+            DBG_jinfo_hist[6], DBG_jinfo_hist[7]);
 
     // Diagnostic: status breakdown when 0% success
     if (success_count == 0 && num_windows > 0) {

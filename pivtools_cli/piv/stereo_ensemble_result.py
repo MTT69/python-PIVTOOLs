@@ -45,7 +45,7 @@ class PIVStereoEnsemblePassResult:
     b_mask: np.ndarray                   # binary mask (0=valid, non-zero=excluded)
 
     # Stereo geometry metadata
-    stereo_angle: float                  # sin(theta) — half-angle between cameras
+    stereo_angle: float                  # tan(half-angle) between camera axes (Frame-B factor)
     mm_per_pixel: float                  # dewarped pixel scale
 
     # Window grid

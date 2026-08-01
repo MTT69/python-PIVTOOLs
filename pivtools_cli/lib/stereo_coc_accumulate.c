@@ -276,6 +276,10 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
     float       *fCoC_Sum,
     float       *fCorr1AB_AC_Sum,
     float       *fCorr2AB_AC_Sum,
+    float       *fCoCAA_Sum,
+    int          nStorePlanes,
+    float       *fCoCA_Sum,
+    float       *fCoCB_Sum,
     int          diag_window_idx,
     float       *fDiag_AB1,
     float       *fDiag_AB2,
@@ -324,7 +328,8 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
                fCorr1AB_Sum, fCorr1AA_Sum, fCorr1BB_Sum, \
                fCorr2AB_Sum, fCorr2AA_Sum, fCorr2BB_Sum, \
                fCoC_Sum, \
-               fCorr1AB_AC_Sum, fCorr2AB_AC_Sum, \
+               fCorr1AB_AC_Sum, fCorr2AB_AC_Sum, fCoCAA_Sum, \
+               nStorePlanes, fCoCA_Sum, fCoCB_Sum, \
                nPxPerWindow, nWindowsTotal, nImagePixels, numel, numel_fft, \
                out_h, out_w, nPxPerOutput, nPxPerCoC, start_y, start_x, \
                coc_numel, coc_numel_fft, coc_needs_own_plan, coc_plan_size, \
@@ -397,11 +402,29 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
         fAC_AB1_result = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
         fAC_AB2_result = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
 
+        /* Per-frame CoC_AA workspace: central extracts of AA + xcorr result.
+         * CoC_AA = xcorr(cam1_AA(f) central, cam2_AA(f) central). Same dims
+         * as the AB-based CoC; reuses coc_plan. */
+        float *fAA1_central = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+        float *fAA2_central = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+        float *fCoCAA_result = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+
+        /* Store-only CoC_A / CoC_B scratch: central extracts of the raw
+         * mean-subtracted sub-images + xcorr result. Reused for instant A
+         * then instant B (sequential, never overlap). Allocated
+         * unconditionally (negligible) — only the per-frame work in block
+         * 6c is gated on nStorePlanes. Same dims as the AB-based CoC. */
+        float *fCoC_in1     = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+        float *fCoC_in2     = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+        float *fCoCAB_result = (float *)fftwf_malloc(nPxPerCoC * sizeof(float));
+
         if (!C_auto1 || !C_auto2 || !C_auto3 || !C_auto4 ||
             !fCorrel1AB || !fCorrel1AA || !fCorrel1BB ||
             !fCorrel2AB || !fCorrel2AA || !fCorrel2BB ||
             !fAB1_central || !fAB2_central || !fCoC_result ||
-            !fAC_AB1_result || !fAC_AB2_result) {
+            !fAC_AB1_result || !fAC_AB2_result ||
+            !fAA1_central || !fAA2_central || !fCoCAA_result ||
+            !fCoC_in1 || !fCoC_in2 || !fCoCAB_result) {
             uError = ERROR_NOMEM; goto stereo_cleanup;
         }
 
@@ -428,6 +451,7 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
             float *outCoC = &fCoC_Sum[iWindowIdx * nPxPerCoC];
             float *out1AB_AC = &fCorr1AB_AC_Sum[iWindowIdx * nPxPerCoC];
             float *out2AB_AC = &fCorr2AB_AC_Sum[iWindowIdx * nPxPerCoC];
+            float *outCoCAA  = &fCoCAA_Sum[iWindowIdx * nPxPerCoC];
 
             for (n = 0; n < N_images; ++n)
             {
@@ -541,6 +565,75 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
                     out2AB_AC[i] += fAC_AB2_result[i];
                 }
 
+                /* ─── 6b. Per-frame CoC_AA = xcorr(cam1_AA central,
+                 *      cam2_AA central) ──────────────────────────────────
+                 * The "leak-only" reference. Cam1_AA and cam2_AA are
+                 * intra-frame autocorrs (no A→B motion), so any cross-
+                 * camera correlation between them must come from the
+                 * cross-camera particle-pair structure that creates the
+                 * matched-pair leak in the production CoC. Using
+                 * |F[CoC_AA_avg]| in place of the AB-autocorr reference
+                 * cancels both the per-camera particle-PSF / pair
+                 * structure AND the matched-pair leak in a single fit.
+                 *
+                 * Same plan, same convention as the CoC AB×AB step. */
+                {
+                    sPlan *coc_plan = coc_needs_own_plan ? &sCoCPlan : &sCCPlan;
+
+                    extract_central(fCorrel1AA, nWindowSize[1],
+                                    start_y, start_x, out_h, out_w,
+                                    fAA1_central);
+                    extract_central(fCorrel2AA, nWindowSize[1],
+                                    start_y, start_x, out_h, out_w,
+                                    fAA2_central);
+
+                    xcorr_preplanned(
+                        fAA1_central, fAA2_central,
+                        fCoCAA_result, coc_plan);
+                }
+                for (i = 0; i < nPxPerCoC; ++i) {
+                    outCoCAA[i] += fCoCAA_result[i];
+                }
+
+                /* ─── 6c. Store-only CoC_A / CoC_B ───────────────────────
+                 * Cross-camera xcorr of the raw mean-subtracted sub-images
+                 * at instant A / B (the static-disparity correlation,
+                 * cam1 vs cam2 at one time instant). Diagnostic only —
+                 * never consumed by the fit/velocity/stress path. Gated on
+                 * nStorePlanes so production runs pay nothing. fRaw1A/2A/
+                 * 1B/2B still hold the mean-subtracted sub-image pixels
+                 * here (only read by the per-camera correlations above).
+                 * Same plan / convention as the CoC AB×AB and CoC_AA. */
+                if (nStorePlanes) {
+                    sPlan *coc_plan = coc_needs_own_plan ? &sCoCPlan : &sCCPlan;
+                    float *outCoCA = &fCoCA_Sum[iWindowIdx * nPxPerCoC];
+                    float *outCoCB = &fCoCB_Sum[iWindowIdx * nPxPerCoC];
+
+                    extract_central(fRaw1A, nWindowSize[1],
+                                    start_y, start_x, out_h, out_w,
+                                    fCoC_in1);
+                    extract_central(fRaw2A, nWindowSize[1],
+                                    start_y, start_x, out_h, out_w,
+                                    fCoC_in2);
+                    xcorr_preplanned(fCoC_in1, fCoC_in2,
+                                     fCoCAB_result, coc_plan);
+                    for (i = 0; i < nPxPerCoC; ++i) {
+                        outCoCA[i] += fCoCAB_result[i];
+                    }
+
+                    extract_central(fRaw1B, nWindowSize[1],
+                                    start_y, start_x, out_h, out_w,
+                                    fCoC_in1);
+                    extract_central(fRaw2B, nWindowSize[1],
+                                    start_y, start_x, out_h, out_w,
+                                    fCoC_in2);
+                    xcorr_preplanned(fCoC_in1, fCoC_in2,
+                                     fCoCAB_result, coc_plan);
+                    for (i = 0; i < nPxPerCoC; ++i) {
+                        outCoCB[i] += fCoCAB_result[i];
+                    }
+                }
+
                 /* ─── 7. Diagnostic: store per-frame planes ────────────── */
                 if (iWindowIdx == diag_window_idx && fDiag_AB1 && fDiag_AB2 && fDiag_CoC) {
                     int frame_offset = n * nPxPerOutput;
@@ -576,6 +669,12 @@ unsigned char bulkxcorr2d_stereo_coc_accumulate(
         if (fCoC_result)  fftwf_free(fCoC_result);
         if (fAC_AB1_result) fftwf_free(fAC_AB1_result);
         if (fAC_AB2_result) fftwf_free(fAC_AB2_result);
+        if (fAA1_central)   fftwf_free(fAA1_central);
+        if (fAA2_central)   fftwf_free(fAA2_central);
+        if (fCoCAA_result)  fftwf_free(fCoCAA_result);
+        if (fCoC_in1)       fftwf_free(fCoC_in1);
+        if (fCoC_in2)       fftwf_free(fCoC_in2);
+        if (fCoCAB_result)  fftwf_free(fCoCAB_result);
 
         #pragma omp critical
         xcorr_destroy_plan(&sCCPlan);

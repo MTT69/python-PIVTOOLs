@@ -1516,7 +1516,13 @@ class EnsembleCorrelatorCPU(CrossCorrelator):
             self._fused_ctrs_x = np.ascontiguousarray(
                 self.win_ctrs_x_all[0], dtype=np.float32)
 
-        image_interp = getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
+        # Use stereo override when present, else fall back to ensemble field.
+        # The Config property already encodes the fallback, so this is a no-op
+        # for pure planar ensemble configs (no stereo_ensemble_piv block) and
+        # honours stereo_ensemble_piv.image_warp_interpolation when the stereo
+        # CoC path drives this same inner correlator.
+        image_interp = getattr(self.config, 'stereo_ensemble_image_warp_interpolation', None) \
+            or getattr(self.config, 'ensemble_image_warp_interpolation', 'cubic')
         self._fused_interp_mode = 0 if image_interp == 'cubic' else 1
 
         # Persist post-remap predictor for diagnostic export (stereo path

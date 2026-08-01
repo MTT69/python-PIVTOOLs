@@ -50,6 +50,12 @@
  * NOTE: Output buffers are NOT zeroed internally — caller must zero them
  * before the first call.
  *
+ * NOTE: fCoCA_Sum / fCoCB_Sum are store-only diagnostic accumulators
+ * (cross-camera xcorr of the raw mean-subtracted sub-images at instant
+ * A / B). They are computed ONLY when nStorePlanes != 0 and are never
+ * consumed by the fit/decoder; when nStorePlanes == 0 they are left
+ * untouched (the caller's zeroed buffers).
+ *
  * @param fImage1A_stack  Camera 1 image A stack (N_images, H, W) float32
  * @param fImage1B_stack  Camera 1 image B stack
  * @param fImage2A_stack  Camera 2 image A stack
@@ -80,6 +86,27 @@
  *                        of the AA/BB image-autocorr path. Carries no
  *                        Σ_cc and no Σ_12 content.
  * @param fCorr2AB_AC_Sum Output: cam2 per-frame autocorr(AB2) accumulated
+ * @param fCoCAA_Sum      Output: per-frame xcorr(cam1_AA(f), cam2_AA(f))
+ *                        accumulated. Same dims as fCoC_Sum. The "leak-only"
+ *                        reference plane: contains the matched-pair leak
+ *                        from within-frame z-spread but no motion (intra-
+ *                        frame autocorrs cannot encode A→B motion). Used
+ *                        as |F[CoC_AA_avg]| reference in the curvature fit
+ *                        to subtract the matched-pair leak from R_zz.
+ *                        Wiki: 2026-05-10-coc-matched-pair-leak.md §E.
+ * @param nStorePlanes    Gate (0/1): when nonzero, compute+accumulate the
+ *                        store-only fCoCA_Sum / fCoCB_Sum diagnostics. When
+ *                        zero, the two extra cross-correlations are skipped
+ *                        entirely (production runs pay nothing).
+ * @param fCoCA_Sum       Output: per-frame xcorr(central(I1A_sub),
+ *                        central(I2A_sub)) accumulated. Same dims as
+ *                        fCoC_Sum. Cross-camera correlation of the raw
+ *                        mean-subtracted dewarped sub-images at instant A
+ *                        (the static-disparity correlation). Diagnostic
+ *                        only — never enters any fit/velocity/stress path.
+ * @param fCoCB_Sum       Output: per-frame xcorr(central(I1B_sub),
+ *                        central(I2B_sub)) accumulated. As fCoCA_Sum, at
+ *                        instant B.
  * @return                Error code (0 = success)
  */
 PIV_EXPORT unsigned char bulkxcorr2d_stereo_coc_accumulate(
@@ -106,6 +133,10 @@ PIV_EXPORT unsigned char bulkxcorr2d_stereo_coc_accumulate(
     float       *fCoC_Sum,
     float       *fCorr1AB_AC_Sum,
     float       *fCorr2AB_AC_Sum,
+    float       *fCoCAA_Sum,
+    int          nStorePlanes,
+    float       *fCoCA_Sum,
+    float       *fCoCB_Sum,
     int          diag_window_idx,
     float       *fDiag_AB1,
     float       *fDiag_AB2,

@@ -430,7 +430,14 @@ def _reconstruct_3d_velocities(
 
     # Stack into 4×3 system per point: A @ [Ux, Uy, Uz]^T = b
     A = np.concatenate([J1, J2], axis=1)  # (M, 4, 3)
-    b = np.column_stack([dx1, dy1, dx2, dy2])  # (M, 4)
+    # Frame convention: J was built via cv2.projectPoints → RAW (y-down) pixels,
+    # so J[:, 1, :] = ∂(v_raw)/∂(world). The dy_* inputs are PIV outputs in
+    # UNCAL (y-up) frame (uy_px is documented as "uncalibrated pixels/frame"
+    # in vector_calibration_production.py:720). Since y_uncal = H − y_raw,
+    # Δy_uncal = −Δy_raw, so we negate the dy components to match the
+    # Jacobian's raw frame before solving. Without this, recovered V comes
+    # out with the wrong sign (verified by /tmp/v_sign_diagnostic.py).
+    b = np.column_stack([dx1, -dy1, dx2, -dy2])  # (M, 4)
 
     # Vectorized least-squares: solve A^T A x = A^T b (normal equations)
     AtA = np.einsum('nij,nik->njk', A, A)  # (M, 3, 3)
@@ -625,9 +632,25 @@ def _process_stereo_frame(args: Tuple) -> Optional[Dict[str, Any]]:
 
                     ux_grid[row_indices, col_indices] = vel_mps[:, 0]
                     uy_grid[row_indices, col_indices] = vel_mps[:, 1]
-                    # Negate uz: board-Z points from board toward cameras,
-                    # physical convention is opposite (away from board surface)
-                    uz_grid[row_indices, col_indices] = -vel_mps[:, 2]
+                    # Uz is reported in the cal's world Z direction as-is.
+                    # apply-stereo is frame-agnostic: whichever direction the
+                    # cal-builder set positive Z to point in (via R, t from the
+                    # board pose or the spoof's analytic construction) is the
+                    # direction Uz is reported in. Previously this line had a
+                    # hardcoded `-vel_mps[:, 2]` negation that assumed
+                    # board-Z-toward-cameras → flip to away-from-board. That
+                    # assumption only holds for one specific board placement
+                    # and silently flipped Uz for any other cal convention
+                    # (e.g., the analytic stereo spoof in
+                    # manual_tools/sig_synthetic/calibration_spoof.py, whose
+                    # R_x(180°) trick puts Z in the SIG-native physical
+                    # direction). Removing the negation makes apply-stereo
+                    # truly frame-agnostic (consistent with the "Stereo
+                    # reconstruction" row of wiki/concepts/coordinate-
+                    # conventions.md). Cal-builders must now ensure their
+                    # world-Z direction matches their desired physical
+                    # convention.
+                    uz_grid[row_indices, col_indices] = vel_mps[:, 2]
                     output_mask[row_indices, col_indices] = False
 
                     total_valid += result_3d["num_valid"]

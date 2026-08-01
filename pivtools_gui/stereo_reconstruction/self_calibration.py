@@ -270,14 +270,18 @@ def compute_dewarp_maps(
     out_h = max(1, int(round((y_max - y_min) / mm_per_pixel)))
 
     # Build world-coordinate meshgrid.
-    # world_y descends with row index so the dewarped image is in
-    # standard image-down convention: row 0 = physical top (y_max),
-    # last row = physical bottom (y_min). This matches every other
-    # array layout in PIVTOOLs (raw camera images, planar PIV outputs)
-    # and lets the standard ensemble save path's image-down → physics-up
-    # negation apply uniformly to stereo CoC outputs.
+    # world_y ASCENDS with row index: row 0 = physical bottom (y_min),
+    # last row = physical top (y_max). This makes the dewarped stress
+    # arrays ascending-world-y by row, matching gt_field and the
+    # instantaneous stereo output (proven via the instantaneous control:
+    # inst aligns with GT as-is, the descending build mirrored CoC).
+    # The earlier descending build (linspace(y_max, y_min)) wrongly
+    # assumed a row flip to inherit from the standard save path; the
+    # standard path relabels coordinates and never flips rows, so the
+    # pre-inverted dewarp ended y-mirrored vs gt_field. Paired with the
+    # ascending coordinate save in save_stereo_ensemble_coordinates.
     world_x = np.linspace(x_min, x_max, out_w, dtype=np.float64)
-    world_y = np.linspace(y_max, y_min, out_h, dtype=np.float64)
+    world_y = np.linspace(y_min, y_max, out_h, dtype=np.float64)
     wx, wy = np.meshgrid(world_x, world_y)
 
     # Z at each point from plane equation
@@ -688,6 +692,7 @@ def run_self_calibration(
     max_iterations: int = 10,
     convergence_threshold: float = 0.1,
     quality_threshold: float = 0.3,
+    skip_below_px: float = 0.0,
 ) -> SelfCalibrationResult:
     """Run iterative stereo PIV self-calibration.
 
@@ -701,6 +706,10 @@ def run_self_calibration(
     max_iterations : maximum correction iterations
     convergence_threshold : RMS disparity (px) below which to stop
     quality_threshold : minimum peak quality to accept a disparity vector
+    skip_below_px : if > 0 and the *initial* RMS disparity is below this many
+        pixels, apply no correction and return the identity. Guards against the
+        already-aligned case where fitting the residual noise floor only injects
+        a spurious correction (0 disables the gate)
 
     Returns
     -------
@@ -837,6 +846,36 @@ def run_self_calibration(
             np.mean(dx_clean[valid] ** 2 + dy_clean[valid] ** 2)
         ))
         logger.info(f"  RMS disparity: {rms:.4f} px")
+
+        # Already-aligned gate: if we START below the skip threshold, the
+        # disparity is at/below the noise floor — there is no real misalignment
+        # to correct, and fitting the residual noise would only inject a
+        # spurious tilt/Z that compounds. Return the identity (zero correction).
+        if iteration == 0 and skip_below_px > 0.0 and rms < skip_below_px:
+            logger.info(
+                f"Initial RMS {rms:.4f} px < skip-below {skip_below_px:.4f} px — "
+                f"calibration already aligned; applying no correction."
+            )
+            history.append(IterationRecord(
+                iteration=1, rms_disparity=rms,
+                delta_z=0.0, delta_tilt_x=0.0, delta_tilt_y=0.0,
+                cumulative_z=0.0, cumulative_tilt_x=0.0, cumulative_tilt_y=0.0,
+            ))
+            return SelfCalibrationResult(
+                converged=True, n_iterations=0,
+                z_offset=0.0, tilt_x=0.0, tilt_y=0.0,
+                final_rms_disparity=rms, history=history,
+                dx_before=dx_before, dy_before=dy_before,
+                dx_after=dx_before, dy_after=dy_before,
+                grid_x_mm=grid_x_mm, grid_y_mm=grid_y_mm,
+                peak_quality=peak_q,
+                corr_first_iter=corr_first_iter, corr_last_iter=corr_first_iter,
+                win_ctrs_x=win_ctrs_x, win_ctrs_y=win_ctrs_y,
+                n_win_x=n_win_x, n_win_y=n_win_y,
+                window_size_used=window_size, mm_per_pixel=mm_per_pixel,
+                disp_px_per_mm=float(disp_px_per_mm),
+                disp_direction=np.asarray(disp_direction, dtype=np.float64),
+            )
 
         # Fit plane to get corrections
         fit = fit_disparity_plane(

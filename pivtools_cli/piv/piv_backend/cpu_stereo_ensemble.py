@@ -75,7 +75,11 @@ class StereoEnsembleCorrelatorCPU:
         mm_per_pixel : float, optional
             Dewarped pixel scale (mm per pixel).
         stereo_angle : float, optional
-            sin(theta) — half-angle between camera viewing directions.
+            tan(half-angle) between camera optical axes — Frame-B
+            (dewarped) trig factor used downstream by Σ → R conversions
+            in StereoEnsembleAccumulator. (Historical: this was sin(α);
+            changed for the geometry-correct dewarped formula. See
+            pivtools_core/stereo_ensemble.py::_compute_stereo_angle.)
         dewarped_image_shape : tuple, optional
             (H, W) of dewarped images. Needed if dewarp_maps not provided
             but config is used to derive shape.
@@ -119,6 +123,14 @@ class StereoEnsembleCorrelatorCPU:
             )
         finally:
             config._detected_image_shape = _prev_shape
+
+        # Set fused-warp kernel up front. The inner's _get_im_mesh sets this
+        # too, but only runs for pass_idx > 0 — so pass 0 would fall back to
+        # `hasattr(_inner, _fused_interp_mode) else 0` (cubic) at
+        # _fused_dewarp_warp_batch:334. Pre-seed here so pass 0 honours the
+        # stereo override.
+        stereo_image_interp = config.stereo_ensemble_image_warp_interpolation
+        self._inner._fused_interp_mode = 0 if stereo_image_interp == 'cubic' else 1
 
         # Load stereo-specific C libraries
         self._load_stereo_libraries()
@@ -192,6 +204,10 @@ class StereoEnsembleCorrelatorCPU:
             c_float_p,             # CoC output
             c_float_p,             # cam1 autocorr(AB1) accumulated output
             c_float_p,             # cam2 autocorr(AB2) accumulated output
+            c_float_p,             # CoC_AA = xcorr(cam1_AA(f), cam2_AA(f)) accumulated
+            ctypes.c_int,          # nStorePlanes gate for CoC_A/CoC_B (0/1)
+            c_float_p,             # CoC_A = xcorr(I1A_c, I2A_c) accumulated (store-only)
+            c_float_p,             # CoC_B = xcorr(I1B_c, I2B_c) accumulated (store-only)
             ctypes.c_int,          # diag_window_idx (-1 = disabled)
             c_float_p,             # diag AB1 per-frame (or NULL)
             c_float_p,             # diag AB2 per-frame (or NULL)
@@ -220,6 +236,16 @@ class StereoEnsembleCorrelatorCPU:
             # Per-frame autocorr(AB_c) ensemble — diagnostic only, sized to CoC
             "cam1_AB_AC": np.zeros(n_windows * n_px_coc, dtype=np.float32),
             "cam2_AB_AC": np.zeros(n_windows * n_px_coc, dtype=np.float32),
+            # Per-frame xcorr(cam1_AA(f), cam2_AA(f)) ensemble — leak-only
+            # reference plane for the matched-pair correction.
+            # Wiki: 2026-05-10-coc-matched-pair-leak.md §E.
+            "CoC_AA": np.zeros(n_windows * n_px_coc, dtype=np.float32),
+            # Store-only diagnostics: cross-camera xcorr of the raw
+            # mean-subtracted sub-images at instant A / B (static-disparity
+            # correlation). Computed in C only when store_planes is on;
+            # never consumed by any fit/velocity/stress path.
+            "CoC_A": np.zeros(n_windows * n_px_coc, dtype=np.float32),
+            "CoC_B": np.zeros(n_windows * n_px_coc, dtype=np.float32),
         }
 
     def dewarp_batch(
@@ -318,6 +344,19 @@ class StereoEnsembleCorrelatorCPU:
             ctrs_x = np.array([W_dw / 2.0], dtype=np.float32)
 
         interp_mode = self._inner._fused_interp_mode if hasattr(self._inner, "_fused_interp_mode") else 0
+
+        # One-shot diagnostic: log the kernel actually fed to fused_warp.c per
+        # (pass, camera). Confirms the stereo_ensemble_piv.image_warp_interpolation
+        # override is honoured end-to-end. Cheap (set-membership check, info log).
+        if not hasattr(self, "_logged_interp_mode"):
+            self._logged_interp_mode = set()
+        log_key = (pass_idx, camera_num)
+        if log_key not in self._logged_interp_mode:
+            logger.info(
+                f"  fused_warp: pass {pass_idx} cam{camera_num} interp_mode={interp_mode} "
+                f"({'cubic' if interp_mode == 0 else 'lanczos3'})"
+            )
+            self._logged_interp_mode.add(log_key)
 
         dw_map_x = np.ascontiguousarray(map_x, dtype=np.float32)
         dw_map_y = np.ascontiguousarray(map_y, dtype=np.float32)
@@ -483,6 +522,12 @@ class StereoEnsembleCorrelatorCPU:
             buffers["CoC"].ctypes.data_as(c_float_p),
             buffers["cam1_AB_AC"].ctypes.data_as(c_float_p),
             buffers["cam2_AB_AC"].ctypes.data_as(c_float_p),
+            buffers["CoC_AA"].ctypes.data_as(c_float_p),
+            ctypes.c_int(
+                1 if getattr(config, "stereo_ensemble_store_planes", False) else 0
+            ),
+            buffers["CoC_A"].ctypes.data_as(c_float_p),
+            buffers["CoC_B"].ctypes.data_as(c_float_p),
             diag_win_idx,
             diag_ab1.ctypes.data_as(c_float_p),
             diag_ab2.ctypes.data_as(c_float_p),
@@ -579,6 +624,9 @@ class StereoEnsembleCorrelatorCPU:
             "CoC_sum": buffers["CoC"].copy(),
             "cam1_AB_AC_sum": buffers["cam1_AB_AC"].copy(),
             "cam2_AB_AC_sum": buffers["cam2_AB_AC"].copy(),
+            "CoC_AA_sum": buffers["CoC_AA"].copy(),
+            "CoC_A_sum": buffers["CoC_A"].copy(),
+            "CoC_B_sum": buffers["CoC_B"].copy(),
         }
 
     # Delegate to inner correlator for shared infrastructure
