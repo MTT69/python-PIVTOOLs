@@ -433,6 +433,16 @@ def validate_images_generic(
         - sample_files: list - Sample of matching filenames
         - format_detected: str - Detected file format
         - error: str or None - Error message if validation failed
+        - read_error: str or None - Why a container file that EXISTS would not
+          decode. Callers that build their own message must check this: a status
+          flag alone cannot tell "file absent" from "file present but
+          undecodable", and reporting the former for the latter sends the user
+          hunting for a missing file that is right there.
+          Kept as a string, not the exception object: this dict is returned
+          straight to `jsonify` by the calibration validate route
+          (`pivtools_gui/calibration/app/views.py`), and an Exception in it
+          raises TypeError there — turning the very failure this field exists to
+          report into an HTTP 500 with no message.
         - suggested_pattern: str or None - Suggested pattern if files don't match
     """
     result = {
@@ -441,6 +451,7 @@ def validate_images_generic(
         "expected_count": expected_count,
         "camera_path": str(camera_path),
         "first_image_preview": None,
+        "read_error": None,
         "image_size": None,
         "sample_files": [],
         "format_detected": None,
@@ -519,8 +530,14 @@ def validate_images_generic(
         try:
             img = read_frame_fn(1)
         except Exception as e:
+            # Log as well as return: the caller may replace `error` with its own
+            # text, and without this the real reason reached neither the screen
+            # nor pypiv.log. An unsupported .set pixel encoding was invisible in
+            # both for exactly this reason.
+            logging.warning(f"Could not read first frame of {set_file}: {e}")
             result["valid"] = False
             result["error"] = f"Set file found but could not read the first frame: {e}"
+            result["read_error"] = str(e)
             return result
         try:
             result["image_size"] = (img.shape[1], img.shape[0])  # (W, H)
@@ -572,8 +589,10 @@ def validate_images_generic(
         try:
             img = read_frame_fn(1)
         except Exception as e:
+            logging.warning(f"Could not read first frame of {cine_file}: {e}")
             result["valid"] = False
             result["error"] = f"CINE file found but could not read the first frame: {e}"
+            result["read_error"] = str(e)
             return result
         try:
             result["image_size"] = (img.shape[1], img.shape[0])

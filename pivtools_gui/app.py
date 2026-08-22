@@ -1018,6 +1018,13 @@ def validate_files():
             first_frame_error = (
                 None  # actual read exception, if the file exists but won't decode
             )
+            # Container equivalent, as a message string: validate_images_generic
+            # keeps it JSON-safe because the calibration route jsonifies its dict.
+            container_read_error = None
+            # Set below once the failure class is known; also gates the folder
+            # listing in the response, which must not claim "files found" for a
+            # file that was found and simply would not decode.
+            file_found_but_unreadable = False
             color_detected = False
 
             if cfg.is_container_format:
@@ -1037,6 +1044,14 @@ def validate_files():
                             f"Last container entry check failed for camera {camera_num}: {e}"
                         )
                         # leaves last_frame_status = "missing" -> error branch below
+                else:
+                    # The container exists but frame 1 would not decode (unsupported
+                    # pixel encoding, truncated stream, wrong DaVis node). Carry the
+                    # reader's own reason forward so the message below reports it
+                    # instead of the "First frame not found" text synthesised from
+                    # image_type — the file IS there, and claiming otherwise sends
+                    # the user looking for a missing file.
+                    container_read_error = validation.get("read_error")
             else:
                 # Standard/im7: individual files can be missing, test both ends
                 try:
@@ -1109,7 +1124,15 @@ def validate_files():
                 # If the file was found but couldn't be decoded (e.g. a multi-camera
                 # .im7 frame-count mismatch), surface the real reason rather than the
                 # misleading "first frame not found" — the file IS there.
-                file_found_but_unreadable = (
+                #
+                # FileNotFoundError is excluded for standard formats, where a missing
+                # numbered file is exactly what "not found" should report. It is NOT
+                # excluded for containers: validate_images_generic already proved the
+                # container exists, so a FileNotFoundError from inside it describes a
+                # missing companion folder or stream — and the reader's message names
+                # which, where the generic text would send the user hunting for the
+                # container file they are already pointing at.
+                file_found_but_unreadable = container_read_error is not None or (
                     first_frame_error is not None
                     and not isinstance(first_frame_error, FileNotFoundError)
                 )
@@ -1119,7 +1142,7 @@ def validate_files():
                 elif file_found_but_unreadable:
                     # The reason already names the file (e.g. the .im7 frame-count
                     # mismatch), so surface it directly without a verbose prefix.
-                    error_msg = str(first_frame_error)
+                    error_msg = container_read_error or str(first_frame_error)
                 elif image_type == "lavision_set":
                     error_msg = f"First frame not found. Container file: {format_str}"
                 elif image_type == "cine":
@@ -1228,8 +1251,16 @@ def validate_files():
                 "suggested_mode": validation.get("suggested_mode"),
                 # Subfolder suggestion (when camera folder doesn't exist)
                 "suggested_subfolder": validation.get("suggested_subfolder"),
-                # Files found in folder (for error context)
-                "sample_files": validation.get("sample_files", []),
+                # Files found in folder (for error context). Withheld for a decode
+                # failure: the frontend renders this list under "Files found in
+                # folder" independently of the message, and for a container that
+                # list is the container itself — which read as "not found … Found
+                # files: <the file>" in the same panel.
+                "sample_files": (
+                    []
+                    if file_found_but_unreadable
+                    else validation.get("sample_files", [])
+                ),
                 # New per-pattern validation fields
                 "pattern_validations": pattern_validations,
                 "ab_count_warning": ab_count_warning,
