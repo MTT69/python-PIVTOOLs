@@ -391,6 +391,43 @@ def test_stepped_stereo_explicit_config_overrides_classifier(same_side_scene):
         )
 
 
+def test_stepped_stereo_derives_cam2_datum_label(same_side_scene):
+    """Only cam2's datum label is wrong — the real GUI failure on a live dataset.
+
+    The GUI sets pose_levels[datum] = clicked_level for both cameras. That is right only
+    when the origin fiducial happens to land in detector slot a, which is the blob-walk
+    pass order and differs per image. On the dataset that prompted this, cam1's origin
+    landed in slot a and cam2's in slot b, so cam2's label was wrong and the fit raised.
+    The datum label is now derived per camera, so both runs must agree exactly.
+    """
+    s = same_side_scene
+    board = SteppedBoardSpec(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+
+    kwargs = dict(
+        detections1=s["detections1"],
+        detections2=s["detections2"],
+        fiducials1=s["fiducials1"],
+        fiducials2=s["fiducials2"],
+        clicked_level1="peak",
+        clicked_level2="peak",
+        pose_levels1=s["pose_levels1"],
+        board=board,
+        image_size1=(W, H),
+        image_size2=(W, H),
+        stereo_config="same_side",
+    )
+    good = calibrate_stepped_stereo(pose_levels2=s["pose_levels2"], **kwargs)
+
+    bad2 = list(s["pose_levels2"])
+    bad2[0] = "trough" if bad2[0] == "peak" else "peak"
+    derived = calibrate_stepped_stereo(pose_levels2=bad2, **kwargs)
+
+    np.testing.assert_allclose(derived.R_stereo, good.R_stereo, atol=1e-9)
+    np.testing.assert_allclose(derived.T_stereo, good.T_stereo, atol=1e-9)
+    np.testing.assert_allclose(derived.model2.K, good.model2.K, rtol=1e-9)
+    assert derived.model2.rms == pytest.approx(good.model2.rms, rel=1e-9)
+
+
 # ---------------------------------------------------------------------------
 # 3. Record round-trip
 # ---------------------------------------------------------------------------

@@ -697,8 +697,11 @@ def calibrate_stepped_mono(
     clicked_level : 'peak' | 'trough' — the face the origin fiducial click landed on.
         This level is the world Z=0 datum plane.
     pose_levels : per-pose label ('peak'|'trough') for level A of each pose,
-        position-aligned to ``detections``. The datum entry is cross-checked against
-        the fiducial-derived label (a mismatch is a hard error).
+        position-aligned to ``detections``. The DATUM entry is ignored: level A's face
+        on the datum is derived here from the origin fiducial (which detector slot the
+        clicked dot belongs to) combined with ``clicked_level``. Slot a/b membership is
+        the blob-walk pass order, arbitrary per image, so a caller cannot know it —
+        only the entries for the non-datum poses are read.
     board : board geometry.
     image_size : (width, height) in pixels.
     camera : camera number for the record.
@@ -780,13 +783,19 @@ def calibrate_stepped_mono(
             "datum fiducial origin-on-level unresolved; re-run fiducial snap"
         )
 
-    if pose_levels[datum_index] != datum_A_label:
-        raise ValueError(
-            f"pose_levels[{datum_index}]={pose_levels[datum_index]!r} conflicts with the "
-            f"fiducial-derived datum A_label={datum_A_label!r} (origin landed on level "
-            f"{origin_on_level}, clicked_level={clicked_level!r}). Correct the datum "
-            f"pose label or re-pick clicked_level."
+    # The datum's level-A face is DERIVED, never taken from the caller: slot a/b is the
+    # blob-walk pass order and is arbitrary per image, so a caller has no way to know it.
+    # Callers that fill this entry in from clicked_level are right only when the origin
+    # dot happens to land in slot a; the derived value wins in either case.
+    resolved_levels = list(pose_levels)
+    if resolved_levels[datum_index] != datum_A_label:
+        logger.info(
+            f"cam{camera}: datum level-A face derived as {datum_A_label!r} "
+            f"(origin landed on level {origin_on_level}, clicked_level={clicked_level!r}); "
+            f"caller passed pose_levels[{datum_index}]={resolved_levels[datum_index]!r}, "
+            f"using the derived value."
         )
+    resolved_levels[datum_index] = datum_A_label
 
     # Datum object/image points are already in the world frame (clicked dot = origin).
     datum_obj = []
@@ -846,7 +855,7 @@ def calibrate_stepped_mono(
                 f"per-pose labelling, skipping"
             )
             continue
-        A_label = pose_levels[pose_idx]
+        A_label = resolved_levels[pose_idx]
         B_label = "trough" if A_label == "peak" else "peak"
         obj_np, img_np, meta = _build_non_datum_pose_view(
             a_pose,
@@ -965,7 +974,7 @@ def calibrate_stepped_mono(
                 spacing=float(spacing),
                 datum_index=datum_index,
                 datum_detection=datum,
-                pose_levels=list(pose_levels),
+                pose_levels=list(resolved_levels),
                 prefix=figure_prefix,
             )
         except Exception:  # figures never abort the fit

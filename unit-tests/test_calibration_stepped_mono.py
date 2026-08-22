@@ -269,24 +269,36 @@ def test_stepped_mono_round_trips_through_record(stepped_mono_scene, tmp_path):
     assert float(reloaded.board_meta["step_height_mm"]) == STEP_MM
 
 
-def test_stepped_mono_rejects_label_conflict(stepped_mono_scene):
-    """Datum pose_level conflicting with the fiducial-derived label is a hard error."""
+def test_stepped_mono_derives_datum_label(stepped_mono_scene):
+    """The datum's level-A face is derived from the fiducial, not taken from the caller.
+
+    Detector slot a/b is the blob-walk pass order and is arbitrary per image, so a caller
+    (the GUI included) cannot know it. Passing the wrong datum label must therefore be
+    ignored rather than rejected: the fit is identical either way.
+    """
     _K, _imgs, detections, fiducials, pose_levels = stepped_mono_scene
     board = SteppedBoardSpec(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
-    # Flip the datum's level-A label so it contradicts the fiducial-derived label.
+
+    kwargs = dict(
+        detections=detections,
+        fiducials=fiducials,
+        clicked_level="peak",
+        board=board,
+        image_size=(W, H),
+        camera=1,
+        datum_index=0,
+    )
+    good = calibrate_stepped_mono(pose_levels=list(pose_levels), **kwargs)
+
+    # Flip ONLY the datum's level-A label — the real GUI failure mode.
     bad = list(pose_levels)
     bad[0] = "trough" if pose_levels[0] == "peak" else "peak"
-    with pytest.raises(ValueError, match="conflicts with the fiducial-derived"):
-        calibrate_stepped_mono(
-            detections=detections,
-            fiducials=fiducials,
-            clicked_level="peak",
-            pose_levels=bad,
-            board=board,
-            image_size=(W, H),
-            camera=1,
-            datum_index=0,
-        )
+    derived = calibrate_stepped_mono(pose_levels=bad, **kwargs)
+
+    np.testing.assert_allclose(derived.camera_model.K, good.camera_model.K, rtol=1e-9)
+    np.testing.assert_allclose(derived.camera_model.R, good.camera_model.R, atol=1e-9)
+    np.testing.assert_allclose(derived.camera_model.t, good.camera_model.t, atol=1e-9)
+    assert derived.camera_model.rms == pytest.approx(good.camera_model.rms, rel=1e-9)
 
 
 def _make_figure(
