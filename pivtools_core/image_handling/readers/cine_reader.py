@@ -55,7 +55,7 @@ def _get_cached_metadata(file_path: str):
     return metadata
 
 
-def read_cine_pair(file_path: str, idx: int = 1, frames: int = 2) -> np.ndarray:
+def read_cine_pair(file_path: str, idx: int = 1) -> np.ndarray:
     """Read frame pair from .cine file.
 
     This function is called by load_images.read_pair() with the frame_a index
@@ -64,10 +64,15 @@ def read_cine_pair(file_path: str, idx: int = 1, frames: int = 2) -> np.ndarray:
     The idx parameter is the user-facing frame number (1-based). This function
     handles the translation to internal frame numbers using FirstImageNo.
 
+    Always reads exactly two frames — use :func:`read_cine_single` for one. This
+    took a ``frames`` argument that the body never read, so a caller asking for
+    ``frames=1`` silently got a pair anyway; the parameter is gone rather than
+    honoured, because a pair reader that sometimes returns one frame is the
+    ambiguity that caused the bug.
+
     Args:
         file_path: Path to .cine file
         idx: Frame A index (1-based, from pairing logic)
-        frames: Number of frames to read (always 2 for PIV)
 
     Returns:
         np.ndarray: Shape (2, H, W) with frame A and B as float32

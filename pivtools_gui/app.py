@@ -1747,6 +1747,59 @@ def cancel_piv():
     return jsonify({"error": "Failed to cancel job or job not found"}), 404
 
 
+_TAIL_CHUNK_BYTES = 64 * 1024
+
+
+def _tail_lines(log_file: Path, count: int) -> list:
+    """Return the last ``count`` lines of ``log_file``.
+
+    Reads backwards in chunks rather than loading the file, so the cost is
+    proportional to the tail requested. PIV logs reach many MB over a long run and
+    the GUI polls this once a second; reading the whole file each time was a direct
+    cause of the console panel falling behind as a run progressed.
+
+    Parameters
+    ----------
+    log_file : Path
+        Log file to read. Must exist -- callers check first.
+    count : int
+        Number of trailing lines wanted.
+
+    Returns
+    -------
+    list
+        Up to ``count`` trailing lines, newlines retained.
+    """
+    if count <= 0:
+        return []
+
+    with open(log_file, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        pos = f.tell()
+        block = b""
+        # One extra newline so the (possibly partial) first line can be dropped.
+        while pos > 0 and block.count(b"\n") <= count:
+            step = min(_TAIL_CHUNK_BYTES, pos)
+            pos -= step
+            f.seek(pos)
+            block = f.read(step) + block
+
+    # A backwards chunk can start mid-character; `errors="replace"` confines the
+    # damage to the leading partial line, which the final slice discards.
+    text = block.decode("utf-8", errors="replace")
+
+    # Reproduce text-mode readlines(): translate every newline flavour to "\n" and
+    # split on that alone. splitlines() would additionally break on \f, \x1c and
+    # U+2028, which text mode does not, silently shifting the tail window.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    segments = text.split("\n")
+    lines = [segment + "\n" for segment in segments[:-1]]
+    if segments[-1]:
+        lines.append(segments[-1])
+
+    return lines[-count:]
+
+
 @api_bp.route("/piv_logs", methods=["GET"])
 def get_piv_logs():
     """
@@ -1754,7 +1807,8 @@ def get_piv_logs():
 
     Query parameters:
     - job_id: Specific job ID (optional)
-    - lines: Number of lines to return from end (optional, default all)
+    - lines: Number of lines to return from end (optional, default all). Passing it
+      takes the cheap tail-read path; omitting it reads the entire file.
     - offset: Line offset from end (optional, for pagination)
     """
     runner = get_runner()
@@ -1780,26 +1834,19 @@ def get_piv_logs():
         return jsonify({"logs": "", "job_id": job_id, "running": status["running"]})
 
     try:
-        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-            all_lines = f.readlines()
-
-        # Apply offset and line limit
         if lines:
-            start_idx = max(0, len(all_lines) - lines - offset)
-            end_idx = len(all_lines) - offset
-            log_lines = all_lines[start_idx:end_idx]
+            # Cheap path: cost is proportional to the tail requested, not to the file.
+            tail = _tail_lines(log_file, lines + offset)
+            log_lines = tail[: max(0, len(tail) - offset)] if offset else tail
         else:
-            log_lines = all_lines
-
-        log_content = "".join(log_lines)
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                log_lines = f.readlines()
 
         return jsonify(
             {
-                "logs": log_content,
+                "logs": "".join(log_lines),
                 "job_id": job_id,
                 "running": status["running"],
-                "total_lines": len(all_lines),
-                "returned_lines": len(log_lines),
             }
         )
     except Exception as e:
@@ -1872,96 +1919,278 @@ def get_ensemble_progress_from_logs(job_id: str, cfg) -> dict:
 # Time-based cache for get_uncalibrated_count directory scans
 _uncalibrated_count_cache: dict = (
     {}
-)  # key: (basepath_idx, type_name) -> {"time": float, "result": dict}
+)  # key: (active_paths, type_name, camera) -> {"time": float, "result": dict}
 _UNCALIBRATED_COUNT_CACHE_TTL = 1.0  # seconds
+
+# A result file that is still being written would be read truncated, so the
+# status-image candidate list only offers files left untouched for this long.
+# Counting never opens a file, so this guard deliberately does NOT gate the progress
+# count -- applying it there delayed the progress bar by this much for no protection.
+_SETTLED_FILE_AGE_S = 5.0
+
+
+def _count_vector_files(folder: Path, expected_names: set) -> int:
+    """Count expected result files in ``folder``.
+
+    Uses :func:`os.scandir` and never calls ``stat()``. On Windows the directory
+    enumeration already carries the file/directory flag, so this costs roughly one
+    syscall per directory instead of one per file -- the difference that keeps a
+    multi-dataset scan as cheap as the old single-dataset one.
+
+    Parameters
+    ----------
+    folder : Path
+        Directory to scan. A missing directory counts as zero rather than raising:
+        a dataset that has not been started yet simply has no output folder.
+    expected_names : set
+        Result file names this run is expected to produce.
+
+    Returns
+    -------
+    int
+        Number of expected files present, bounded above by ``len(expected_names)``.
+    """
+    if not folder.is_dir():
+        return 0
+
+    count = 0
+    try:
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if entry.name in expected_names and entry.is_file():
+                    count += 1
+    except OSError as exc:
+        logger.warning(f"[get_uncalibrated_count] Cannot scan {folder}: {exc}")
+        return 0
+    return count
+
+
+def _settled_vector_files(folder: Path, expected_names: set, now: float) -> list:
+    """List expected result files in ``folder`` that are safe to read.
+
+    Files modified within :data:`_SETTLED_FILE_AGE_S` are excluded because
+    ``get_uncalibrated_image`` opens them and a half-written ``.mat`` reads
+    truncated. Returned unsorted -- the frontend sorts frame numbers itself.
+
+    Parameters
+    ----------
+    folder : Path
+        Directory to scan; a missing directory yields an empty list.
+    expected_names : set
+        Result file names this run is expected to produce.
+    now : float
+        Current epoch time, passed in so every folder in one request shares a cutoff.
+
+    Returns
+    -------
+    list
+        Names of files old enough to read.
+    """
+    if not folder.is_dir():
+        return []
+
+    min_mtime = now - _SETTLED_FILE_AGE_S
+    settled = []
+    try:
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if entry.name not in expected_names or not entry.is_file():
+                    continue
+                if entry.stat().st_mtime < min_mtime:
+                    settled.append(entry.name)
+    except OSError as exc:
+        logger.warning(f"[get_uncalibrated_count] Cannot scan {folder}: {exc}")
+        return []
+    return settled
+
+
+def _scan_dataset_progress(
+    base_paths,
+    active_paths,
+    camera_numbers,
+    num_pairs,
+    type_name,
+    expected_names,
+    per_dataset_expected,
+):
+    """Count results across every selected dataset and find the one in flight.
+
+    Datasets are processed sequentially in the order given -- ``instantaneous.py``
+    iterates ``config.active_paths`` -- so the first dataset that is not yet complete
+    is the one currently being written.
+
+    Parameters
+    ----------
+    base_paths : list
+        All configured base paths, indexed by the entries of ``active_paths``.
+    active_paths : list of int
+        Base-path indices selected for this run, in processing order.
+    camera_numbers : list of int
+        Cameras processed per dataset.
+    num_pairs : int
+        Frame pairs expected per camera (global across datasets).
+    type_name : str
+        ``"instantaneous"`` or ``"ensemble"``.
+    expected_names : set
+        Result file names the run is expected to produce.
+    per_dataset_expected : int
+        ``num_pairs * len(camera_numbers)`` -- files expected for one whole dataset.
+
+    Returns
+    -------
+    tuple
+        ``(total_found, datasets_complete, current_idx, current_position)`` where
+        ``current_idx`` is a base-path index and ``current_position`` is its 1-based
+        place in ``active_paths``. Both are ``None`` once every dataset is complete.
+    """
+    total_found = 0
+    datasets_complete = 0
+    current_idx = None
+    current_position = None
+
+    for position, path_idx in enumerate(active_paths, start=1):
+        base = base_paths[path_idx]
+        found_here = 0
+        for camera_num in camera_numbers:
+            paths = get_data_paths(
+                base,
+                num_pairs,
+                camera_num,
+                type_name,
+                use_uncalibrated=True,
+            )
+            found_here += _count_vector_files(paths["data_dir"], expected_names)
+
+        total_found += found_here
+        if found_here >= per_dataset_expected:
+            datasets_complete += 1
+        elif current_idx is None:
+            current_idx = path_idx
+            current_position = position
+
+    return total_found, datasets_complete, current_idx, current_position
 
 
 @api_bp.route("/get_uncalibrated_count", methods=["GET"])
 def get_uncalibrated_count():
+    """Report PIV run progress across every selected source/base path pair.
+
+    ``percent`` spans the whole multi-dataset run. ``processed``/``total`` are in
+    DATASET UNITS -- not frames and not cameras -- matching the calibration apply
+    job's payload convention.
+    """
     cfg = get_config()
-    basepath_idx = request.args.get("basepath_idx", default=0, type=int)
     cam = camera_number(request.args.get("camera", default=1, type=int))
     type_name = request.args.get("type", default="instantaneous")
-    job_id = request.args.get("job_id")  # NEW: accept job_id for log-based progress
+    job_id = request.args.get("job_id")
 
-    # Check if ensemble mode - use log-based progress if job_id provided
+    # Ensemble reports progress by scraping the job log rather than counting files.
     is_ensemble = cfg.data.get("processing", {}).get("ensemble", False)
     if is_ensemble and job_id:
         progress_data = get_ensemble_progress_from_logs(job_id, cfg)
         return jsonify(progress_data)
 
-    # Return cached result if fresh enough
-    cache_key = (basepath_idx, type_name)
+    base_paths = cfg.base_paths
+
+    # active_paths is required: defaulting to dataset 0 is what pinned the progress
+    # bar at 100% for the rest of a multi-dataset run.
+    raw_active = request.args.get("active_paths", "")
+    try:
+        active_paths = [int(p) for p in raw_active.split(",") if p.strip()]
+    except ValueError:
+        return (
+            jsonify(
+                {
+                    "error": "active_paths must be comma-separated integers, "
+                    f"got {raw_active!r}"
+                }
+            ),
+            400,
+        )
+    if not active_paths:
+        return (
+            jsonify(
+                {
+                    "error": "active_paths is required "
+                    "(comma-separated base path indices)"
+                }
+            ),
+            400,
+        )
+    out_of_range = [i for i in active_paths if not 0 <= i < len(base_paths)]
+    if out_of_range:
+        return (
+            jsonify(
+                {
+                    "error": f"active_paths entries out of range: {out_of_range} "
+                    f"({len(base_paths)} base path(s) configured)"
+                }
+            ),
+            400,
+        )
+
+    # Camera is part of the key because `files` is camera-specific.
+    cache_key = (tuple(active_paths), type_name, cam)
     now = time.time()
     cached = _uncalibrated_count_cache.get(cache_key)
     if cached and (now - cached["time"]) < _UNCALIBRATED_COUNT_CACHE_TTL:
         return jsonify(cached["result"])
 
-    base_paths = cfg.base_paths
-    base = base_paths[basepath_idx]
-    num_pairs = cfg.num_frame_pairs  # Vector files correspond to frame pairs
-
-    # Get all cameras that should be processed
+    # num_frame_pairs is global (num_loops x per_loop_frame_pairs), so every dataset
+    # shares one expected count and the denominator is a plain multiply.
+    num_pairs = cfg.num_frame_pairs
     camera_numbers = cfg.camera_numbers
-    total_cameras = len(camera_numbers)
-
-    # Calculate progress across all cameras
-    total_expected_files = num_pairs * total_cameras
-    total_found_files = 0
-    camera_progress = {}
+    per_dataset_expected = num_pairs * len(camera_numbers)
+    total_expected_files = per_dataset_expected * len(active_paths)
 
     vector_fmt = cfg.vector_format
-    expected_names = set([vector_fmt % i for i in range(1, num_pairs + 1)])
+    expected_names = {vector_fmt % i for i in range(1, num_pairs + 1)}
 
-    # Count files for each camera and collect all available files
-    all_files = []
-    min_mtime = now - 5  # Skip files younger than 5 seconds to avoid truncated reads
-    for camera_num in camera_numbers:
-        paths = get_data_paths(
-            base,
-            cfg.num_frame_pairs,
-            camera_num,
+    total_found_files, datasets_complete, current_idx, current_position = (
+        _scan_dataset_progress(
+            base_paths,
+            active_paths,
+            camera_numbers,
+            num_pairs,
             type_name,
-            use_uncalibrated=True,
+            expected_names,
+            per_dataset_expected,
         )
-        folder_uncal = paths["data_dir"]
+    )
 
-        found = (
-            [
-                p.name
-                for p in sorted(folder_uncal.iterdir())
-                if p.is_file()
-                and p.name in expected_names
-                and p.stat().st_mtime < min_mtime
-            ]
-            if folder_uncal.exists() and folder_uncal.is_dir()
-            else []
-        )
-
-        # If this is the requested camera, add its files to the list
-        if camera_num == cam:
-            all_files = found
-
-        camera_progress[f"Cam{camera_num}"] = {
-            "count": len(found),
-            "percent": int((len(found) / num_pairs) * 100) if num_pairs else 0,
-        }
-        total_found_files += len(found)
-
-    # Calculate overall progress across all cameras
     percent = (
         int((total_found_files / total_expected_files) * 100)
         if total_expected_files
         else 0
     )
 
+    # Status-image candidates come from the dataset being written, so the preview
+    # follows the run instead of showing one that finished minutes ago.
+    files = []
+    current_label = None
+    if current_idx is not None:
+        current_label = Path(base_paths[current_idx]).name
+        current_paths = get_data_paths(
+            base_paths[current_idx],
+            num_pairs,
+            cam,
+            type_name,
+            use_uncalibrated=True,
+        )
+        files = _settled_vector_files(current_paths["data_dir"], expected_names, now)
+
     result = {
         "count": total_found_files,
         "percent": percent,
         "total_expected": total_expected_files,
-        "camera_progress": camera_progress,
+        # Dataset units -- not frames, not cameras.
+        "processed": datasets_complete,
+        "total": len(active_paths),
+        "current_dataset_idx": current_idx,
+        "current_dataset_label": current_label,
+        "dataset_number": current_position,
         "cameras": camera_numbers,
-        "files": all_files,
+        "files": files,
     }
 
     # Cache the result

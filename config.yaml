@@ -1,8 +1,8 @@
 paths:
   base_paths:
-  - E:\Results\experimental
+  - E:\Cavity_Flow_Results\90degree_250light_250hz_1000dt_0
   source_paths:
-  - E:\alk235\cam4_all_512_tiff\cam4_normalised
+  - F:\181124_polyamide\90degree_250light_250hz_1000dt_0
   active_paths:
   - 0
   camera_numbers:
@@ -11,24 +11,23 @@ paths:
   camera_subfolders: []
 images:
   image_format:
-  - B%05d_A.tif
-  - B%05d_B.tif
+  - Camera%d.cine
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: standard
+  image_type: cine
   use_camera_subfolders: false
   start_index: 1
-  frame_stride: 0
-  pair_stride: 1
-  pairing_preset: ab_format
+  frame_stride: 1
+  pair_stride: 2
+  pairing_preset: skip_frames
   num_loops: 1
-  num_images: 2100
+  num_images: 7200
   image_shape:
-  - 1836
-  - 512
+  - 1200
+  - 2560
 batches:
-  size: 20
+  size: 50
 logging:
   file: pypiv.log
   level: INFO
@@ -38,15 +37,15 @@ processing:
   debug: false
   auto_compute_params: false
   omp_threads: 4
-  dask_workers_per_node: 5
-  dask_memory_limit: 10GB
+  dask_workers_per_node: 4
+  dask_memory_limit: 12GB
   dask_max_in_flight_per_worker: 2
   open_dashboard: false
   dask_nanny: false
   post_processing_workers: 16
   always_batch: true
-  instantaneous: false
-  ensemble: true
+  instantaneous: true
+  ensemble: false
 outlier_detection:
   enabled: true
   methods:
@@ -99,21 +98,21 @@ video:
   source_endpoint: regular
 statistics:
   enabled_methods:
-    inst_vorticity: false
+    inst_vorticity: true
     gamma2: false
     inst_divergence: false
-    mean_velocity: true
+    mean_velocity: false
     vorticity: false
     mean_vorticity: false
     tke: false
-    inst_gamma: false
+    inst_gamma: true
     mean_tke: false
     correlation_quality: true
     inst_stresses: false
     divergence: false
     inst_velocity: false
     gamma1: false
-    mean_stresses: true
+    mean_stresses: false
     mean_divergence: false
     fluctuating_velocity: false
   gamma_radius: 4
@@ -122,19 +121,22 @@ statistics:
   source_endpoint: regular
 instantaneous_piv:
   window_size:
+  - - 64
+    - 64
   - - 32
-    - 96
+    - 32
+  - - 24
+    - 24
   - - 16
-    - 96
-  - - 8
-    - 96
+    - 16
   overlap:
   - 50
   - 50
   - 50
+  - 50
   runs:
-  - 2
   - 3
+  - 4
   time_resolved: false
   window_type: gaussian
   num_peaks: 1
@@ -196,15 +198,11 @@ calibration:
   active: charuco
 filters:
 - type: time
-- type: ssmin
-  size:
-  - 7
-  - 7
 masking:
-  enabled: false
+  enabled: true
   mask_file_pattern: mask_Cam%d.mat
   mask_threshold: 0.01
-  mode: rectangular
+  mode: file
   rectangular:
     top: 0
     bottom: 0

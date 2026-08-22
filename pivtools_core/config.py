@@ -829,8 +829,10 @@ class Config:
                     # Multi-camera file: pass camera_no
                     img = read_image(str(file_path), camera_no=camera_num)
             elif img_type == "cine":
-                # For .cine files, read first frame (idx=1)
-                img = read_image(str(file_path), idx=1, frames=2)
+                # For .cine files, read the first pair (idx=1); the shape is
+                # taken off it below. read_cine_pair always reads exactly two
+                # frames — it takes no frame count.
+                img = read_image(str(file_path), idx=1)
             else:
                 # Regular files don't need extra parameters
                 img = read_image(str(file_path))

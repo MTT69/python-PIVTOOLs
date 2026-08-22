@@ -171,10 +171,10 @@ def read_calibration_frame_at(
     image_format: str,
     image_type: str,
     *,
+    num_cameras: int,
     zero_based_indexing: bool = False,
     use_camera_subfolders: bool = False,
     normalize_uint8: bool = True,
-    num_cameras: Optional[int] = None,
 ) -> np.ndarray:
     """Read one calibration frame from an ALREADY-RESOLVED camera path/container.
 
@@ -186,7 +186,9 @@ def read_calibration_frame_at(
     LaVision ``.im7``/``.set``, Phantom ``.cine``) through one code path.
 
     Parameters mirror :func:`read_calibration_image` except ``camera_path`` is supplied
-    directly (a directory for per-file formats, or the container file for ``.set``).
+    directly (a directory for per-file formats, or the container file for ``.set``), and
+    ``num_cameras`` (the rig camera count) is required — it locates this camera's slice
+    inside a multi-camera ``.im7`` buffer or ``.set`` container.
     """
     # Resolve file path based on image type.
     file_path = resolve_file_path(
@@ -207,23 +209,29 @@ def read_calibration_frame_at(
             img = img[0]  # Extract single frame
         return _normalize_to_uint8(img) if normalize_uint8 else img
 
-    # For multi-camera .im7 (all cameras in one buffer), detect how many frames
-    # each camera occupies so this camera's slice is located correctly — same
-    # rule the PIV path uses. Only when the caller supplies a camera count;
-    # otherwise (e.g. direct CLI use without one) keep the default stride of 1.
+    # Multi-camera containers (.im7 buffers, .set frame streams) interleave every
+    # camera's frames, so this camera's slice is located as
+    # (camera-1) * frames_per_camera. Detect that stride rather than assume it —
+    # the same rule the PIV path uses. ``num_cameras`` is required (not defaulted
+    # to 1) precisely because a stride of 1 on a multi-camera container returns a
+    # DIFFERENT camera's pixels without failing: silently wrong data, not a
+    # visible error.
     fpc = 1
-    if image_type == "lavision_im7" and num_cameras is not None:
+    if image_type == "lavision_im7":
         from .load_images import _detect_im7_frames_per_camera
 
         fpc = _detect_im7_frames_per_camera(Path(file_path), num_cameras)
+    elif image_type == "lavision_set":
+        from .load_images import _detect_set_frames_per_camera
 
-    # Unified core reader (passes camera_no for multi-camera containers).
+        fpc = _detect_set_frames_per_camera(Path(file_path), num_cameras)
+
+    # Unified core reader (locates this camera's slice in multi-camera containers).
     img = read_single_frame(
         file_path=file_path,
         camera=camera,
         frame_idx=frame_idx,
         image_type=image_type,
-        time_resolved=True,  # Calibration always reads single frames
         frames_per_camera=fpc,
     )
 

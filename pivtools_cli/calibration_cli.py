@@ -479,6 +479,7 @@ def _load_one(
     image_type: str,
     use_camera_subfolders: bool,
     zero_based: bool,
+    num_cameras: int,
 ) -> np.ndarray:
     """Load a single calibration frame by image index (grayscale; 1-based unless ``zero_based``).
 
@@ -487,9 +488,15 @@ def _load_one(
     ``.im7``/``.set`` and Phantom ``.cine`` — instead of the cv2.imread-only path that
     silently failed on ``.im7``. Full dynamic range is preserved (``normalize_uint8=False``);
     the detectors promote to float/uint8 themselves, so this is behaviour-preserving for the
-    tif datasets. The loader flags (``image_type``, ``use_camera_subfolders``, ``zero_based``)
-    are required and resolved in one place — :func:`_loader_kwargs` — so there is no second
-    set of defaults to drift out of sync; every caller spreads ``**_loader_kwargs(...)``.
+    tif datasets. The loader flags (``image_type``, ``use_camera_subfolders``, ``zero_based``,
+    ``num_cameras``) are required and resolved in one place — :func:`_loader_kwargs` — so
+    there is no second set of defaults to drift out of sync; every caller spreads
+    ``**_loader_kwargs(...)``.
+
+    ``num_cameras`` is what lets a multi-camera container locate THIS camera's slice
+    (``.im7`` buffers, ``.set`` frame streams). It used to be omitted, leaving the stride at
+    1 — harmless for single-camera and per-file formats, wrong camera for a multi-camera
+    buffer, and impossible for ``.set`` (which now refuses rather than guess).
     """
     img = read_calibration_frame_at(
         camera_path=cam_dir,
@@ -500,6 +507,7 @@ def _load_one(
         zero_based_indexing=zero_based,
         use_camera_subfolders=use_camera_subfolders,
         normalize_uint8=False,
+        num_cameras=num_cameras,
     )
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -516,6 +524,7 @@ def _load_views(
     image_type: str,
     use_camera_subfolders: bool,
     zero_based: bool,
+    num_cameras: int,
 ) -> List[np.ndarray]:
     return [
         _load_one(
@@ -526,12 +535,13 @@ def _load_views(
             image_type=image_type,
             use_camera_subfolders=use_camera_subfolders,
             zero_based=zero_based,
+            num_cameras=num_cameras,
         )
         for k in range(n_views)
     ]
 
 
-def _loader_kwargs(cfg: dict, image_format: str) -> dict:
+def _loader_kwargs(cfg: dict, image_format: str, num_cameras: int) -> dict:
     """The single source of the loader flags ``_load_views``/``_load_one`` need.
 
     The image type is inferred from the *format extension* (authoritative — a
@@ -539,11 +549,16 @@ def _loader_kwargs(cfg: dict, image_format: str) -> dict:
     ``image_type`` default), so pointing the CLI at a LaVision dataset just needs the
     right ``--image-format``. ``_load_one``/``_load_views`` take these as required keyword
     args (no own defaults), so this dict is the one place the values are decided.
+
+    ``num_cameras`` is the rig camera count (``Config.camera_count``), not a settings key:
+    it is what locates a camera's slice inside a multi-camera ``.im7`` buffer or ``.set``
+    container, so it is threaded through here rather than defaulted per call site.
     """
     return {
         "image_type": infer_image_type(image_format),
         "use_camera_subfolders": bool(cfg.get("use_camera_subfolders", False)),
         "zero_based": bool(cfg.get("zero_based_indexing", False)),
+        "num_cameras": int(num_cameras),
     }
 
 
@@ -671,7 +686,7 @@ def detect_mono_command(args):
         n_views,
         start_index,
         camera=camera,
-        **_loader_kwargs(scfg, image_format),
+        **_loader_kwargs(scfg, image_format, config.camera_count),
     )
 
     # Detection sidecar (parity with the GUI): reuse stored detections when the params match,
@@ -792,7 +807,7 @@ def detect_stereo_command(args):
         n_views,
         start_index,
         camera=cam1,
-        **_loader_kwargs(scfg, image_format),
+        **_loader_kwargs(scfg, image_format, config.camera_count),
     )
     imgs2 = _load_views(
         _cam_dir(scfg, source, cam2, config.camera_count),
@@ -800,7 +815,7 @@ def detect_stereo_command(args):
         n_views,
         start_index,
         camera=cam2,
-        **_loader_kwargs(scfg, image_format),
+        **_loader_kwargs(scfg, image_format, config.camera_count),
     )
 
     # Detection sidecar (parity with the GUI): reuse stored detections when params match,
@@ -1062,7 +1077,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
             n_views,
             start_index,
             camera=cam,
-            **_loader_kwargs(scfg, image_format),
+            **_loader_kwargs(scfg, image_format, config.camera_count),
         )
         if not images:
             raise SystemExit(f"detect-joint: no images loaded for cam{cam}")
@@ -1412,7 +1427,7 @@ def scale_factor_command(args):
             image_format,
             frame,
             camera=camera,
-            **_loader_kwargs(scfg, image_format),
+            **_loader_kwargs(scfg, image_format, config.camera_count),
         )
         h, w = np.asarray(image).shape[:2]
         image_size = (int(w), int(h))

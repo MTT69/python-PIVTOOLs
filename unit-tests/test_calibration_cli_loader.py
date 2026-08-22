@@ -45,6 +45,7 @@ def test_load_one_standard_png_roundtrips(tmp_path):
         image_type="standard",
         use_camera_subfolders=False,
         zero_based=False,
+        num_cameras=1,
     )
     assert out.shape == (48, 64)
     assert np.array_equal(out, img)
