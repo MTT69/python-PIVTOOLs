@@ -34,7 +34,7 @@ from pivtools_core.image_handling.path_utils import (
     build_piv_camera_path,
     validate_images_generic,
 )
-from pivtools_core.paths import get_data_paths
+from pivtools_core.paths import count_vector_files_by_name, get_data_paths
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
@@ -1960,40 +1960,9 @@ _UNCALIBRATED_COUNT_CACHE_TTL = 1.0  # seconds
 _SETTLED_FILE_AGE_S = 5.0
 
 
-def _count_vector_files(folder: Path, expected_names: set) -> int:
-    """Count expected result files in ``folder``.
-
-    Uses :func:`os.scandir` and never calls ``stat()``. On Windows the directory
-    enumeration already carries the file/directory flag, so this costs roughly one
-    syscall per directory instead of one per file -- the difference that keeps a
-    multi-dataset scan as cheap as the old single-dataset one.
-
-    Parameters
-    ----------
-    folder : Path
-        Directory to scan. A missing directory counts as zero rather than raising:
-        a dataset that has not been started yet simply has no output folder.
-    expected_names : set
-        Result file names this run is expected to produce.
-
-    Returns
-    -------
-    int
-        Number of expected files present, bounded above by ``len(expected_names)``.
-    """
-    if not folder.is_dir():
-        return 0
-
-    count = 0
-    try:
-        with os.scandir(folder) as entries:
-            for entry in entries:
-                if entry.name in expected_names and entry.is_file():
-                    count += 1
-    except OSError as exc:
-        logger.warning(f"[get_uncalibrated_count] Cannot scan {folder}: {exc}")
-        return 0
-    return count
+# Counting lives in pivtools_core.paths so the video maker and the plotting views
+# share one scan. A second copy of this used to sit in video_maker/app/views.py under
+# the same name but with a per-frame exists() loop -- same name, opposite cost.
 
 
 def _settled_vector_files(folder: Path, expected_names: set, now: float) -> list:
@@ -2090,7 +2059,9 @@ def _scan_dataset_progress(
                 type_name,
                 use_uncalibrated=True,
             )
-            found_here += _count_vector_files(paths["data_dir"], expected_names)
+            found_here += count_vector_files_by_name(
+                paths["data_dir"], expected_names
+            )
 
         total_found += found_here
         if found_here >= per_dataset_expected:

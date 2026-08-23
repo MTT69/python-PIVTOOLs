@@ -18,7 +18,7 @@ from scipy.io import loadmat
 
 from pivtools_core.config import get_config
 from pivtools_core.coordinate_utils import extract_coordinates
-from pivtools_core.paths import get_data_paths
+from pivtools_core.paths import get_data_paths, list_vector_files
 from pivtools_core.vector_loading import find_non_empty_run, get_plottable_vars
 from pivtools_gui.vector_statistics.correlation_quality import (
     load_timeseries_mat,
@@ -623,11 +623,9 @@ def check_all_vars():
         if inst_stats_dir.exists():
             # Check first file in inst_stats folder
             cfg = get_config()
-            inst_stat_files = [
-                inst_stats_dir / (cfg.vector_format % i)
-                for i in range(1, cfg.num_frame_pairs + 1)
-                if (inst_stats_dir / (cfg.vector_format % i)).exists()
-            ]
+            inst_stat_files = list_vector_files(
+                inst_stats_dir, cfg.vector_format, cfg.num_frame_pairs
+            )
             if inst_stat_files:
                 inst_stat_path = inst_stat_files[0]
                 inst_vars = get_plottable_vars(inst_stat_path, var_name="piv_result")
@@ -700,11 +698,7 @@ def check_limits():
 
         cfg = get_config()
         fmt = cfg.vector_format
-        all_mats = [
-            data_dir / (fmt % i)
-            for i in range(1, cfg.num_frame_pairs + 1)
-            if (data_dir / (fmt % i)).exists()
-        ]
+        all_mats = list_vector_files(data_dir, fmt, cfg.num_frame_pairs)
         files_total = len(all_mats)
 
         if files_total == 0:
@@ -1026,11 +1020,9 @@ def check_available_data():
                     except Exception as e:
                         logger.debug(f"Error reading ensemble vars: {e}")
             else:
-                frame_files = []
-                for frame in range(1, num_frame_pairs + 1):
-                    mat_file = data_dir / (vector_fmt % frame)
-                    if mat_file.exists():
-                        frame_files.append(mat_file)
+                frame_files = list_vector_files(
+                    data_dir, vector_fmt, num_frame_pairs
+                )
 
                 if frame_files:
                     result["exists"] = True

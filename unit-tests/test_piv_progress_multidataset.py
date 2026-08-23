@@ -11,9 +11,8 @@ import time
 
 import pytest
 
-from pivtools_core.paths import get_data_paths
+from pivtools_core.paths import count_vector_files_by_name, get_data_paths
 from pivtools_gui.app import (
-    _count_vector_files,
     _scan_dataset_progress,
     _settled_vector_files,
     _tail_lines,
@@ -63,20 +62,20 @@ def _scan(bases, active):
 
 
 # --------------------------------------------------------------------------
-# _count_vector_files / _settled_vector_files
+# count_vector_files_by_name / _settled_vector_files
 # --------------------------------------------------------------------------
 
 
 def test_count_missing_directory_is_zero(tmp_path):
     """A dataset that has not started has no output folder -- not an error."""
-    assert _count_vector_files(tmp_path / "nope", EXPECTED_NAMES) == 0
+    assert count_vector_files_by_name(tmp_path / "nope", EXPECTED_NAMES) == 0
 
 
 def test_count_ignores_unexpected_names(tmp_path):
     folder = _write_results(tmp_path, 1, 2)
     (folder / "notes.txt").write_bytes(b"x")
     (folder / "B99999.mat").write_bytes(b"x")
-    assert _count_vector_files(folder, EXPECTED_NAMES) == 2
+    assert count_vector_files_by_name(folder, EXPECTED_NAMES) == 2
 
 
 def test_count_is_bounded_by_expected_names(tmp_path):
@@ -84,7 +83,7 @@ def test_count_is_bounded_by_expected_names(tmp_path):
     folder = _write_results(tmp_path, 1, NUM_PAIRS)
     for extra in range(100, 110):
         (folder / f"B{extra:05d}.mat").write_bytes(b"x")
-    assert _count_vector_files(folder, EXPECTED_NAMES) == NUM_PAIRS
+    assert count_vector_files_by_name(folder, EXPECTED_NAMES) == NUM_PAIRS
 
 
 def test_counting_ignores_file_age(tmp_path):
@@ -94,7 +93,7 @@ def test_counting_ignores_file_age(tmp_path):
     counting never opens the file.
     """
     folder = _write_results(tmp_path, 1, 3, age_s=0.0)
-    assert _count_vector_files(folder, EXPECTED_NAMES) == 3
+    assert count_vector_files_by_name(folder, EXPECTED_NAMES) == 3
 
 
 def test_settled_excludes_young_files(tmp_path):

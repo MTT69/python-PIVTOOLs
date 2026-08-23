@@ -21,6 +21,7 @@ from typing import Callable, Dict, List, Optional
 import numpy as np
 
 from pivtools_core.config import Config, get_config
+from pivtools_core.paths import list_vector_files
 from pivtools_gui.utils.worker_pool import get_max_workers, worker_initializer
 
 from .transform_operations import (
@@ -212,12 +213,11 @@ class TransformProcessor:
                 ensemble_file = data_dir / "ensemble_result.mat"
                 vector_files = [ensemble_file] if ensemble_file.exists() else []
             else:
-                fmt = self._config.vector_format
-                vector_files = [
-                    data_dir / (fmt % i)
-                    for i in range(1, self._config.num_frame_pairs + 1)
-                    if (data_dir / (fmt % i)).exists()
-                ]
+                vector_files = list_vector_files(
+                    data_dir,
+                    self._config.vector_format,
+                    self._config.num_frame_pairs,
+                )
 
             total_files = len(vector_files)
             processed_files = 0
