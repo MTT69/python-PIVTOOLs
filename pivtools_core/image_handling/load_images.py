@@ -288,14 +288,31 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             # Time-resolved: this camera's single stream, read at two entries.
             # The stride is derived rather than assumed to be 1, so a container
             # that turns out to hold A/B streams still lands on frame A.
+            from .readers.set_reader import read_set_frame, read_set_info
+
             fpc = _detect_set_frames_per_camera(set_file_path, config.camera_count)
-            frame_a = read_single_frame(
-                set_file_path, camera, frame_a_idx, image_type, frames_per_camera=fpc
+            info = read_set_info(set_file_path)  # cached; the line above populated it
+            stream_idx = (camera - 1) * fpc
+            if stream_idx >= len(info.frames):
+                raise ValueError(
+                    f"Camera {camera} at {fpc} stream(s) per camera requires frame "
+                    f"stream {stream_idx}, but {Path(set_file_path).name} holds only "
+                    f"{len(info.frames)}."
+                )
+
+            # Decode both frames straight into one pair buffer. Routing through
+            # read_single_frame would allocate each frame via astype and then copy
+            # both again in np.stack -- two full-frame passes where one does. Same
+            # pattern read_set_pair already uses for the pre-paired case.
+            fi = info.frames[stream_idx]
+            result = np.empty((2, fi.height, fi.width), dtype=np.float32)
+            read_set_frame(
+                set_file_path, frame_a_idx, stream_idx, set_info=info, out=result[0]
             )
-            frame_b = read_single_frame(
-                set_file_path, camera, frame_b_idx, image_type, frames_per_camera=fpc
+            read_set_frame(
+                set_file_path, frame_b_idx, stream_idx, set_info=info, out=result[1]
             )
-            return np.stack([frame_a, frame_b], axis=0)
+            return result
         else:
             # Pre-paired: A+B frames in one entry - read directly
             return read_image(str(set_file_path), camera_no=camera, im_no=idx)

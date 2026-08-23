@@ -24,6 +24,7 @@ Usage:
     pytest unit-tests/test_set_decoders.py -v
 """
 
+import os
 import struct
 import sys
 from pathlib import Path
@@ -33,8 +34,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from pivtools_core.image_handling.readers import set_reader  # noqa: E402
 from pivtools_core.image_handling.readers.set_reader import (  # noqa: E402
     _IMPLEMENTED_DECODERS,
+    _decode_mono12p,
+    clear_set_info_cache,
     read_set_frame,
     read_set_info,
     read_set_pair,
@@ -486,6 +490,246 @@ def test_dark_shape_mismatch_raises(tmp_path):
 
     with pytest.raises(ValueError, match="does not belong to this recording"):
         read_set_frame(set_file, entry_no=1, frame_idx=0)
+
+
+# ---------------------------------------------------------------------------
+# mono-12p: the uint16-window decode must equal the byte-plane form it replaced
+# ---------------------------------------------------------------------------
+
+
+def _decode_mono12p_byte_planes(raw, width, height):
+    """The byte-plane implementation _decode_mono12p replaced (git f052f2b).
+
+    Kept here as the reference. The rewrite is a memory-access change only, so any
+    divergence from this is a bug in the rewrite, not a deliberate difference.
+    """
+    n_pixels = width * height
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    b0 = arr[0::3].astype(np.uint16)
+    b1 = arr[1::3].astype(np.uint16)
+    b2 = arr[2::3].astype(np.uint16)
+    pixels = np.empty(n_pixels, dtype=np.uint16)
+    pixels[0::2] = b0 | ((b1 & 0x0F) << 8)
+    pixels[1::2] = (b1 >> 4) | (b2 << 4)
+    return pixels.reshape(height, width)
+
+
+# Patterns chosen to pin every bit position, which real image data never does:
+# a photograph occupies a narrow slice of the 12-bit range.
+_BIT_PATTERNS = {
+    "all_zero": bytes(24),
+    "all_ones": b"\xff" * 24,
+    "alternating": bytes([0xAA, 0x55] * 12),
+    "walking_bit": bytes([1 << (i % 8) for i in range(24)]),
+    "max_12bit": bytes([0xFF, 0xFF, 0xFF] * 8),
+    "counter": bytes(range(24)),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BIT_PATTERNS))
+def test_mono12p_matches_byte_plane_reference_on_bit_patterns(name):
+    raw = _BIT_PATTERNS[name]
+    n_px = (len(raw) // 3) * 2
+    expected = _decode_mono12p_byte_planes(raw, n_px, 1)
+    np.testing.assert_array_equal(_decode_mono12p(raw, n_px, 1), expected)
+
+
+def test_mono12p_matches_byte_plane_reference_on_random_frame():
+    """Full-frame random data covers 0..4095 uniformly, unlike any real image."""
+    width, height = 64, 48
+    rng = np.random.default_rng(0)
+    raw = rng.integers(0, 256, size=(width * height * 3) // 2, dtype=np.uint8).tobytes()
+    expected = _decode_mono12p_byte_planes(raw, width, height)
+    got = _decode_mono12p(raw, width, height)
+    np.testing.assert_array_equal(got, expected)
+    assert got.dtype == np.uint16
+    assert got.flags.c_contiguous
+    assert got.min() >= 0 and got.max() <= 4095
+
+
+def test_mono12p_odd_pixel_count_raises():
+    """Two pixels per three bytes, so an odd pixel count is a malformed geometry.
+
+    The pair-wise form would otherwise drop the trailing pixel silently.
+    """
+    with pytest.raises(ValueError, match="even number of pixels"):
+        _decode_mono12p(b"\x00" * 9, 3, 1)
+
+
+def test_mono12p_short_buffer_raises_rather_than_decoding_garbage():
+    with pytest.raises((ValueError, TypeError)):
+        _decode_mono12p(b"\x00" * 5, 4, 1)  # 4 px needs 6 bytes
+
+
+# ---------------------------------------------------------------------------
+# read_set_frame(out=): same pixels, caller's buffer
+# ---------------------------------------------------------------------------
+
+
+def _raw16_set(tmp_path, streams_px, name="outset"):
+    """Build a raw-16-bit container from per-stream lists of (H, W) uint16 arrays."""
+    height, width = streams_px[0][0].shape
+    return _build_set(
+        tmp_path,
+        "raw-16-bit",
+        [[px.astype("<u2").tobytes() for px in entries] for entries in streams_px],
+        width=width,
+        height=height,
+        name=name,
+    )
+
+
+def test_read_set_frame_out_matches_allocating_path(tmp_path):
+    rng = np.random.default_rng(1)
+    px = rng.integers(0, 4096, size=(4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px]])
+
+    allocated = read_set_frame(set_file, entry_no=1, frame_idx=0)
+    buf = np.zeros((2, 4, 6), dtype=np.float32)
+    returned = read_set_frame(set_file, entry_no=1, frame_idx=0, out=buf[0])
+
+    np.testing.assert_array_equal(buf[0], allocated)
+    # `returned is buf[0]` would be wrong: indexing builds a fresh view object each
+    # time. What matters is that the decode landed in the caller's memory rather
+    # than in a copy handed back.
+    assert np.shares_memory(returned, buf), "out= must write into the caller's buffer"
+    np.testing.assert_array_equal(buf[1], 0)  # neighbouring slice untouched
+
+
+def test_read_set_frame_out_rejects_wrong_shape(tmp_path):
+    px = np.zeros((4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px]], name="shape")
+    with pytest.raises(ValueError, match="out has shape"):
+        read_set_frame(
+            set_file, entry_no=1, frame_idx=0, out=np.zeros((5, 6), np.float32)
+        )
+
+
+def test_read_set_frame_out_rejects_wrong_dtype(tmp_path):
+    px = np.zeros((4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px]], name="dtype")
+    with pytest.raises(ValueError, match="out has dtype"):
+        read_set_frame(
+            set_file, entry_no=1, frame_idx=0, out=np.zeros((4, 6), np.float64)
+        )
+
+
+# ---------------------------------------------------------------------------
+# SetInfo cache
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=False)
+def _clean_set_cache():
+    """The cache is module-level, so tests that assert on it must not inherit state."""
+    clear_set_info_cache()
+    yield
+    clear_set_info_cache()
+
+
+def _count_parses(monkeypatch):
+    calls = []
+    real = set_reader._parse_set
+    monkeypatch.setattr(
+        set_reader,
+        "_parse_set",
+        lambda p: (calls.append(str(p)), real(p))[1],
+    )
+    return calls
+
+
+def test_read_set_info_parses_once_per_container(tmp_path, monkeypatch, _clean_set_cache):
+    px = np.zeros((4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px]], name="cached")
+    calls = _count_parses(monkeypatch)
+
+    first = read_set_info(set_file)
+    for _ in range(5):
+        assert read_set_info(set_file) is first, "cache must return the same object"
+
+    assert len(calls) == 1, f"expected one parse, got {len(calls)}"
+
+
+def test_set_info_cache_invalidates_when_container_changes(
+    tmp_path, monkeypatch, _clean_set_cache
+):
+    px = np.zeros((4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px]], name="stale")
+    calls = _count_parses(monkeypatch)
+
+    read_set_info(set_file)
+    # Adding a stream moves the companion directory's mtime, which is why the key
+    # covers the directory and not only the .set file.
+    set_dir = set_file.with_suffix("")
+    os.utime(set_dir, (0, 0))
+
+    read_set_info(set_file)
+    assert len(calls) == 2, "an mtime change must force a re-parse"
+
+
+def test_clear_set_info_cache_forces_reparse(tmp_path, monkeypatch, _clean_set_cache):
+    px = np.zeros((4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px]], name="cleared")
+    calls = _count_parses(monkeypatch)
+
+    read_set_info(set_file)
+    clear_set_info_cache()
+    read_set_info(set_file)
+    assert len(calls) == 2
+
+
+def test_set_info_cache_is_bounded(tmp_path, monkeypatch, _clean_set_cache):
+    """An unbounded cache would pin hundreds of MB per Dask worker on long runs."""
+    px = np.zeros((4, 6), dtype=np.uint16)
+    files = [
+        _raw16_set(tmp_path, [[px]], name=f"bound{i}")
+        for i in range(set_reader._SET_INFO_CACHE_SIZE + 2)
+    ]
+    for f in files:
+        read_set_info(f)
+    assert len(set_reader._set_info_cache) == set_reader._SET_INFO_CACHE_SIZE
+
+
+def test_read_set_pair_without_set_info_uses_the_cache(
+    tmp_path, monkeypatch, _clean_set_cache
+):
+    """The pre-paired PIV path never threads set_info through.
+
+    read_pair -> read_image -> read_lavision_ims_pair -> read_set_pair, with no
+    set_info at any step. If this falls back to _parse_set the container is
+    re-parsed for every pair of a run, which is the cost the cache exists to remove.
+    """
+    px = np.zeros((4, 6), dtype=np.uint16)
+    # Two streams: camera 1's A and B. _raw16_set serialises the arrays itself.
+    set_file = _raw16_set(tmp_path, [[px, px, px], [px, px, px]], name="pp")
+    calls = _count_parses(monkeypatch)
+
+    for im_no in (1, 2, 3):
+        read_set_pair(set_file, camera_no=1, im_no=im_no)
+
+    assert len(calls) == 1, f"expected one parse for three pairs, got {len(calls)}"
+
+
+def test_read_set_frame_without_set_info_uses_the_cache(
+    tmp_path, monkeypatch, _clean_set_cache
+):
+    """The calibration loader calls read_set_frame with no set_info, once per view."""
+    px = np.zeros((4, 6), dtype=np.uint16)
+    set_file = _raw16_set(tmp_path, [[px, px, px]], name="calibviews")
+    calls = _count_parses(monkeypatch)
+
+    for entry in (1, 2, 3):
+        read_set_frame(set_file, entry_no=entry, frame_idx=0)
+
+    assert len(calls) == 1, f"expected one parse for three frames, got {len(calls)}"
+
+
+def test_missing_companion_folder_still_reports_by_name(tmp_path, _clean_set_cache):
+    """The cache must not swallow _parse_set's specific diagnosis with a stat error."""
+    orphan = tmp_path / "orphan.set"
+    orphan.write_text("<xml/>")
+    with pytest.raises(FileNotFoundError, match="no companion data folder"):
+        read_set_info(orphan)
 
 
 if __name__ == "__main__":
