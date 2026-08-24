@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pivtools_core.image_handling.readers import set_reader  # noqa: E402
 from pivtools_core.image_handling.readers.set_reader import (  # noqa: E402
     _IMPLEMENTED_DECODERS,
+    _decode_mono10p,
     _decode_mono12p,
     clear_set_info_cache,
     read_set_frame,
@@ -59,12 +60,15 @@ def _build_set(
     name="synthetic",
     write_decoder_xml=True,
     declared_sizes=None,
+    prefixes=None,
+    shapes=None,
 ):
     """Write a minimal .set container and return the path to the .set file.
 
     Args:
         tmp_path: pytest tmp_path.
-        decoder: encoding id written into Frame{N}-decoder.xml.
+        decoder: encoding id written into {prefix}-decoder.xml (a str, or one
+            per stream).
         streams: list (one per frame stream) of lists of entry payload bytes.
         width: frame width written into the index header.
         height: frame height written into the index header.
@@ -73,6 +77,11 @@ def _build_set(
         declared_sizes: optional per-stream list of per-entry sizes to declare in
             the index, overriding the true payload length. Used to build a
             container whose declared geometry disagrees with its payload.
+        prefixes: optional per-stream file prefix. Default ``Frame{N}``, which
+            the reader finds by glob; anything else needs a StreamSet.xml
+            manifest (see ``_write_manifest``) to be found at all.
+        shapes: optional per-stream (height, width), overriding width/height.
+            Real recordings carry a different shape per camera.
 
     Returns:
         Path: the .set file (its companion directory sits alongside).
@@ -83,9 +92,13 @@ def _build_set(
     set_dir.mkdir()
 
     for stream_idx, entries in enumerate(streams):
+        prefix = f"Frame{stream_idx}" if prefixes is None else prefixes[stream_idx]
+        h, w = (height, width) if shapes is None else shapes[stream_idx]
+        dec = decoder if isinstance(decoder, str) else decoder[stream_idx]
+
         index = bytearray(_TABLE_OFFSET)
-        struct.pack_into("<i", index, 12, width)
-        struct.pack_into("<i", index, 16, height)
+        struct.pack_into("<i", index, 12, w)
+        struct.pack_into("<i", index, 16, h)
 
         offset = 0
         for entry_idx, payload in enumerate(entries):
@@ -95,16 +108,66 @@ def _build_set(
             index += struct.pack(_ENTRY_STRUCT, 0, offset, size)
             offset += len(payload)
 
-        (set_dir / f"Frame{stream_idx}-0.ims").write_bytes(bytes(index))
-        (set_dir / f"Frame{stream_idx}-1.ims").write_bytes(b"".join(entries))
+        (set_dir / f"{prefix}-0.ims").write_bytes(bytes(index))
+        (set_dir / f"{prefix}-1.ims").write_bytes(b"".join(entries))
 
         if write_decoder_xml:
-            (set_dir / f"Frame{stream_idx}-decoder.xml").write_text(
+            (set_dir / f"{prefix}-decoder.xml").write_text(
                 '<?xml version="1.0" encoding="UTF-8"?>\n'
-                f"<FrameDecoder>\n<id>{decoder}</id>\n</FrameDecoder>\n"
+                f"<FrameDecoder>\n<id>{dec}</id>\n</FrameDecoder>\n"
             )
 
     return set_file
+
+
+def _write_manifest(set_dir, frame_readers, scale_readers=(), transformers=()):
+    """Write a StreamSet.xml in DaVis's real shape (``<StreamCfg>`` root).
+
+    Args:
+        set_dir: companion directory.
+        frame_readers: (prefix, stream_index) per image stream.
+        scale_readers: (prefix, stream_index) per .scales file.
+        transformers: (id, prefix, stream_index) per correction.
+    """
+
+    def purpose(frame):
+        return (
+            f'<ContentPurpose IsAssociatedToFrames="true" '
+            f'IsAssociatedToEntireImage="false" IsAssociatedToAllImages="false" '
+            f'StartFrame="{frame}" EndFrame="{frame}"/>'
+        )
+
+    body = "".join(
+        f'<ReaderInfo Name="Images_16bit_8Bit" Type="Core.Set.Recording.FrameReader" '
+        f'FilePrefix="{prefix}" FormatDescription="LaVision image stream format">'
+        f"{purpose(frame)}</ReaderInfo>"
+        for prefix, frame in frame_readers
+    )
+    body += "".join(
+        f'<ReaderInfo Name="ScaleReaderV1" Type="Core.Set.Recording.ScaleReader" '
+        f'FilePrefix="{prefix}" FormatDescription="Frame scale files">'
+        f"{purpose(frame)}</ReaderInfo>"
+        for prefix, frame in scale_readers
+    )
+    body += "".join(
+        f'<Transformer ID="{tid}" Label="L" FilePrefix="{prefix}" '
+        f'MinDaVisVersion="10.2.0">{purpose(frame)}</Transformer>'
+        for tid, prefix, frame in transformers
+    )
+    (set_dir / "StreamSet.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?><StreamCfg><Version>2</Version>'
+        f"{body}</StreamCfg>"
+    )
+
+
+def _write_scales(path, factor, offset=0.0):
+    """Write a {prefix}.scales file with the given intensity scale."""
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?><ScalesList><Scales>'
+        '<ScaleX Factor="1" Offset="0" Unit="pixel" Description=""/>'
+        f'<ScaleI Factor="{factor}" Offset="{offset}" Unit="counts" Description=""/>'
+        "</Scales></ScalesList>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +250,7 @@ def test_pre_paired_pair_reads_both_streams(tmp_path):
 @pytest.mark.parametrize(
     "decoder,label",
     [
-        ("mono-10p", "Mono10p to 16 bit"),
+        ("mono-10pmsb", "Mono10pmsb to 16 bit"),
         ("mono-12packed", "Mono12packed to 16 bit"),
         ("mono-12pmsb", "Mono12pmsb to 16 bit"),
         ("rgb-24", "RGB 24"),
@@ -817,7 +880,7 @@ def test_two_transformers_for_one_stream_raises(tmp_path, _clean_set_cache):
         ],
     )
 
-    with pytest.raises(ValueError, match="two dark-image transformers"):
+    with pytest.raises(ValueError, match="two transformers for frame stream 0"):
         read_set_frame(set_file, entry_no=1, frame_idx=0)
 
 
@@ -829,6 +892,315 @@ def test_non_numeric_start_frame_names_the_problem(tmp_path, _clean_set_cache):
 
     with pytest.raises(ValueError, match="not a frame-stream number"):
         read_set_frame(set_file, entry_no=1, frame_idx=0)
+
+
+# ---------------------------------------------------------------------------
+# mono-10p: four overlapping uint16 windows must equal the plain bit arithmetic
+# ---------------------------------------------------------------------------
+
+
+def _decode_mono10p_reference(raw, width, height):
+    """USB3 Vision Mono10p written out plainly: 4 px in 5 bytes, lsb first.
+
+    This is the formulation verified bit-exact against lvpyio on the real
+    1984x1264 MiniShaker streams (2026-08-24); the production decoder is a
+    memory-access rewrite of it and must agree everywhere.
+    """
+    b = np.frombuffer(raw, np.uint8).reshape(-1, 5).astype(np.uint16)
+    px = np.empty((b.shape[0], 4), np.uint16)
+    px[:, 0] = (b[:, 0] | (b[:, 1] << 8)) & 0x3FF
+    px[:, 1] = ((b[:, 1] >> 2) | (b[:, 2] << 6)) & 0x3FF
+    px[:, 2] = ((b[:, 2] >> 4) | (b[:, 3] << 4)) & 0x3FF
+    px[:, 3] = ((b[:, 3] >> 6) | (b[:, 4] << 2)) & 0x3FF
+    return px.reshape(height, width)
+
+
+def _pack_mono10p(pixels):
+    """Inverse of the reference decoder, for building payloads from pixels."""
+    p = np.asarray(pixels, dtype=np.uint32).ravel()
+    assert p.size % 4 == 0 and p.max() <= 0x3FF
+    q = p.reshape(-1, 4)
+    word = q[:, 0] | (q[:, 1] << 10) | (q[:, 2] << 20) | (q[:, 3].astype(np.uint64) << 30)
+    out = np.empty((q.shape[0], 5), np.uint8)
+    for k in range(5):
+        out[:, k] = (word >> (8 * k)) & 0xFF
+    return out.tobytes()
+
+
+_BIT_PATTERNS_10P = {
+    "all_zero": bytes(40),
+    "all_ones": b"\xff" * 40,
+    "alternating": bytes([0xAA, 0x55] * 20),
+    "walking_bit": bytes([1 << (i % 8) for i in range(40)]),
+    "counter": bytes(range(40)),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BIT_PATTERNS_10P))
+def test_mono10p_matches_reference_on_bit_patterns(name):
+    raw = _BIT_PATTERNS_10P[name]
+    n_px = (len(raw) // 5) * 4
+    expected = _decode_mono10p_reference(raw, n_px, 1)
+    np.testing.assert_array_equal(_decode_mono10p(raw, n_px, 1), expected)
+
+
+def test_mono10p_matches_reference_on_random_frame():
+    width, height = 64, 48
+    rng = np.random.default_rng(1)
+    raw = rng.integers(0, 256, size=(width * height * 10) // 8, dtype=np.uint8).tobytes()
+    got = _decode_mono10p(raw, width, height)
+    np.testing.assert_array_equal(got, _decode_mono10p_reference(raw, width, height))
+    assert got.dtype == np.uint16 and got.flags.c_contiguous
+    assert got.max() <= 1023
+
+
+def test_mono10p_round_trips_known_pixels():
+    pixels = np.arange(0, 1024, dtype=np.uint16).reshape(16, 64)
+    np.testing.assert_array_equal(
+        _decode_mono10p(_pack_mono10p(pixels), 64, 16), pixels
+    )
+
+
+def test_mono10p_pixel_count_not_multiple_of_four_raises():
+    """The generic byte check floor-divides w*h*10/8, so this guard is what
+    keeps a malformed geometry loud."""
+    with pytest.raises(ValueError, match="multiple of four pixels"):
+        _decode_mono10p(b"\x00" * 10, 6, 1)
+
+
+def test_mono10p_is_now_decoded_end_to_end(tmp_path, _clean_set_cache):
+    pixels = np.arange(0, 1024, dtype=np.uint16).reshape(16, 64)
+    set_file = _build_set(
+        tmp_path, "mono-10p", [[_pack_mono10p(pixels)]], width=64, height=16
+    )
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, entry_no=1, frame_idx=0), pixels.astype(np.float32)
+    )
+
+
+# ---------------------------------------------------------------------------
+# StreamSet.xml-driven discovery: the prefix is the manifest's, not "Frame{N}"
+# ---------------------------------------------------------------------------
+#
+# A real five-camera PLIF+STB recording (E:\cavityim7data\set trial, 2026-08-24)
+# names its streams Camera1..Camera5 and its scales CameraScale1..5. The alk235
+# recording names them Frame0..9 / FrameScales0..9 -- through the SAME manifest
+# mechanism. The Frame{N} glob is only the fallback for a manifest that declares
+# no streams.
+
+
+def _camera_layout(tmp_path, name="cams", transformers=(), scale_readers=()):
+    """Two-camera container in Camera{N} layout with different shapes per camera."""
+    cam1 = np.arange(12, dtype=np.uint16).reshape(3, 4) + 100
+    cam2 = np.arange(30, dtype=np.uint16).reshape(5, 6) + 200
+    set_file = _build_set(
+        tmp_path,
+        "raw-16-bit",
+        [[cam1.astype("<u2").tobytes()], [cam2.astype("<u2").tobytes()]],
+        width=0,
+        height=0,
+        name=name,
+        prefixes=["Camera1", "Camera2"],
+        shapes=[(3, 4), (5, 6)],
+    )
+    _write_manifest(
+        tmp_path / name,
+        frame_readers=[("Camera1", 0), ("Camera2", 1)],
+        scale_readers=scale_readers,
+        transformers=transformers,
+    )
+    return set_file, cam1, cam2
+
+
+def test_manifest_discovers_camera_prefixed_streams(tmp_path, _clean_set_cache):
+    set_file, cam1, cam2 = _camera_layout(tmp_path)
+
+    info = read_set_info(set_file)
+    assert [f.frame_idx for f in info.frames] == [0, 1]
+    assert [(f.height, f.width) for f in info.frames] == [(3, 4), (5, 6)]
+    assert info.frames[1].data_path.name == "Camera2-1.ims"
+
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 0), cam1.astype(np.float32)
+    )
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 1), cam2.astype(np.float32)
+    )
+
+
+def test_manifest_order_is_by_start_frame_not_document_order(
+    tmp_path, _clean_set_cache
+):
+    """Cameras are located positionally, so the manifest's StartFrame is the
+    truth even when DaVis lists the nodes in another order."""
+    set_file, cam1, cam2 = _camera_layout(tmp_path)
+    _write_manifest(
+        tmp_path / "cams", frame_readers=[("Camera2", 1), ("Camera1", 0)]
+    )
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 1), cam2.astype(np.float32)
+    )
+
+
+def test_manifest_scale_reader_maps_by_stream_index(tmp_path, _clean_set_cache):
+    """The scales prefix is manifest-named too (CameraScale2 for stream 1)."""
+    set_file, _cam1, cam2 = _camera_layout(
+        tmp_path, scale_readers=[("CameraScale2", 1)]
+    )
+    _write_scales(tmp_path / "cams" / "CameraScale2.scales", factor=0.5, offset=3)
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 1), cam2.astype(np.float32) * 0.5 + 3
+    )
+    # Stream 0 declares no scale: identity is its declared state.
+    assert read_set_info(set_file).frames[0].scale_slope == 1.0
+
+
+def test_manifest_declared_scale_file_missing_raises(tmp_path, _clean_set_cache):
+    set_file, _, _ = _camera_layout(tmp_path, scale_readers=[("CameraScale1", 0)])
+    with pytest.raises(FileNotFoundError, match="CameraScale1.scales"):
+        read_set_info(set_file)
+
+
+def test_manifest_declared_stream_files_missing_raises(tmp_path, _clean_set_cache):
+    set_file, _, _ = _camera_layout(tmp_path)
+    (tmp_path / "cams" / "Camera2-1.ims").unlink()
+    with pytest.raises(FileNotFoundError, match="'Camera2'.*Camera2-1.ims"):
+        read_set_info(set_file)
+
+
+def test_manifest_duplicate_start_frame_raises(tmp_path, _clean_set_cache):
+    set_file, _, _ = _camera_layout(tmp_path)
+    _write_manifest(tmp_path / "cams", frame_readers=[("Camera1", 0), ("Camera2", 0)])
+    with pytest.raises(ValueError, match="two image streams to frame stream 0"):
+        read_set_info(set_file)
+
+
+def test_manifest_sparse_start_frames_name_found_and_expected(
+    tmp_path, _clean_set_cache
+):
+    """DaVis writes a sparse manifest when a camera is disabled mid-session; the
+    message must show the user it is their manifest, not a crash."""
+    set_file, _, _ = _camera_layout(tmp_path)
+    _write_manifest(tmp_path / "cams", frame_readers=[("Camera1", 0), ("Camera2", 3)])
+    with pytest.raises(ValueError, match=r"StartFrames \[0, 3\]; expected contiguous 0\.\.1"):
+        read_set_info(set_file)
+
+
+def test_manifest_non_numeric_start_frame_raises(tmp_path, _clean_set_cache):
+    set_file, _, _ = _camera_layout(tmp_path)
+    _write_manifest(tmp_path / "cams", frame_readers=[("Camera1", "first"), ("Camera2", 1)])
+    with pytest.raises(ValueError, match="not a frame-stream number"):
+        read_set_info(set_file)
+
+
+def test_transformer_only_manifest_still_uses_frame_glob(tmp_path, _clean_set_cache):
+    """A manifest that declares no FrameReader (our fixtures, older exports)
+    falls back to the Frame{N} convention -- the existing dark-image tests
+    depend on this, and so does every recording the glob served before."""
+    raw = np.array([[7, 8, 9]], dtype=np.uint16)
+    set_file = _build_set(tmp_path, "raw-16-bit", [[raw.tobytes()]], width=3, height=1)
+    _write_manifest(tmp_path / "synthetic", frame_readers=[])
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 0), raw.astype(np.float32)
+    )
+
+
+def test_camera_prefix_without_manifest_is_named_not_misdiagnosed(
+    tmp_path, _clean_set_cache
+):
+    """Before 2026-08-24 this recording was reported as .im7 layout because its
+    transformer file is a .im7 -- advice that would have read a correction map
+    as image data."""
+    set_file, _, _ = _camera_layout(tmp_path)
+    (tmp_path / "cams" / "StreamSet.xml").unlink()
+    (tmp_path / "cams" / "Transformer1-scmos-1.im7").write_bytes(b"\x00" * 300)
+    with pytest.raises(FileNotFoundError) as exc:
+        read_set_info(set_file)
+    message = str(exc.value)
+    assert "Camera1" in message and "StreamSet.xml" in message
+    assert "lavision_im7" not in message
+
+
+# ---------------------------------------------------------------------------
+# rotate-180 and per-stream refusal
+# ---------------------------------------------------------------------------
+
+
+def test_rotate_180_is_applied(tmp_path, _clean_set_cache):
+    set_file, cam1, cam2 = _camera_layout(
+        tmp_path, transformers=[("rotate-180", "Transformer2", 1)]
+    )
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 1), cam2[::-1, ::-1].astype(np.float32)
+    )
+    # And into a caller's buffer (the time-resolved PIV path).
+    out = np.empty((5, 6), np.float32)
+    read_set_frame(set_file, 1, 1, out=out)
+    np.testing.assert_array_equal(out, cam2[::-1, ::-1].astype(np.float32))
+    # The other stream is untouched.
+    np.testing.assert_array_equal(read_set_frame(set_file, 1, 0), cam1.astype(np.float32))
+
+
+def test_rotate_180_needs_no_data_file(tmp_path, _clean_set_cache):
+    """It declares a FilePrefix like every transformer but owns no file; the
+    dark-file existence check must not fire for it."""
+    set_file, _, _ = _camera_layout(
+        tmp_path, transformers=[("rotate-180", "Transformer2", 1)]
+    )
+    assert not (tmp_path / "cams" / "Transformer2-dark.im7").exists()
+    read_set_info(set_file)
+
+
+def test_unimplemented_transformer_refuses_only_its_stream(tmp_path, _clean_set_cache):
+    """The real case: a PLIF camera with intensity-correction-1 alongside four
+    STB cameras with rotate-180. The container parses, the four read, the one
+    refuses by name when asked for."""
+    set_file, _cam1, cam2 = _camera_layout(
+        tmp_path,
+        transformers=[
+            ("intensity-correction-1", "Transformer1", 0),
+            ("rotate-180", "Transformer2", 1),
+        ],
+    )
+    info = read_set_info(set_file)
+    assert info.frames[0].transformer.id == "intensity-correction-1"
+
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, 1, 1), cam2[::-1, ::-1].astype(np.float32)
+    )
+    with pytest.raises(ValueError) as exc:
+        read_set_frame(set_file, 1, 0)
+    message = str(exc.value)
+    assert "intensity-correction-1" in message
+    assert "Frame stream 0" in message
+    assert "Other streams of this recording are unaffected" in message
+
+
+def test_two_transformers_of_different_kinds_on_one_stream_raise(
+    tmp_path, _clean_set_cache
+):
+    """Dark subtraction and rotation do not commute; with no sample proving
+    the order, neither is guessed."""
+    set_file, _, _ = _camera_layout(tmp_path)
+    _write_dark_im7(tmp_path / "cams" / "Transformer1-dark.im7", np.zeros((5, 6), np.uint16))
+    _write_manifest(
+        tmp_path / "cams",
+        frame_readers=[("Camera1", 0), ("Camera2", 1)],
+        transformers=[
+            ("dark-image-subtraction", "Transformer1", 1),
+            ("rotate-180", "Transformer2", 1),
+        ],
+    )
+    with pytest.raises(ValueError, match="'dark-image-subtraction' and 'rotate-180'"):
+        read_set_info(set_file)
+
+
+def test_pre_paired_read_refuses_mismatched_stream_shapes(tmp_path, _clean_set_cache):
+    """Pairing two streams of different shape is a wrong camera mapping, named
+    as such rather than surfacing as a numpy broadcast error."""
+    set_file, _, _ = _camera_layout(tmp_path)
+    with pytest.raises(ValueError, match=r"streams 0 \(3x4\) and 1 \(5x6\)"):
+        read_set_pair(set_file, camera_no=1, im_no=1)
 
 
 if __name__ == "__main__":
