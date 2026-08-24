@@ -771,12 +771,13 @@ class Config:
 
         format_str = image_format[0]  # Always tuple now
 
-        # Determine camera_path based on image type (same as load_images)
-        if img_type in ("lavision_set", "lavision_im7", "cine"):
-            camera_path = source_path  # Container formats: no camera subdir
-        else:
-            folder = self.get_camera_folder(camera_num)
-            camera_path = source_path / folder if folder else source_path
+        # Determine camera_path the way load_images._camera_path_from_source
+        # does. get_camera_folder already answers "" for .set, .cine and
+        # multi-camera .im7; single-camera-per-subfolder .im7 gets its folder.
+        # Treating every .im7 as "no subdir" here made shape detection look for
+        # source/B00001.im7 on a Cam1/B00001.im7 layout and fail as not found.
+        folder = self.get_camera_folder(camera_num)
+        camera_path = source_path / folder if folder else source_path
 
         logging.debug(f"Camera path: {camera_path}")
 
@@ -835,13 +836,36 @@ class Config:
                 logging.debug(f"Detected image shape: {shape}")
                 return shape
             elif img_type == "lavision_im7":
-                # For .im7 files, check if single-camera or multi-camera
-                if self.images_use_camera_subfolders:
-                    # Single-camera file: don't pass camera_no
-                    img = read_image(str(file_path))
-                else:
-                    # Multi-camera file: pass camera_no
-                    img = read_image(str(file_path), camera_no=camera_num)
+                # Shape comes from the .im7 header -- every frame in a buffer
+                # shares it, so no pixel decode is needed. Going through the
+                # registered pair reader assumed two frames per camera: on a
+                # time-resolved multi-camera buffer (one frame per camera) any
+                # first camera above size_f/2 asked for a frame past the end
+                # and raised, for a correctly configured recording.
+                from .image_handling.readers.im7_reader import get_im7_frame_shape
+
+                shape = get_im7_frame_shape(file_path)
+                if not self.images_use_camera_subfolders:
+                    # Multi-camera buffer: derive the stride the way every read
+                    # path does, so a camera_count that does not match the file
+                    # fails here by name rather than later.
+                    from .image_handling.load_images import (
+                        _detect_im7_frames_per_camera,
+                    )
+                    from .image_handling.readers.im7_reader import (
+                        get_im7_frame_count,
+                    )
+
+                    fpc = _detect_im7_frames_per_camera(file_path, self.camera_count)
+                    size_f = get_im7_frame_count(file_path)
+                    if (camera_num - 1) * fpc >= size_f:
+                        raise ValueError(
+                            f"Camera {camera_num} at {fpc} frame(s) per camera "
+                            f"requires frame {(camera_num - 1) * fpc}, but "
+                            f"{file_path.name} holds only {size_f}."
+                        )
+                logging.debug(f"Detected image shape: {shape}")
+                return shape
             elif img_type == "cine":
                 # For .cine files, read the first pair (idx=1); the shape is
                 # taken off it below. read_cine_pair always reads exactly two

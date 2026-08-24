@@ -693,6 +693,22 @@ def get_im7_frame_count(filepath: Union[str, Path]) -> int:
     return _parse_header(raw_header).size_f
 
 
+def get_im7_frame_shape(filepath: Union[str, Path]) -> tuple:
+    """Return the (height, width) every frame of an .im7 buffer has.
+
+    Reads only the 256-byte header -- no pixel decode. All frames in one buffer
+    share the header's size_y x size_x, so this is the shape of any camera's
+    frame regardless of which camera or frame is asked for.
+    """
+    filepath = Path(filepath)
+    if not filepath.exists():
+        raise FileNotFoundError(f"File not found: {filepath}")
+    with open(filepath, "rb") as f:
+        raw_header = f.read(HEADER_SIZE)
+    header = _parse_header(raw_header)
+    return (header.size_y, header.size_x)
+
+
 def read_im7_camera(
     filepath: Union[str, Path],
     camera_no: int = 1,

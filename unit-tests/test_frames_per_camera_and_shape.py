@@ -186,6 +186,59 @@ def test_set_shape_detection_pre_paired_uses_stride_two(
     assert cfg.image_shape == (8, 10)
 
 
+def _make_im7_config(tmp_path, camera_count, camera_numbers, subfolders=False):
+    cfg = {
+        "paths": {
+            "source_paths": [str(tmp_path)],
+            "camera_count": camera_count,
+            "camera_numbers": list(camera_numbers),
+            "camera_subfolders": (
+                [f"Cam{n}" for n in range(1, camera_count + 1)] if subfolders else []
+            ),
+        },
+        "images": {
+            "image_format": ["B%05d.im7"],
+            "image_type": "lavision_im7",
+            "frame_stride": 1,
+            "start_index": 1,
+            "use_camera_subfolders": subfolders,
+        },
+    }
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.dump(cfg, default_flow_style=False))
+    return Config(path=str(config_path))
+
+
+def test_im7_shape_detection_time_resolved_high_camera(tmp_path):
+    """5 cameras x 1 frame, first processed camera is 4. The pair-reader route
+    assumed 2 frames per camera and asked for frame 6 of 5 -- a crash on a
+    correctly configured recording. The header has the shape; no decode."""
+    from test_calibration_cli_loader import _write_pack0_im7
+
+    _write_pack0_im7(tmp_path / "B00001.im7", np.zeros((5, 7, 9), np.uint16))
+    cfg = _make_im7_config(tmp_path, camera_count=5, camera_numbers=[4, 5])
+    assert cfg.image_shape == (7, 9)
+
+
+def test_im7_shape_detection_wrong_camera_count_names_it(tmp_path):
+    from test_calibration_cli_loader import _write_pack0_im7
+
+    _write_pack0_im7(tmp_path / "B00001.im7", np.zeros((8, 7, 9), np.uint16))
+    cfg = _make_im7_config(tmp_path, camera_count=2, camera_numbers=[1])
+    with pytest.raises(ValueError, match="not 1 or 2 frames per camera"):
+        cfg.image_shape
+
+
+def test_im7_shape_detection_single_camera_subfolder(tmp_path):
+    from test_calibration_cli_loader import _write_pack0_im7
+
+    # camera_count 2: at 1 the source root is always used (single-camera rule).
+    (tmp_path / "Cam2").mkdir()
+    _write_pack0_im7(tmp_path / "Cam2" / "B00001.im7", np.zeros((2, 7, 9), np.uint16))
+    cfg = _make_im7_config(tmp_path, camera_count=2, camera_numbers=[2], subfolders=True)
+    assert cfg.image_shape == (7, 9)
+
+
 def test_images_shape_key_is_ignored(tmp_path, _clean_set_cache):
     """The dead override is gone: a stored shape never bypasses detection."""
     set_file = _build_raw16_set(tmp_path, [(6, 9)], name="ignored")
