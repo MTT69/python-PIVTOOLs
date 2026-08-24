@@ -157,36 +157,40 @@ def _detect_im7_frames_per_camera(im7_path: Path, num_cameras: int) -> int:
     A multi-camera .im7 stores every camera's frames in one buffer; a camera's
     slice is located positionally as ``(camera-1) * frames_per_camera``. Rather
     than hard-code that stride, read the buffer's frame count (size_f) and divide
-    by the configured camera count. Fails loudly when it doesn't divide evenly —
-    that means the camera count doesn't match the file, not a silent best guess.
+    by the configured camera count. Fails loudly unless the result is exactly 1
+    (single-frame) or 2 (double-frame A/B) — anything else means the camera
+    count doesn't match the file, not a silent best guess.
 
     Args:
         im7_path: Path to the .im7 file (header is read, no pixel decode).
         num_cameras: Configured number of physical cameras in the buffer.
 
     Returns:
-        int: frames per camera (e.g. 2 for double-frame PIV, 1 for single-frame).
+        int: frames per camera (2 for double-frame PIV, 1 for single-frame —
+        the only two layouts a .im7 buffer can hold).
 
     Raises:
-        ValueError: If num_cameras < 1, or size_f is not divisible by num_cameras.
+        ValueError: If num_cameras < 1, or if the derived frames-per-camera is
+            not 1 or 2. Divisibility alone is NOT sufficient: 8 frames with
+            camera_count 2 divides to 4, and locating camera slices at stride 4
+            silently returns another camera's pixels. Only the two physically
+            meaningful strides are accepted.
     """
     from .readers.im7_reader import get_im7_frame_count
 
     size_f = get_im7_frame_count(im7_path)
     if num_cameras < 1:
         raise ValueError(f"Invalid camera count {num_cameras} for {im7_path.name}")
-    if size_f % num_cameras != 0:
-        if size_f % 2 == 0:
-            expected = (
-                f"{size_f // 2} cameras (double-frame) or {size_f} (single-frame)"
-            )
-        else:
-            expected = f"{size_f} cameras (single-frame)"
-        raise ValueError(
-            f"{im7_path.name} has {size_f} frames, not divisible by {num_cameras} cameras. "
-            f"Expected {expected}."
-        )
-    return size_f // num_cameras
+    if size_f % num_cameras == 0 and size_f // num_cameras in (1, 2):
+        return size_f // num_cameras
+    if size_f % 2 == 0:
+        expected = f"{size_f // 2} cameras (double-frame) or {size_f} (single-frame)"
+    else:
+        expected = f"{size_f} cameras (single-frame)"
+    raise ValueError(
+        f"{im7_path.name} holds {size_f} frames, which is not 1 or 2 frames per "
+        f"camera for the configured {num_cameras} cameras. Expected {expected}."
+    )
 
 
 def _detect_set_frames_per_camera(set_path: Path, num_cameras: int) -> int:
@@ -200,37 +204,43 @@ def _detect_set_frames_per_camera(set_path: Path, num_cameras: int) -> int:
     four streams is equally 2 cameras x A/B or 4 cameras x single — so the stride
     is derived from the configured camera count, exactly as
     :func:`_detect_im7_frames_per_camera` does for an .im7 buffer. Fails loudly
-    when it doesn't divide evenly: that means the configured camera count doesn't
-    match the container, not something to guess past.
+    unless the result is exactly 1 or 2: anything else means the configured
+    camera count doesn't match the container, not something to guess past.
 
     Args:
         set_path: Path to the .set file (index/XML parse only, no pixel decode).
         num_cameras: Configured number of physical cameras in the container.
 
     Returns:
-        int: frame streams per camera (2 for pre-paired A/B, 1 for time-resolved).
+        int: frame streams per camera (2 for pre-paired A/B, 1 for
+        time-resolved — the only two layouts a .set recording can hold).
 
     Raises:
-        ValueError: If num_cameras < 1, or the stream count is not divisible by it.
+        ValueError: If num_cameras < 1, or if the derived streams-per-camera is
+            not 1 or 2. Divisibility alone is NOT sufficient: 10 streams with
+            camera_count 2 divides to 5, and locating camera slices at stride 5
+            silently returns another camera's pixels. Only the two physically
+            meaningful strides are accepted.
     """
     from .readers.set_reader import read_set_info
 
     if num_cameras < 1:
         raise ValueError(f"Invalid camera count {num_cameras} for {set_path.name}")
     n_streams = len(read_set_info(set_path).frames)
-    if n_streams % num_cameras != 0:
-        if n_streams % 2 == 0:
-            expected = (
-                f"{n_streams // 2} cameras (pre-paired A/B) or "
-                f"{n_streams} (time-resolved)"
-            )
-        else:
-            expected = f"{n_streams} cameras (time-resolved)"
-        raise ValueError(
-            f"{set_path.name} has {n_streams} frame streams, not divisible by "
-            f"{num_cameras} cameras. Expected {expected}."
+    if n_streams % num_cameras == 0 and n_streams // num_cameras in (1, 2):
+        return n_streams // num_cameras
+    if n_streams % 2 == 0:
+        expected = (
+            f"{n_streams // 2} cameras (pre-paired A/B) or "
+            f"{n_streams} (time-resolved)"
         )
-    return n_streams // num_cameras
+    else:
+        expected = f"{n_streams} cameras (time-resolved)"
+    raise ValueError(
+        f"{set_path.name} holds {n_streams} frame streams, which is not 1 or 2 "
+        f"streams per camera for the configured {num_cameras} cameras. "
+        f"Expected {expected}."
+    )
 
 
 def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:

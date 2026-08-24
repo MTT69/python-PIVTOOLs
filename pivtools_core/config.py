@@ -738,16 +738,16 @@ class Config:
     @property
     def image_shape(self):
         """
-        Return image shape (H, W).
+        Return image shape (H, W), auto-detected from the first image and
+        cached per process.
 
-        If shape is specified in config, use that.
-        Otherwise, auto-detect from first image and cache the result.
+        There is deliberately no config override. A ``shape`` key was read here
+        for years but nothing ever wrote it (the GUI backend stores
+        ``images["image_shape"]`` purely as a /config response cache), and
+        honoring a stored shape that has gone stale would silently break every
+        window-grid computation downstream. Detection reads metadata or one
+        image and is cached, so the override bought nothing.
         """
-        # First check if explicitly set in config
-        if "shape" in self.data.get("images", {}):
-            return tuple(self.data["images"]["shape"])
-
-        # Otherwise, auto-detect and cache
         if self._detected_image_shape is None:
             self._detected_image_shape = self._detect_image_shape()
             logging.info("Auto-detected image shape: %s", self._detected_image_shape)
@@ -756,7 +756,8 @@ class Config:
 
     def _detect_image_shape(self) -> tuple:
         """
-        Detect image shape by reading the first image.
+        Detect image shape by reading the first image (.set uses container
+        index metadata only -- no pixel decode).
 
         Handles all image formats including .set, .im7, .cine, and standard formats.
         For container formats, passes the required camera and image parameters.
@@ -818,8 +819,31 @@ class Config:
         try:
             # Read with appropriate parameters for each format
             if img_type == "lavision_set":
-                # For .set files, must provide camera_no and im_no
-                img = read_image(str(file_path), camera_no=camera_num, im_no=1)
+                # Shape comes from the container's index metadata -- no pixel
+                # decode needed. Going through the registered pair reader here
+                # assumed pre-paired stream math, which crashed on time-resolved
+                # containers (any camera whose B-stream index exceeds the stream
+                # count) and could return a wrong stream's shape on a
+                # mixed-resolution rig (alk235's five cameras span 3472-3536
+                # rows, so "any stream's shape" is not this camera's shape).
+                from .image_handling.load_images import (
+                    _detect_set_frames_per_camera,
+                )
+                from .image_handling.readers.set_reader import read_set_info
+
+                info = read_set_info(file_path)
+                fpc = _detect_set_frames_per_camera(file_path, self.camera_count)
+                stream_idx = (camera_num - 1) * fpc
+                if stream_idx >= len(info.frames):
+                    raise ValueError(
+                        f"Camera {camera_num} at {fpc} stream(s) per camera "
+                        f"requires frame stream {stream_idx}, but "
+                        f"{file_path.name} holds only {len(info.frames)}."
+                    )
+                fi = info.frames[stream_idx]
+                shape = (fi.height, fi.width)
+                logging.debug(f"Detected image shape: {shape}")
+                return shape
             elif img_type == "lavision_im7":
                 # For .im7 files, check if single-camera or multi-camera
                 if self.images_use_camera_subfolders:

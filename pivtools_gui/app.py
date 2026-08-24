@@ -1315,7 +1315,11 @@ def validate_files():
             break
 
     # Store detected image_shape in config data so /config endpoint can return it
-    # (avoids expensive re-read; image_size is [W, H] from validation, store as [H, W])
+    # (avoids expensive re-read; image_size is [W, H] from validation, store as [H, W]).
+    # This key is a RESPONSE CACHE for the frontend only. Config.image_shape never
+    # reads it (auto-detection is the single source of truth) -- do not "fix" the
+    # near-miss key names into agreement, a stale stored shape would silently
+    # break the window grids.
     for cam_key, cam_result in results.items():
         img_size = cam_result.get("image_size")
         if img_size and len(img_size) == 2:

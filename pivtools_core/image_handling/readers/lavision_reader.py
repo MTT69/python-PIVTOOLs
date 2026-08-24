@@ -59,24 +59,18 @@ def read_lavision_ims(
     file_path: str,
     camera_no: Optional[int] = None,
     im_no: Optional[int] = None,
-    time_resolved: bool = False,
-    im_no_b: Optional[int] = None,
 ) -> np.ndarray:
-    """Read LaVision images from a .set file.
+    """Read a pre-paired frame pair from a .set file.
 
-    Pre-paired mode (time_resolved=False):
-        Reads frames[2*(camera_no-1)] and frames[2*(camera_no-1)+1]
-        from entry im_no.
-
-    Time-resolved mode (time_resolved=True):
-        Reads frames[camera_no-1] from entries im_no and im_no_b.
+    Reads frames[2*(camera_no-1)] and frames[2*(camera_no-1)+1] from entry
+    im_no. Time-resolved .set reading is not a pair-reader concern: the
+    production path assembles it from set_reader.read_set_frame (see
+    load_images.read_pair).
 
     Args:
         file_path: Path to the .set file
         camera_no: Camera number (1-based)
         im_no: Image/entry number (1-based)
-        time_resolved: If True, read single frames from two entries
-        im_no_b: Second entry number (1-based, time_resolved only)
 
     Returns:
         np.ndarray: Array of shape (2, H, W) float32
@@ -84,13 +78,7 @@ def read_lavision_ims(
     if camera_no is None or im_no is None:
         raise ValueError("camera_no and im_no must be provided for .set files")
 
-    return read_set_pair(
-        file_path,
-        camera_no=camera_no,
-        im_no=im_no,
-        time_resolved=time_resolved,
-        im_no_b=im_no_b,
-    )
+    return read_set_pair(file_path, camera_no=camera_no, im_no=im_no)
 
 
 def read_lavision_ims_pair(file_path: str, **kwargs) -> np.ndarray:

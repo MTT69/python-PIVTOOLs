@@ -174,7 +174,8 @@ def test_detect_frames_per_camera_indivisible_raises(tmp_path):
     p = tmp_path / "B00001.im7"
     _write_pack20_im7(p, np.zeros((6, 4, 5), dtype=np.float32))
     with pytest.raises(
-        ValueError, match=r"6 frames, not divisible by 4 cameras.*Expected 3 cameras"
+        ValueError,
+        match=r"holds 6 frames.*not 1 or 2 frames per camera.*Expected 3 cameras",
     ):
         _detect_im7_frames_per_camera(p, 4)
 

@@ -17,8 +17,9 @@ reader does not implement raises rather than being skipped, because skipping one
 returns different pixels from DaVis with nothing to indicate it happened.
 
 Also supports:
-- Pre-paired mode: entry[im_no].frames[2*(cam-1) + 0/1]
-- Time-resolved mode: two entries, one frame each
+- Pre-paired pairs: entry[im_no].frames[2*(cam-1) + 0/1] via read_set_pair
+- Single frames: read_set_frame; time-resolved pairing is assembled by callers
+  from two single-frame reads at different entries (load_images.read_pair)
 - Per-camera frame extraction with seek-based skipping
 
 Reference: LaVision DaVis 10.x .set recording format
@@ -822,20 +823,15 @@ def read_set_pair(
     set_path: Union[str, Path],
     camera_no: int,
     im_no: int,
-    time_resolved: bool = False,
-    im_no_b: Optional[int] = None,
     set_info: Optional[SetInfo] = None,
 ) -> np.ndarray:
-    """Read a frame pair from a .set container.
+    """Read a pre-paired frame pair from a .set container.
 
-    Matches the API of lavision_reader.read_lavision_ims().
-
-    Pre-paired mode (time_resolved=False):
-        Reads frames[2*(camera_no-1)] and frames[2*(camera_no-1)+1]
-        from entry im_no.
-
-    Time-resolved mode (time_resolved=True):
-        Reads frames[camera_no-1] from entries im_no and im_no_b.
+    Reads frames[2*(camera_no-1)] and frames[2*(camera_no-1)+1] from entry
+    im_no. Time-resolved pairing does NOT live here: it is two single-frame
+    reads at different entries, and the production path builds it from
+    read_set_frame (see load_images.read_pair), which derives the camera
+    stride instead of assuming it.
 
     Parameters
     ----------
@@ -845,10 +841,6 @@ def read_set_pair(
         Camera number (1-based).
     im_no : int
         Image/entry number (1-based).
-    time_resolved : bool
-        If True, use time-resolved pairing.
-    im_no_b : int, optional
-        Second entry number for time-resolved mode (1-based).
     set_info : SetInfo, optional
         Pre-parsed container metadata. If provided, skips re-parsing the
         index/XML files. Use read_set_info() once, then pass it here for
@@ -864,62 +856,32 @@ def read_set_pair(
     # the whole container on every single frame.
     info = set_info if set_info is not None else read_set_info(set_path)
 
-    if time_resolved:
-        if im_no_b is None:
-            raise ValueError("im_no_b required for time_resolved mode")
+    frame_idx_a = 2 * (camera_no - 1)
+    frame_idx_b = frame_idx_a + 1
 
-        frame_idx = camera_no - 1
-        if frame_idx >= len(info.frames):
-            raise ValueError(
-                f"Camera {camera_no} requires frame index {frame_idx}, "
-                f"but only {len(info.frames)} frames exist"
-            )
+    if frame_idx_b >= len(info.frames):
+        raise ValueError(
+            f"Camera {camera_no} requires frames [{frame_idx_a}, "
+            f"{frame_idx_b}], but only {len(info.frames)} frames exist"
+        )
 
-        fi = info.frames[frame_idx]
-        entry_a = im_no - 1
-        entry_b = im_no_b - 1
+    fi_a = info.frames[frame_idx_a]
+    fi_b = info.frames[frame_idx_b]
+    entry_idx = im_no - 1
 
-        result = np.empty((2, fi.height, fi.width), dtype=np.float32)
+    result = np.empty((2, fi_a.height, fi_a.width), dtype=np.float32)
 
-        img_a = _read_single_image(fi, entry_a)
-        result[0] = img_a
-        del img_a
+    img_a = _read_single_image(fi_a, entry_idx)
+    result[0] = img_a
+    del img_a
 
-        img_b = _read_single_image(fi, entry_b)
-        result[1] = img_b
-        del img_b
+    img_b = _read_single_image(fi_b, entry_idx)
+    result[1] = img_b
+    del img_b
 
-        # Apply per-frame-stream intensity scale
-        _apply_scale_inplace(result[0], fi)
-        _apply_scale_inplace(result[1], fi)
-
-    else:
-        frame_idx_a = 2 * (camera_no - 1)
-        frame_idx_b = frame_idx_a + 1
-
-        if frame_idx_b >= len(info.frames):
-            raise ValueError(
-                f"Camera {camera_no} requires frames [{frame_idx_a}, "
-                f"{frame_idx_b}], but only {len(info.frames)} frames exist"
-            )
-
-        fi_a = info.frames[frame_idx_a]
-        fi_b = info.frames[frame_idx_b]
-        entry_idx = im_no - 1
-
-        result = np.empty((2, fi_a.height, fi_a.width), dtype=np.float32)
-
-        img_a = _read_single_image(fi_a, entry_idx)
-        result[0] = img_a
-        del img_a
-
-        img_b = _read_single_image(fi_b, entry_idx)
-        result[1] = img_b
-        del img_b
-
-        # Apply per-frame-stream intensity scale (A and B may differ)
-        _apply_scale_inplace(result[0], fi_a)
-        _apply_scale_inplace(result[1], fi_b)
+    # Apply per-frame-stream intensity scale (A and B may differ)
+    _apply_scale_inplace(result[0], fi_a)
+    _apply_scale_inplace(result[1], fi_b)
 
     return result
 
