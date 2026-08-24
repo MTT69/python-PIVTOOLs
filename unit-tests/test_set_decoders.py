@@ -732,5 +732,104 @@ def test_missing_companion_folder_still_reports_by_name(tmp_path, _clean_set_cac
         read_set_info(orphan)
 
 
+# ---------------------------------------------------------------------------
+# Dark-image cache: keyed on mtime, not path alone
+# ---------------------------------------------------------------------------
+
+
+def _dark_set(tmp_path, name, value=100):
+    """A one-stream raw-16-bit container of constant `value`, with a dark declared."""
+    px = np.full((2, 3), value, dtype=np.uint16)
+    set_file = _build_set(
+        tmp_path,
+        "raw-16-bit",
+        [[px.astype("<u2").tobytes()]],
+        width=3,
+        height=2,
+        name=name,
+    )
+    return set_file, tmp_path / name
+
+
+def test_dark_image_cache_revalidates_on_mtime(tmp_path, _clean_set_cache):
+    """Re-exporting a recording must not keep subtracting the previous dark image.
+
+    The Flask process outlives many recordings. Keying this cache on the path alone
+    left the old dark resident, and every later read then subtracted the wrong
+    pixels with nothing on screen or in the log to say so.
+    """
+    set_file, set_dir = _dark_set(tmp_path, "darkcache", value=100)
+    dark_path = set_dir / "Transformer0-dark.im7"
+    _write_dark_im7(dark_path, np.full((2, 3), 10, np.uint16))
+    _write_stream_set(set_dir, [("dark-image-subtraction", "Transformer0", 0)])
+
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, entry_no=1, frame_idx=0),
+        np.full((2, 3), 90, np.float32),
+    )
+
+    # Same path, different dark image. utime explicitly: two writes in the same
+    # clock tick would otherwise share an mtime on Windows and make this flaky.
+    _write_dark_im7(dark_path, np.full((2, 3), 40, np.uint16))
+    os.utime(dark_path, (1, 1))
+    clear_set_info_cache()
+
+    np.testing.assert_array_equal(
+        read_set_frame(set_file, entry_no=1, frame_idx=0),
+        np.full((2, 3), 60, np.float32),
+    )
+
+
+def test_dark_image_is_cached_within_one_mtime(tmp_path, _clean_set_cache):
+    """Control: an unchanged dark is read once, not once per frame.
+
+    A dark image is the full sensor (37 MB at 5312x3528), so adding the mtime to
+    the key must not cost the cache that makes it affordable.
+    """
+    set_file, set_dir = _dark_set(tmp_path, "darkhit", value=100)
+    _write_dark_im7(set_dir / "Transformer0-dark.im7", np.full((2, 3), 10, np.uint16))
+    _write_stream_set(set_dir, [("dark-image-subtraction", "Transformer0", 0)])
+
+    set_reader._load_dark_cached.cache_clear()
+    for _ in range(3):
+        read_set_frame(set_file, entry_no=1, frame_idx=0)
+
+    info = set_reader._load_dark_cached.cache_info()
+    assert info.misses == 1, f"expected one dark read, got {info.misses}"
+    assert info.hits == 2, f"expected two cache hits, got {info.hits}"
+
+
+# ---------------------------------------------------------------------------
+# StreamSet.xml: ambiguity is refused, never resolved by ordering
+# ---------------------------------------------------------------------------
+
+
+def test_two_transformers_for_one_stream_raises(tmp_path, _clean_set_cache):
+    """Last-one-wins would pick a dark image by XML order and subtract it silently."""
+    set_file, set_dir = _dark_set(tmp_path, "dupe")
+    for prefix in ("Transformer0", "Transformer1"):
+        _write_dark_im7(set_dir / f"{prefix}-dark.im7", np.zeros((2, 3), np.uint16))
+    _write_stream_set(
+        set_dir,
+        [
+            ("dark-image-subtraction", "Transformer0", 0),
+            ("dark-image-subtraction", "Transformer1", 0),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="two dark-image transformers"):
+        read_set_frame(set_file, entry_no=1, frame_idx=0)
+
+
+def test_non_numeric_start_frame_names_the_problem(tmp_path, _clean_set_cache):
+    """A bare "invalid literal for int()" would be the only unnamed failure here."""
+    set_file, set_dir = _dark_set(tmp_path, "badframe")
+    _write_dark_im7(set_dir / "Transformer0-dark.im7", np.zeros((2, 3), np.uint16))
+    _write_stream_set(set_dir, [("dark-image-subtraction", "Transformer0", "first")])
+
+    with pytest.raises(ValueError, match="not a frame-stream number"):
+        read_set_frame(set_file, entry_no=1, frame_idx=0)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

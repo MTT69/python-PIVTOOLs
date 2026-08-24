@@ -154,6 +154,30 @@ def test_supported_encoding_still_validates(client):
     assert result["first_frame"] == "exists"
 
 
+def test_preview_render_failure_is_not_reported_as_a_missing_frame(client, monkeypatch):
+    """A container that decodes but whose PNG preview fails is still readable.
+
+    ``_image_to_base64`` runs inside a try/except that only warns, so a render
+    failure leaves ``first_image_preview`` None while ``read_error`` stays None too.
+    The container branch used to decide "does frame 1 exist" from the preview, which
+    turned a cosmetic render failure into this module's original bug: "First frame
+    not found" for a file that is present and decodes. ``image_size`` is taken
+    straight from the decoded frame, so that is what the decision keys on.
+    """
+    import pivtools_core.image_handling.path_utils as path_utils
+
+    def _render_fails(*_args, **_kwargs):
+        raise RuntimeError("preview render failed")
+
+    monkeypatch.setattr(path_utils, "_image_to_base64", _render_fails)
+
+    result = _camera_result(client, "raw-16-bit")
+
+    assert result["first_frame"] == "exists"
+    assert result["status"] == "ok", result["error"]
+    assert "First frame not found" not in (result["error"] or "")
+
+
 def test_wrong_davis_node_reaches_the_user(client, tmp_path, monkeypatch):
     """A .set pointing at a DaVis calibration node names the .im7 reader.
 

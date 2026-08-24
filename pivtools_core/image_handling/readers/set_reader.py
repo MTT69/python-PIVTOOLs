@@ -228,6 +228,17 @@ def _parse_stream_transformers(set_dir: Path) -> dict:
                 f"exactly one frame stream."
             )
 
+        try:
+            stream_index = int(start)
+        except ValueError as exc:
+            # Every other failure in this function names what is wrong and what to
+            # do; a bare "invalid literal for int()" would be the odd one out.
+            raise ValueError(
+                f"Transformer '{prefix}' in {stream_xml} gives StartFrame "
+                f"'{start}', which is not a frame-stream number. The stream this "
+                f"correction belongs to cannot be determined."
+            ) from exc
+
         dark_path = set_dir / f"{prefix}-dark.im7"
         if not dark_path.exists():
             raise FileNotFoundError(
@@ -236,26 +247,38 @@ def _parse_stream_transformers(set_dir: Path) -> dict:
                 f"Copy the complete companion folder -- the correction is part of "
                 f"the recording, not an optional extra."
             )
-        darks[int(start)] = dark_path
+
+        if stream_index in darks:
+            # Last-one-wins would pick a dark image by XML ordering and subtract it
+            # without a word. Which of the two DaVis actually applies is not
+            # knowable from the file, so neither is guessed.
+            raise ValueError(
+                f"{stream_xml.name} declares two dark-image transformers for frame "
+                f"stream {stream_index}: {darks[stream_index].name} and "
+                f"{dark_path.name}. This reader applies exactly one dark image per "
+                f"stream and will not choose between them."
+            )
+
+        darks[stream_index] = dark_path
 
     return darks
 
 
-@lru_cache(maxsize=4)
 def _load_dark(dark_path_str: str) -> np.ndarray:
-    """Load and cache one Transformer{N}-dark.im7 as uint16.
+    """Load one Transformer{N}-dark.im7 as uint16, cached and revalidated by mtime.
 
     A dark image is the full sensor -- 37 MB as uint16 for a 5312x3528 camera --
     so the cache trades memory for not re-reading it on every pair, which would
     otherwise dominate read time. The cache is per process, which is what Dask
     workers need.
 
-    Size is a compromise, not a fit. Four entries hold two cameras' worth of
-    pre-paired streams (~150 MB). A rig with three or more dark-bearing cameras
-    whose worker interleaves them will evict and re-read; the alk235 recordings
-    have ten such streams, so sizing to hold them all would cost ~370 MB per
-    worker. Raise this only with a measurement showing the re-reads matter more
-    than the resident memory.
+    The mtime is part of the cache key, not decoration. Keying on the path alone
+    means re-exporting a recording leaves the previous dark image cached in a
+    long-lived process -- the Flask GUI outlives many recordings -- and every
+    subsequent read then subtracts the wrong pixels with nothing to indicate it.
+    Silently wrong data is the one outcome this reader refuses everywhere else, so
+    it pays one stat per frame to make it impossible. A superseded entry ages out
+    of the LRU normally; it is never served again.
 
     Args:
         dark_path_str: Path to the dark .im7, as a string so it is hashable.
@@ -266,6 +289,26 @@ def _load_dark(dark_path_str: str) -> np.ndarray:
     Raises:
         ValueError: If the dark image is not 2D, or is not integer counts in
             [0, 65535] -- the range the uint16 subtraction below assumes.
+        OSError: If the dark image is missing. _parse_stream_transformers already
+            checks existence at parse time, so reaching this means it was deleted
+            mid-session.
+    """
+    return _load_dark_cached(dark_path_str, Path(dark_path_str).stat().st_mtime)
+
+
+@lru_cache(maxsize=4)
+def _load_dark_cached(dark_path_str: str, mtime: float) -> np.ndarray:
+    """Cached body of :func:`_load_dark`. Call that, not this.
+
+    ``mtime`` is a cache key only and is deliberately unused in the body: a changed
+    dark image produces a different key and therefore a fresh read.
+
+    Size is a compromise, not a fit. Four entries hold two cameras' worth of
+    pre-paired streams (~150 MB). A rig with three or more dark-bearing cameras
+    whose worker interleaves them will evict and re-read; the alk235 recordings
+    have ten such streams, so sizing to hold them all would cost ~370 MB per
+    worker. Raise this only with a measurement showing the re-reads matter more
+    than the resident memory.
     """
     from .im7_reader import read_im7
 

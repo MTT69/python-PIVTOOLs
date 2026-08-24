@@ -1034,7 +1034,15 @@ def validate_files():
                 # than it actually holds, and the user may request more than exist.
                 # So verify the LAST requested pair reads too (same as the standard
                 # branch below), rather than assuming all frames exist.
-                if validation.get("first_image_preview"):
+                # Gate on image_size, not first_image_preview. The preview is
+                # rendered inside a try/except that only warns (path_utils
+                # `_image_to_base64`), so a container that reads perfectly but whose
+                # PNG render fails leaves the preview None while read_error stays
+                # None too. Keying on the preview then reports "First frame not
+                # found" for a file that is present and decodes -- precisely the
+                # misreport this branch exists to remove. image_size is computed
+                # straight from the decoded frame's shape, so it means "frame 1 read".
+                if validation.get("image_size") is not None:
                     first_frame_status = "exists"
                     try:
                         read_pair(num_pairs, camera_path, camera_num, cfg)
@@ -1142,7 +1150,22 @@ def validate_files():
                 elif file_found_but_unreadable:
                     # The reason already names the file (e.g. the .im7 frame-count
                     # mismatch), so surface it directly without a verbose prefix.
-                    error_msg = container_read_error or str(first_frame_error)
+                    #
+                    # `is not None`, matching the guard above rather than truthiness:
+                    # an exception whose str() is empty -- a bare MemoryError while
+                    # allocating a 5312x3528 frame buffer is the realistic case --
+                    # satisfies the guard, then falls through `or` to str(None) and
+                    # shows the user the literal word "None" with the folder listing
+                    # suppressed, so they get nothing at all.
+                    reason = (
+                        container_read_error
+                        if container_read_error is not None
+                        else str(first_frame_error)
+                    )
+                    error_msg = reason.strip() or (
+                        "The file was found but could not be read, and the reader "
+                        "gave no reason."
+                    )
                 elif image_type == "lavision_set":
                     error_msg = f"First frame not found. Container file: {format_str}"
                 elif image_type == "cine":
