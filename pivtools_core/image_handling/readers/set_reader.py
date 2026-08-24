@@ -46,6 +46,8 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
+from .out_buffer import check_out
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -1115,6 +1117,7 @@ def read_set_pair(
     camera_no: int,
     im_no: int,
     set_info: Optional[SetInfo] = None,
+    out: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Read a pre-paired frame pair from a .set container.
 
@@ -1136,11 +1139,16 @@ def read_set_pair(
         Pre-parsed container metadata. If provided, skips re-parsing the
         index/XML files. Use read_set_info() once, then pass it here for
         every pair in a batch.
+    out : np.ndarray, optional
+        Destination (2, H, W) float32 C-contiguous buffer, typically one slot of
+        a batch. Validated by :func:`readers.out_buffer.check_out`, written in
+        place and returned; undefined after an exception.
 
     Returns
     -------
     np.ndarray
         Array of shape (2, H, W), dtype float32, with intensity scale applied.
+        ``out`` itself when given.
     """
     # read_set_info, not _parse_set: callers that do not thread set_info through
     # (the pre-paired PIV path and the calibration loader) would otherwise re-parse
@@ -1171,7 +1179,14 @@ def read_set_pair(
             f"one camera's A/B streams -- check camera_count against the recording."
         )
 
-    result = np.empty((2, fi_a.height, fi_a.width), dtype=np.float32)
+    if out is None:
+        result = np.empty((2, fi_a.height, fi_a.width), dtype=np.float32)
+    else:
+        result = check_out(
+            out,
+            (2, fi_a.height, fi_a.width),
+            f"read_set_pair camera {camera_no} of {Path(set_path).name}",
+        )
 
     img_a = _read_single_image(fi_a, entry_idx)
     result[0] = img_a

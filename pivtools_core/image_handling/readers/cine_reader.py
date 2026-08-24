@@ -15,10 +15,13 @@ Frame indexing:
 """
 
 import logging
+import os
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
+
+from .out_buffer import check_out
 
 # Metadata cache: {file_path: (metadata, last_modified_time)}
 _metadata_cache = {}
@@ -55,7 +58,9 @@ def _get_cached_metadata(file_path: str):
     return metadata
 
 
-def read_cine_pair(file_path: str, idx: int = 1) -> np.ndarray:
+def read_cine_pair(
+    file_path: str, idx: int = 1, out: Optional[np.ndarray] = None
+) -> np.ndarray:
     """Read frame pair from .cine file.
 
     This function is called by load_images.read_pair() with the frame_a index
@@ -73,6 +78,10 @@ def read_cine_pair(file_path: str, idx: int = 1) -> np.ndarray:
     Args:
         file_path: Path to .cine file
         idx: Frame A index (1-based, from pairing logic)
+        out: Optional (2, H, W) float32 C-contiguous destination; the two
+            decoded frames are widened straight into it (one copy instead of
+            the stack-then-astype two), and it is returned. Undefined after an
+            exception.
 
     Returns:
         np.ndarray: Shape (2, H, W) with frame A and B as float32
@@ -116,7 +125,21 @@ def read_cine_pair(file_path: str, idx: int = 1) -> np.ndarray:
     frame_a = cr.read_image(metadata, file_path, internal_a)
     frame_b = cr.read_image(metadata, file_path, internal_b)
 
-    return np.stack([frame_a, frame_b], axis=0).astype(np.float32)
+    if out is None:
+        return np.stack([frame_a, frame_b], axis=0).astype(np.float32)
+
+    # Explicit shape checks before np.copyto: it broadcasts silently, and a
+    # (1, H, W) or (H, 1) frame would fill the slot with plausible wrong pixels.
+    what = f"read_cine_pair frame {idx} of {os.path.basename(file_path)}"
+    if frame_b.shape != frame_a.shape:
+        raise ValueError(
+            f"{what}: frames A and B decoded to different shapes "
+            f"{frame_a.shape} and {frame_b.shape}."
+        )
+    check_out(out, (2,) + tuple(frame_a.shape), what)
+    np.copyto(out[0], frame_a)
+    np.copyto(out[1], frame_b)
+    return out
 
 
 def read_cine_single(file_path: str, idx: int = 1) -> np.ndarray:

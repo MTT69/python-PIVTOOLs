@@ -241,9 +241,8 @@ def test_intensity_scale_applies_to_every_camera_not_just_the_last(tmp_path):
 
 def test_rle_pack1_scale_applies_to_every_camera(tmp_path):
     """Same exposure in the RLE reader: it decoded up to the last requested
-    frame and read attributes from there. It must decode through the buffer."""
-    from pivtools_core.image_handling.readers.im7_reader import _read_im7_internal
-
+    frame and read attributes from there. It must decode through the buffer.
+    Exercised through read_im7_camera, the production path, for both cameras."""
     # 4 frames (2 cameras x A/B) of constant 100: per frame the 3-byte preamble,
     # one int8 delta of +100 from the implicit 0, then zero deltas (see the
     # pack_type 1 section below for the token kinds).
@@ -257,10 +256,46 @@ def test_rle_pack1_scale_applies_to_every_camera(tmp_path):
     p.write_bytes(
         header + body + struct.pack("<ii", 4, len(payload)) + payload + b"\x00" * 4
     )
-    _hdr, px, scales = _read_im7_internal(p, frame_range=(0, 2))
-    if scales.slope != 0.5:
-        raise AssertionError(f"scale read from the wrong place: {scales}")
-    assert px.shape[0] == 2
+    for cam in (1, 2):
+        got = read_im7_camera(p, cam, 2)
+        assert got.shape == (2, 4, 5)
+        np.testing.assert_array_equal(got, np.full((2, 4, 5), 57, np.float32))
+
+
+def test_read_im7_whole_file_path_still_returns_every_frame(tmp_path):
+    """read_im7 (the dark-image loader's path) has no frame range and returns
+    the full (F, H, W) buffer with its scale applied."""
+    from pivtools_core.image_handling.readers.im7_reader import read_im7
+
+    frames = np.full((8, 4, 5), 100, dtype=np.uint16)
+    p = tmp_path / "B00001.im7"
+    _write_pack0_im7(p, frames, scale=(0.5, 7))
+    _header, px, scales = read_im7(p)
+    assert np.asarray(px).shape == (8, 4, 5)
+    assert scales.slope == 0.5 and scales.offset == 7
+
+
+def test_im7_out_buffer_contract(tmp_path):
+    """out= is validated against the clamped frame count, written and returned."""
+    frames = np.arange(8 * 4 * 5, dtype=np.uint16).reshape(8, 4, 5)
+    p = tmp_path / "B00001.im7"
+    _write_pack0_im7(p, frames)
+
+    buf = np.empty((2, 4, 5), np.float32)
+    assert read_im7_camera(p, 3, 2, out=buf) is buf
+    np.testing.assert_array_equal(buf, frames[4:6].astype(np.float32))
+
+    with pytest.raises(ValueError, match="out has dtype float64"):
+        read_im7_camera(p, 3, 2, out=np.empty((2, 4, 5)))
+    with pytest.raises(ValueError, match=r"out has shape \(2, 5, 4\)"):
+        read_im7_camera(p, 3, 2, out=np.empty((2, 5, 4), np.float32))
+
+    single = tmp_path / "B00002.im7"
+    _write_pack0_im7(single, frames[:1])
+    with pytest.raises(ValueError, match="cannot fill a pair slot"):
+        read_im7_camera(single, 1, 2, out=np.empty((2, 4, 5), np.float32))
+    one = np.empty((1, 4, 5), np.float32)
+    assert read_im7_camera(single, 1, 2, out=one) is one
 
 
 def test_im7_frames_clamps_to_available(tmp_path):

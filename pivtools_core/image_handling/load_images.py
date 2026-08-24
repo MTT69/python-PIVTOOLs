@@ -14,6 +14,7 @@ from ..window_utils import compute_window_centers, compute_window_centers_single
 
 # Import all readers to register them
 from .readers import get_reader
+from .readers.out_buffer import check_out
 
 # Module-level thread pool for concurrent A+B reading.
 # Two threads is optimal: one per file in a pair.
@@ -243,7 +244,30 @@ def _detect_set_frames_per_camera(set_path: Path, num_cameras: int) -> int:
     )
 
 
-def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.ndarray:
+def _written(ret: np.ndarray, out: Optional[np.ndarray]) -> np.ndarray:
+    """Enforce the ``out=`` contract at a return site.
+
+    A reader handed a destination must return that very object. A reader that
+    accepted the keyword and allocated anyway (a ``**kwargs`` wrapper that drops
+    it, say) would leave the caller's batch slot as uninitialised memory with no
+    error -- silent wrong pixels -- so identity is checked, not shared memory.
+    """
+    if out is not None and ret is not out:
+        raise RuntimeError(
+            "reader did not write into the supplied out buffer; the batch slot "
+            "would hold uninitialised memory."
+        )
+    return ret
+
+
+def read_pair(
+    idx: int,
+    camera_path: Path,
+    camera: int,
+    config: Config,
+    *,
+    out: Optional[np.ndarray] = None,
+) -> np.ndarray:
     """Read a pair of images (A and B frames).
 
     This function handles four main file organization strategies:
@@ -280,9 +304,18 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
         camera_path (Path): Path to camera directory or source directory (for containers)
         camera (int): Camera number (1-based)
         config (Config): Configuration object
+        out (np.ndarray, optional): Destination (2, H, W) float32 C-contiguous
+            buffer, typically one slot of a batch. Every branch validates it,
+            decodes straight into it and returns it, so the batch loop pays no
+            per-pair copy (measured 47 ms of a 298 ms .set pair, 31 ms of an
+            .im7 pair). Undefined after an exception. Readers are called
+            directly rather than through the extension registry when ``out``
+            is in play: a ``**kwargs`` wrapper that dropped it would leave the
+            slot as uninitialised memory with no error.
 
     Returns:
-        np.ndarray: Stacked array of shape (2, H, W) containing frame A and B
+        np.ndarray: Stacked array of shape (2, H, W) containing frame A and B;
+        ``out`` itself when given.
     """
     format_str = config.image_format[0]
     image_type = config.image_type
@@ -315,7 +348,14 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             # both again in np.stack -- two full-frame passes where one does. Same
             # pattern read_set_pair already uses for the pre-paired case.
             fi = info.frames[stream_idx]
-            result = np.empty((2, fi.height, fi.width), dtype=np.float32)
+            if out is None:
+                result = np.empty((2, fi.height, fi.width), dtype=np.float32)
+            else:
+                result = check_out(
+                    out,
+                    (2, fi.height, fi.width),
+                    f"read_pair camera {camera} of {Path(set_file_path).name}",
+                )
             read_set_frame(
                 set_file_path, frame_a_idx, stream_idx, set_info=info, out=result[0]
             )
@@ -325,62 +365,66 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
             return result
         else:
             # Pre-paired: A+B frames in one entry - read directly
-            return read_image(str(set_file_path), camera_no=camera, im_no=idx)
+            from .readers.set_reader import read_set_pair
+
+            return _written(
+                read_set_pair(set_file_path, camera_no=camera, im_no=idx, out=out), out
+            )
 
     elif image_type == "lavision_im7":
+        from .readers.im7_reader import read_im7_camera
+
         # Check if single-camera or multi-camera IM7 files
         single_camera_im7 = config.images_use_camera_subfolders
 
         if config.time_resolved:
-            # Time-resolved: each file has one frame, read two files
+            # Time-resolved: each file has one frame, read two files. A single-
+            # camera file is "camera 1 of 1 at one frame per camera"; a multi-
+            # camera file's stride is detected (it resolves to 1 for time-
+            # resolved buffers). Each frame lands in its own slot of the pair.
             im7_file_a = camera_path / (format_str % frame_a_idx)
             im7_file_b = camera_path / (format_str % frame_b_idx)
-
             if single_camera_im7:
-                # Single-camera file: don't pass camera_no
-                frame_a = read_image(str(im7_file_a), frames=1, frames_per_camera=1)
-                frame_b = read_image(str(im7_file_b), frames=1, frames_per_camera=1)
-                # Handle shape (returns (frames, H, W) for single frame)
-                if frame_a.ndim == 3:
-                    frame_a = frame_a[0]
-                if frame_b.ndim == 3:
-                    frame_b = frame_b[0]
+                cam_no, fpc = 1, 1
             else:
-                # Multi-camera file: detect frames/camera from the buffer (time-
-                # resolved files hold one frame per camera, so this resolves to 1),
-                # then extract this camera's slice.
+                cam_no = camera
                 fpc = _detect_im7_frames_per_camera(im7_file_a, config.camera_count)
-                frame_a = read_single_frame(
-                    im7_file_a, camera, frame_a_idx, image_type, frames_per_camera=fpc
-                )
-                frame_b = read_single_frame(
-                    im7_file_b, camera, frame_b_idx, image_type, frames_per_camera=fpc
-                )
-            return np.stack([frame_a, frame_b], axis=0)
+
+            if out is None:
+                frame_a = read_im7_camera(im7_file_a, cam_no, fpc, frames=1)[0]
+                frame_b = read_im7_camera(im7_file_b, cam_no, fpc, frames=1)[0]
+                return np.stack([frame_a, frame_b], axis=0)
+
+            slot_a, slot_b = out[0:1], out[1:2]
+            _written(read_im7_camera(im7_file_a, cam_no, fpc, frames=1, out=slot_a), slot_a)
+            _written(read_im7_camera(im7_file_b, cam_no, fpc, frames=1, out=slot_b), slot_b)
+            return out
         else:
             # Non-time-resolved: each file contains A+B pair
             im7_file_path = camera_path / (format_str % frame_a_idx)
             if single_camera_im7:
-                # Single-camera file: don't pass camera_no
-                return read_image(str(im7_file_path))
+                # Single-camera file: camera 1 of 1, two frames per camera. (A
+                # single-frame file clamps to one frame, which a (2, H, W) out
+                # refuses by name -- it is not a PIV pair.)
+                return _written(read_im7_camera(im7_file_path, 1, 2, out=out), out)
             else:
                 # Multi-camera file: detect frames/camera from the buffer
                 # (pre-paired double-frame resolves to 2), then return this
                 # camera's A+B slice.
                 fpc = _detect_im7_frames_per_camera(im7_file_path, config.camera_count)
-                return read_image(
-                    str(im7_file_path),
-                    camera_no=camera,
-                    frames=fpc,
-                    frames_per_camera=fpc,
+                return _written(
+                    read_im7_camera(im7_file_path, camera, fpc, frames=fpc, out=out),
+                    out,
                 )
 
     elif image_type == "cine":
+        from .readers.cine_reader import read_cine_pair
+
         # .cine: one video file per camera, frames extracted by index
         cine_filename = format_str % camera
         cine_path = camera_path / cine_filename
         # For pairs, read 2 consecutive frames starting at frame_a_idx
-        return read_image(str(cine_path), idx=frame_a_idx)
+        return _written(read_cine_pair(str(cine_path), idx=frame_a_idx, out=out), out)
 
     else:
         # Standard formats: separate files per frame
@@ -405,21 +449,42 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
         )
         frame_a = future_a.result()
         frame_b = future_b.result()
-        return np.stack([frame_a, frame_b], axis=0)
+        if out is None:
+            return np.stack([frame_a, frame_b], axis=0)
+
+        # Explicit shape checks before np.copyto: it broadcasts silently.
+        what = f"read_pair camera {camera} pair {idx} ({file_a.name}, {file_b.name})"
+        if frame_b.shape != frame_a.shape:
+            raise ValueError(
+                f"{what}: frames A and B have different shapes {frame_a.shape} "
+                f"and {frame_b.shape}."
+            )
+        check_out(out, (2,) + tuple(frame_a.shape), what)
+        np.copyto(out[0], frame_a)
+        np.copyto(out[1], frame_b)
+        return out
 
 
 def _read_batch(
     start_idx: int, count: int, camera_path: Path, camera: int, config: Config
 ) -> np.ndarray:
-    """Read a batch of image pairs from disk into one pre-allocated array.
+    """Read a batch of image pairs from disk straight into one pre-allocated array.
 
-    Calls read_pair() for each pair in the batch and copies each into its slot
-    of a single (count, 2, H, W) buffer. Collecting the pairs in a list and
-    np.stack-ing them held the whole batch twice (list plus stacked copy): at
-    batch_size 10 on 5312x3528 frames that is a 3 GB peak per Dask task, against
-    ~1.6 GB (batch plus one pair) here. The batch is np.empty, not np.zeros --
-    every slot is overwritten immediately, so a zero fill would be a wasted full
-    pass over the buffer.
+    One (count, 2, H, W) float32 buffer, sized from ``config.image_shape`` --
+    the same shape ``load_images`` promises Dask -- and every pair is decoded
+    into its slot through ``read_pair(out=)``. There is no per-pair temporary
+    and no copy: earlier versions collected pairs in a list and np.stack-ed them
+    (batch held twice, 3 GB peak per task at batch_size 10 on 5312x3528), then
+    copied each pair into a pre-allocated batch (one full-frame pass per pair,
+    47 ms of a 298 ms .set pair). The batch is np.empty, not np.zeros -- every
+    slot is overwritten, so a zero fill would be a wasted pass.
+
+    A pair whose real shape disagrees with ``config.image_shape`` fails here by
+    name. It used to produce a batch whose shape disagreed with what Dask was
+    told and what the PIV window grid assumes -- wrong vectors, not a working
+    run. ``config.image_shape`` is detected once per process from the first
+    configured camera, and cameras can differ in shape (alk235's five span
+    3472-3536 rows), which is why production runs one camera per subprocess.
 
     Args:
         start_idx: 1-based index of the first pair in the batch
@@ -431,14 +496,20 @@ def _read_batch(
     Returns:
         np.ndarray of shape (count, 2, H, W)
     """
-    first = read_pair(start_idx, camera_path, camera, config)
-    batch = np.empty((count,) + first.shape, dtype=first.dtype)
-    np.copyto(batch[0], first)
-    del first
-    for i in range(1, count):
-        pair = read_pair(start_idx + i, camera_path, camera, config)
-        np.copyto(batch[i], pair)
-        del pair
+    height, width = config.image_shape
+    batch = np.empty((count, 2, height, width), dtype=np.float32)
+    for i in range(count):
+        try:
+            read_pair(start_idx + i, camera_path, camera, config, out=batch[i])
+        except ValueError as exc:
+            if "out has" not in str(exc):
+                raise
+            raise ValueError(
+                f"Pair {start_idx + i} of camera {camera} does not fit the batch "
+                f"buffer: config.image_shape {(height, width)} was detected from "
+                f"camera {config.camera_numbers[0]}, and this camera's frames "
+                f"differ. {exc}"
+            ) from exc
     return batch
 
 

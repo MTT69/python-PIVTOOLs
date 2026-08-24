@@ -21,6 +21,8 @@ from typing import Optional, Union
 
 import numpy as np
 
+from .out_buffer import check_out
+
 # buffer_format values
 BUFFER_FORMAT_FLOAT = -3
 BUFFER_FORMAT_WORD = -4
@@ -139,12 +141,13 @@ def _frame_byte_size(header: IM7Header) -> int:
     return header.size_x * header.size_y * header.size_z * _pixel_dtype(header).itemsize
 
 
-def _read_pixels_uncompressed(
-    f,
-    header: IM7Header,
-    frame_range: tuple = None,
-) -> np.ndarray:
-    """Read uncompressed pixel data (pack_type=0).
+def _read_pixels_uncompressed(f, header: IM7Header) -> np.ndarray:
+    """Read every frame of uncompressed pixel data (pack_type=0).
+
+    Whole buffer only: the attribute records follow the last frame, so a reader
+    that stopped early would hand ``_read_attributes`` pixel bytes. Per-camera
+    partial reads live in :func:`read_im7_camera`, which seeks to the end of
+    the buffer before reading attributes.
 
     Parameters
     ----------
@@ -152,29 +155,17 @@ def _read_pixels_uncompressed(
         File positioned at the start of pixel data (after 256-byte header).
     header : IM7Header
         Parsed header.
-    frame_range : tuple of (start, end), optional
-        If given, only read frames [start:end) (0-based). Seeks past the rest.
 
     Returns
     -------
     np.ndarray
-        Pixel array with shape (n_frames, sizeZ, sizeY, sizeX).
+        Pixel array with shape (size_f, sizeZ, sizeY, sizeX).
     """
     dt = _pixel_dtype(header)
     frame_pixels = header.size_x * header.size_y * header.size_z
     frame_bytes = frame_pixels * dt.itemsize
 
-    if frame_range is None:
-        start, end = 0, header.size_f
-    else:
-        start, end = frame_range
-
-    # Seek past leading frames
-    if start > 0:
-        f.seek(start * frame_bytes, 1)  # relative seek
-
-    # Read only the frames we need
-    n_frames = end - start
+    n_frames = header.size_f
     n_bytes = n_frames * frame_bytes
     raw = f.read(n_bytes)
     if len(raw) != n_bytes:
@@ -300,15 +291,12 @@ def _skip_zlib_rows(f, n_rows: int) -> None:
         f.seek(comp_size, 1)
 
 
-def _read_pixels_zlib(
-    f,
-    header: IM7Header,
-    frame_range: tuple = None,
-) -> np.ndarray:
-    """Read zlib-compressed pixel data (pack_type=2).
+def _read_pixels_zlib(f, header: IM7Header) -> np.ndarray:
+    """Read every frame of zlib-compressed pixel data (pack_type=2).
 
     Format: for each row, a 4-byte little-endian int32 giving the compressed
-    size, followed by that many bytes of zlib-compressed row data.
+    size, followed by that many bytes of zlib-compressed row data. Whole buffer
+    only, for the reason given on :func:`_read_pixels_uncompressed`.
 
     Parameters
     ----------
@@ -316,29 +304,17 @@ def _read_pixels_zlib(
         File positioned at the start of pixel data.
     header : IM7Header
         Parsed header.
-    frame_range : tuple of (start, end), optional
-        If given, only decompress frames [start:end). Skips the rest.
 
     Returns
     -------
     np.ndarray
-        Pixel array with shape (n_frames, sizeZ, sizeY, sizeX).
+        Pixel array with shape (size_f, sizeZ, sizeY, sizeX).
     """
     dt = _pixel_dtype(header)
     row_bytes = header.size_x * dt.itemsize
     rows_per_frame = header.size_z * header.size_y
 
-    if frame_range is None:
-        start, end = 0, header.size_f
-    else:
-        start, end = frame_range
-
-    # Skip leading frames
-    if start > 0:
-        _skip_zlib_rows(f, start * rows_per_frame)
-
-    # Read only the frames we need
-    n_frames = end - start
+    n_frames = header.size_f
     rows = []
     for _ in range(n_frames * rows_per_frame):
         comp_size_raw = f.read(4)
@@ -359,12 +335,8 @@ def _read_pixels_zlib(
     return pixels.reshape(n_frames, header.size_z, header.size_y, header.size_x)
 
 
-def _read_pixels_fixed12(
-    f,
-    header: IM7Header,
-    frame_range: tuple = None,
-) -> np.ndarray:
-    """Read fixed 12-bit packed pixel data (pack_type=3).
+def _read_pixels_fixed12(f, header: IM7Header) -> np.ndarray:
+    """Read every frame of fixed 12-bit packed pixel data (pack_type=3).
 
     Packing: 4 pixels are stored in 3 uint16 words (48 bits = 4 x 12 bits).
     From 3 words (w0, w1, w2):
@@ -373,37 +345,23 @@ def _read_pixels_fixed12(
         pixel[2] = ((w1 >> 8) & 0x00FF) | ((w2 & 0x000F) << 8)
         pixel[3] = (w2 >> 4) & 0x0FFF
 
+    Whole buffer only, for the reason given on :func:`_read_pixels_uncompressed`.
+
     Parameters
     ----------
     f : file object
         File positioned at the start of pixel data.
     header : IM7Header
         Parsed header.
-    frame_range : tuple of (start, end), optional
-        If given, only unpack frames [start:end). Seeks past the rest.
 
     Returns
     -------
     np.ndarray
-        Pixel array with shape (n_frames, sizeZ, sizeY, sizeX), dtype uint16.
+        Pixel array with shape (size_f, sizeZ, sizeY, sizeX), dtype uint16.
     """
     frame_pixels = header.size_x * header.size_y * header.size_z
 
-    if frame_range is None:
-        start, end = 0, header.size_f
-    else:
-        start, end = frame_range
-
-    # 12-bit: 4 pixels → 3 uint16 words (6 bytes)
-    frame_groups = (frame_pixels + 3) // 4
-    frame_packed_bytes = frame_groups * 3 * 2  # 3 words * 2 bytes each
-
-    # Seek past leading frames
-    if start > 0:
-        f.seek(start * frame_packed_bytes, 1)
-
-    # Read only the frames we need
-    n_frames = end - start
+    n_frames = header.size_f
     n_pixels = frame_pixels * n_frames
     n_groups = (n_pixels + 3) // 4
     n_words = n_groups * 3
@@ -591,18 +549,18 @@ def _parse_scale_record(data: bytes, scales: IM7Scales) -> None:
     scales.description = values_str
 
 
-def _read_im7_internal(
-    filepath: Path,
-    frame_range: tuple = None,
-) -> tuple:
-    """Core reader. Optionally reads only frames [start:end).
+def _read_im7_internal(filepath: Path) -> tuple:
+    """Core whole-file reader: every frame, then the attribute records.
+
+    There is deliberately no frame range here. The attributes follow the last
+    frame of the buffer, and for pack types 0, 2 and 3 a partial read would
+    leave the pointer inside pixel data; per-camera partial reads are
+    :func:`read_im7_camera`'s job, which repositions before reading them.
 
     Parameters
     ----------
     filepath : Path
         Path to the .im7 file (must exist).
-    frame_range : tuple of (start, end), optional
-        0-based frame range. None reads all frames.
 
     Returns
     -------
@@ -617,15 +575,15 @@ def _read_im7_internal(
         header = _parse_header(raw_header)
 
         if header.pack_type == PACK_UNCOMPRESSED:
-            pixels = _read_pixels_uncompressed(f, header, frame_range)
+            pixels = _read_pixels_uncompressed(f, header)
         elif header.pack_type == PACK_RLE:
-            pixels = _read_pixels_packtype1(f, header, frame_range)
+            pixels = _read_pixels_packtype1(f, header)
         elif header.pack_type == PACK_ZLIB:
-            pixels = _read_pixels_zlib(f, header, frame_range)
+            pixels = _read_pixels_zlib(f, header)
         elif header.pack_type == PACK_FIXED_12BIT:
-            pixels = _read_pixels_fixed12(f, header, frame_range)
+            pixels = _read_pixels_fixed12(f, header)
         elif header.pack_type == PACK_LZ4:
-            pixels = _read_pixels_lz4(f, header, frame_range)
+            pixels = _read_pixels_lz4(f, header)
         else:
             raise ValueError(
                 f"Unsupported pack_type: {header.pack_type}. "
@@ -714,6 +672,7 @@ def read_im7_camera(
     camera_no: int = 1,
     frames_per_camera: int = 2,
     frames: Optional[int] = None,
+    out: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Read a specific camera's frames from a multi-camera .im7 file.
 
@@ -737,12 +696,19 @@ def read_im7_camera(
         4872x3248 pack-0 calibration file). Pack types 20 (LZ4, one block for
         the whole buffer) and 1 (RLE, sequential) decode every frame up to the
         last one wanted by format design, so there it narrows only the result.
+    out : np.ndarray, optional
+        Destination (n, H, W) float32 C-contiguous buffer, where n is the number
+        of frames this call will actually produce AFTER clamping to the file. A
+        single-frame file asked for two frames with a (2, H, W) buffer raises by
+        name rather than leaving out[1] as uninitialised memory. Written in
+        place and returned; undefined after an exception.
 
     Returns
     -------
     np.ndarray
         Pixel data with shape (n, H, W), dtype float32, with intensity scale
         applied, where n = min(frames or frames_per_camera, frames available).
+        ``out`` itself when given.
     """
     filepath = Path(filepath)
     if not filepath.exists():
@@ -772,9 +738,23 @@ def read_im7_camera(
     end = min(end, header.size_f)
     n_frames = end - start
 
-    # Pre-allocate float32 output, read one frame at a time so only one
-    # raw-dtype frame is in memory at any point (freed before the next).
-    result = np.empty((n_frames, header.size_y, header.size_x), dtype=np.float32)
+    # Pre-allocate float32 output (or take the caller's), read one frame at a
+    # time so only one raw-dtype frame is in memory at any point.
+    if out is None:
+        result = np.empty((n_frames, header.size_y, header.size_x), dtype=np.float32)
+    else:
+        if out.ndim == 3 and out.shape[0] != n_frames:
+            raise ValueError(
+                f"{filepath.name} holds {n_frames} frame(s) for camera {camera_no} "
+                f"(asked for {wanted}), but a {tuple(out.shape)} buffer was "
+                f"supplied. A single-frame file cannot fill a pair slot; nothing "
+                f"is written into the missing frames."
+            )
+        result = check_out(
+            out,
+            (n_frames, header.size_y, header.size_x),
+            f"read_im7_camera camera {camera_no} of {filepath.name}",
+        )
 
     with open(filepath, "rb") as f:
         f.seek(HEADER_SIZE)  # skip header
