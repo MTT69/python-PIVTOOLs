@@ -411,9 +411,15 @@ def read_pair(idx: int, camera_path: Path, camera: int, config: Config) -> np.nd
 def _read_batch(
     start_idx: int, count: int, camera_path: Path, camera: int, config: Config
 ) -> np.ndarray:
-    """Read a batch of image pairs from disk.
+    """Read a batch of image pairs from disk into one pre-allocated array.
 
-    Calls read_pair() for each pair in the batch and stacks the results.
+    Calls read_pair() for each pair in the batch and copies each into its slot
+    of a single (count, 2, H, W) buffer. Collecting the pairs in a list and
+    np.stack-ing them held the whole batch twice (list plus stacked copy): at
+    batch_size 10 on 5312x3528 frames that is a 3 GB peak per Dask task, against
+    ~1.6 GB (batch plus one pair) here. The batch is np.empty, not np.zeros --
+    every slot is overwritten immediately, so a zero fill would be a wasted full
+    pass over the buffer.
 
     Args:
         start_idx: 1-based index of the first pair in the batch
@@ -425,10 +431,15 @@ def _read_batch(
     Returns:
         np.ndarray of shape (count, 2, H, W)
     """
-    pairs = [
-        read_pair(start_idx + i, camera_path, camera, config) for i in range(count)
-    ]
-    return np.stack(pairs, axis=0)
+    first = read_pair(start_idx, camera_path, camera, config)
+    batch = np.empty((count,) + first.shape, dtype=first.dtype)
+    np.copyto(batch[0], first)
+    del first
+    for i in range(1, count):
+        pair = read_pair(start_idx + i, camera_path, camera, config)
+        np.copyto(batch[i], pair)
+        del pair
+    return batch
 
 
 def load_images(
@@ -504,7 +515,7 @@ def load_images(
                 dask_batch = da.from_delayed(
                     delayed_batch,
                     shape=(actual_size, 2, *config.image_shape),
-                    dtype=config.image_dtype,
+                    dtype=np.float32,  # every reader returns float32; see _read_batch
                 )
                 dask_batches.append(dask_batch)
 
@@ -535,7 +546,7 @@ def load_images(
         dask_batch = da.from_delayed(
             delayed_batch,
             shape=(actual_size, 2, *config.image_shape),
-            dtype=config.image_dtype,
+            dtype=np.float32,  # every reader returns float32; see _read_batch
         )
         dask_batches.append(dask_batch)
 

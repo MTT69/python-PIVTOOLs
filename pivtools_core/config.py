@@ -49,16 +49,6 @@ class Config:
             self.data = yaml.safe_load(f)
         if self.data is None:
             self.data = {}
-            # Use the first base_path, first camera, and image_format for dtype detection
-            # source_path = Path(self.source_paths[0])
-            # camera_folder = f"Cam{self.camera_numbers[0]}"
-            # # Use correct image format for dtype detection
-            # if self.time_resolved:
-            #     file_path = source_path / camera_folder / (self.image_format % 1)
-            # else:
-            #     file_path = source_path / camera_folder / (self.image_format[0] % 1)
-            # img = tifffile.imread(file_path) # bye bye
-            # self.image_dtype = img.dtype
 
         # Cache for auto-detected image shape
         self._detected_image_shape = None
@@ -2542,14 +2532,6 @@ class Config:
         logging.debug(
             "Logging initialized. Level: %s, File: %s", self.log_level, self.log_file
         )
-
-    @property
-    def image_dtype(self):
-        """Return image data type as numpy dtype."""
-        import numpy as np
-
-        dtype_str = self.data.get("images", {}).get("dtype", "float32")
-        return np.dtype(dtype_str)
 
     # --- Masking properties ---
     @property

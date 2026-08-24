@@ -590,7 +590,6 @@ images:
   - B%05d_B.tif
   vector_format:
   - '%05d.mat'
-  dtype: float32
   start_index: 1
   frame_stride: 0
   pair_stride: 1
