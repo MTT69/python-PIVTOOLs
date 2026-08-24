@@ -200,11 +200,13 @@ def read_calibration_frame_at(
         zero_based_indexing=zero_based_indexing,
     )
 
-    # For IM7 with camera subfolders, each file is single-camera - don't pass camera_no.
+    # For IM7 with camera subfolders, each file is single-camera - don't pass
+    # camera_no. One frame is wanted, so ask for one: the reader defaults would
+    # decode the whole A/B pair and discard B.
     if image_type == "lavision_im7" and use_camera_subfolders:
         from .load_images import read_image
 
-        img = read_image(str(file_path))
+        img = read_image(str(file_path), frames=1, frames_per_camera=1)
         if img.ndim == 3:
             img = img[0]  # Extract single frame
         return _normalize_to_uint8(img) if normalize_uint8 else img

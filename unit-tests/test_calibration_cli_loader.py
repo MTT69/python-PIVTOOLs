@@ -136,6 +136,145 @@ def test_pack20_truncated_file_fails_visibly(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# frames= reads only the frames asked for. A single-frame calibration read used
+# to decode the whole camera slice (both A and B) and slice the result, so every
+# multi-camera .im7 calibration read decoded twice the data it needed.
+# ---------------------------------------------------------------------------
+
+from pivtools_core.image_handling.readers import im7_reader
+from pivtools_core.image_handling.readers.lavision_reader import read_lavision_im7
+
+
+def _write_pack0_im7(path, frames: np.ndarray, scale=None) -> None:
+    """Minimal pack_type-0 (uncompressed WORD) .im7 with size_f frames.
+
+    ``scale=(slope, offset)`` appends an IEH_SCALE_I record (type 4) before the
+    IEH_END terminator, the way DaVis stores the intensity scale.
+    """
+    n_f, h, w = frames.shape
+    header = struct.pack("<hhhh iiii hhh", 0, 0, -4, 0, w, h, 1, n_f, 0, 1, 0)
+    header += b"\x00" * (HEADER_SIZE - len(header))
+    with open(path, "wb") as f:
+        f.write(header)
+        f.write(frames.astype("<u2").tobytes())
+        if scale is not None:
+            payload = f"{scale[0]} {scale[1]}\x00counts\x00".encode()
+            f.write(struct.pack("<ii", 4, len(payload)) + payload)
+        f.write(b"\x00\x00\x00\x00")  # IEH_END terminates the record list
+
+
+class _CountingOpen:
+    """Stand-in for builtins.open that totals the bytes every read() returns."""
+
+    def __init__(self):
+        self.bytes_read = 0
+
+    def __call__(self, *args, **kwargs):
+        counter = self
+        real = open(*args, **kwargs)
+
+        class _Wrapped:
+            def read(self, n=-1):
+                data = real.read(n)
+                counter.bytes_read += len(data)
+                return data
+
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return real.__exit__(*exc)
+
+        return _Wrapped()
+
+
+def test_im7_frames_one_reads_half_the_bytes_and_the_same_pixels(tmp_path, monkeypatch):
+    rng = np.random.default_rng(3)
+    frames = rng.integers(0, 4096, size=(8, 6, 10), dtype=np.uint16)  # 4 cams x A/B
+    p = tmp_path / "B00001.im7"
+    _write_pack0_im7(p, frames)
+    frame_bytes = 6 * 10 * 2
+
+    full = read_im7_camera(p, camera_no=3, frames_per_camera=2)
+    np.testing.assert_array_equal(full, frames[4:6].astype(np.float32))
+
+    counter = _CountingOpen()
+    monkeypatch.setattr(im7_reader, "open", counter, raising=False)
+    one = read_im7_camera(p, camera_no=3, frames_per_camera=2, frames=1)
+
+    assert one.shape == (1, 6, 10)
+    np.testing.assert_array_equal(one[0], full[0])
+    # Header once (the second open only seeks) + exactly one frame + the 4-byte
+    # IEH_END terminator read from where the attributes actually are.
+    assert counter.bytes_read == HEADER_SIZE + frame_bytes + 4
+
+
+def test_read_lavision_im7_passes_frames_down(tmp_path, monkeypatch):
+    frames = np.arange(2 * 4 * 5, dtype=np.uint16).reshape(2, 4, 5)
+    p = tmp_path / "B00001.im7"
+    _write_pack0_im7(p, frames)
+
+    counter = _CountingOpen()
+    monkeypatch.setattr(im7_reader, "open", counter, raising=False)
+    got = read_lavision_im7(str(p), camera_no=1, frames=1, frames_per_camera=2)
+
+    assert got.shape == (1, 4, 5)
+    np.testing.assert_array_equal(got[0], frames[0].astype(np.float32))
+    assert counter.bytes_read == HEADER_SIZE + 4 * 5 * 2 + 4
+
+
+def test_intensity_scale_applies_to_every_camera_not_just_the_last(tmp_path):
+    """The attribute records follow the whole buffer. Reading camera 1 of a
+    4-camera file used to parse its scale out of camera 2's pixel bytes, so a
+    recording with a non-identity ScaleI scaled the last camera only."""
+    frames = np.full((8, 4, 5), 100, dtype=np.uint16)
+    p = tmp_path / "B00001.im7"
+    _write_pack0_im7(p, frames, scale=(0.5, 7))
+    for cam in (1, 2, 3, 4):
+        for kwargs in ({}, {"frames": 1}):
+            got = read_im7_camera(p, cam, 2, **kwargs)
+            np.testing.assert_array_equal(got, np.full(got.shape, 57, np.float32))
+
+
+def test_rle_pack1_scale_applies_to_every_camera(tmp_path):
+    """Same exposure in the RLE reader: it decoded up to the last requested
+    frame and read attributes from there. It must decode through the buffer."""
+    from pivtools_core.image_handling.readers.im7_reader import _read_im7_internal
+
+    # 4 frames (2 cameras x A/B) of constant 100: per frame the 3-byte preamble,
+    # one int8 delta of +100 from the implicit 0, then zero deltas (see the
+    # pack_type 1 section below for the token kinds).
+    npix = 4 * 5
+    frame_stream = bytes([0x01, 0x01, 0x00, 0x64]) + b"\x00" * (npix - 1)
+    body = frame_stream * 4
+    header = struct.pack("<hhhh iiii hhh", 0, 1, -4, 0, 5, 4, 1, 4, 0, 1, 0)
+    header += b"\x00" * (HEADER_SIZE - len(header))
+    payload = b"0.5 7\x00counts\x00"
+    p = tmp_path / "B00001.im7"
+    p.write_bytes(
+        header + body + struct.pack("<ii", 4, len(payload)) + payload + b"\x00" * 4
+    )
+    _hdr, px, scales = _read_im7_internal(p, frame_range=(0, 2))
+    if scales.slope != 0.5:
+        raise AssertionError(f"scale read from the wrong place: {scales}")
+    assert px.shape[0] == 2
+
+
+def test_im7_frames_clamps_to_available(tmp_path):
+    """A single-frame calibration file (size_f=1) asked for frames=1 of a
+    2-per-camera layout still returns its one frame, as before."""
+    frames = np.ones((1, 4, 5), dtype=np.uint16)
+    p = tmp_path / "B00001.im7"
+    _write_pack0_im7(p, frames)
+    assert read_im7_camera(p, 1, 2, frames=1).shape == (1, 4, 5)
+    with pytest.raises(ValueError, match="frames must be >= 1"):
+        read_im7_camera(p, 1, 2, frames=0)
+
+
+# ---------------------------------------------------------------------------
 # frames-per-camera detection — a multi-camera .im7 buffer's per-camera stride
 # is derived from size_f / camera_count, not hard-coded. Guards the fix for the
 # bug where a 6-frame, 3-camera (A/B) buffer mislabelled as 4 cameras failed

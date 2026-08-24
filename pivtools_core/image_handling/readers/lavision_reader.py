@@ -24,17 +24,19 @@ def read_lavision_im7(
     Args:
         file_path: Path to the .im7 file
         camera_no: Camera number (1-based indexing)
-        frames: Number of frames to return from this camera
+        frames: Number of frames to read from this camera. Passed down to the
+            decoder so a single-frame request reads one frame from disk; it
+            used to read the whole camera slice and slice the result, which
+            made every multi-camera calibration read decode twice the data.
         frames_per_camera: Frames stored per camera in the file (2=PIV, 1=single)
 
     Returns:
-        np.ndarray: Array of shape (frames, H, W) float32
+        np.ndarray: Array of shape (min(frames, frames_per_camera), H, W) float32
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Image file not found: {file_path}")
 
-    data = read_im7_camera(file_path, camera_no, frames_per_camera)
-    return data[:frames]
+    return read_im7_camera(file_path, camera_no, frames_per_camera, frames=frames)
 
 
 def read_lavision_pair(file_path: str, camera_no: int = 1, **kwargs) -> np.ndarray:
