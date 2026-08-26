@@ -1020,8 +1020,12 @@ def detect_joint_command(args) -> "Path | List[Path]":
         raise SystemExit(
             "detect-joint: set the rig cameras in the joint wizard (or --cameras 1,2,3)"
         )
-    datum_camera = int(gg.get("datum_camera", cameras[0]))
-    datum_view = int(gg.get("datum_view", 0))
+    # Same precedence as the GUI route (_joint_setup): flag > sidecar coords > default.
+    # getattr: the command is also driven by hand-built namespaces (tests) without the flags.
+    arg_dc = getattr(args, "datum_camera", None)
+    arg_dv = getattr(args, "datum_view", None)
+    datum_camera = int(arg_dc if arg_dc is not None else gg.get("datum_camera", cameras[0]))
+    datum_view = int(arg_dv if arg_dv is not None else gg.get("datum_view", 0))
     model_type = args.model_type or scfg.get(board, {}).get("model_type", "pinhole")
     if model_type not in ("pinhole", "polynomial"):
         raise SystemExit(
@@ -1654,6 +1658,19 @@ def register_calibration_subparsers(subparsers):
     )
     p.add_argument("--image-format", default=None)
     p.add_argument("--n-views", type=int, default=None)
+    p.add_argument(
+        "--datum-camera",
+        type=int,
+        default=None,
+        help="camera whose datum view pins the world frame (else the joint wizard's "
+        "saved choice, else the first camera)",
+    )
+    p.add_argument(
+        "--datum-view",
+        type=int,
+        default=None,
+        help="0-based view whose board plane is world z=0 (else the saved choice, else 0)",
+    )
     p.add_argument(
         "--dt",
         type=float,

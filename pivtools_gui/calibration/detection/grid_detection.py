@@ -723,86 +723,59 @@ def _filter_connected_dict(
     return filtered
 
 
-def _refine_grid_outliers(
+# Residual (px) against a pinhole homography of the grid above which a dot is DROPPED. A
+# homography cannot tell a droplet-displaced dot from lens distortion at the board edge, so
+# nothing is ever infilled from it (until 2026-08-26 outliers were overwritten with the
+# homography's prediction, which erased the distortion signal the intrinsics fit needs).
+# Dropping is honest: a missing dot costs coverage, a fabricated one biases k1/k2 silently.
+_OUTLIER_RESIDUAL_PX = 2.0
+
+
+def _drop_grid_outliers(
     grid: Dict[Tuple[int, int], int],
     centers,
-    residual_threshold: float = 2.0,
-) -> Tuple[Dict[Tuple[int, int], int], list, list]:
-    """Detect dots displaced by water droplets and infill from the grid model.
+    residual_threshold: float = _OUTLIER_RESIDUAL_PX,
+) -> Tuple[Dict[Tuple[int, int], int], list]:
+    """Drop dots that disagree with a homography of the grid by more than the threshold.
 
-    Fits a homography from grid indices to pixel positions, identifies dots
-    whose residual exceeds the threshold (contaminated by droplets or
-    occlusions), removes them, re-fits from clean dots only, then infills
-    the outlier positions with model predictions.
+    Fits a RANSAC homography grid-index -> pixel over all dots and removes every dot whose
+    residual exceeds ``residual_threshold``. Returns the pruned grid and the dropped keys.
+    Logs at WARNING with the count: on a wide, distorted lens the dropped dots are the
+    board's periphery, and a calibration missing them under-samples the distortion -- the
+    user should see that, not a silently thinner board.
 
     Parameters
     ----------
     grid : dict
         Mapping ``{(col, row): center_index}``.
     centers : list or ndarray
-        Center positions (will be extended with infilled points).
+        Center positions (unchanged; kept for call-site symmetry with the rescue step).
     residual_threshold : float
-        Max reprojection residual in pixels to accept a dot (default 2.0).
-
-    Returns
-    -------
-    grid : dict
-        Updated grid with outlier positions infilled.
-    centers : list
-        Extended center list.
-    infilled_nodes : list
-        Grid coordinates of infilled points.
+        Max residual in pixels to keep a dot.
     """
-    if len(grid) < 9:
-        return grid, centers, []
-
-    centers = list(centers)
     grid_keys = list(grid.keys())
     src_pts = np.array(grid_keys, dtype=np.float32)
     dst_pts = np.array([centers[grid[k]] for k in grid_keys], dtype=np.float32)
 
-    # First pass: fit with all dots, find outliers
-    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, residual_threshold)
+    H, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, residual_threshold)
     if H is None:
-        return grid, centers, []
+        return grid, []
 
     predicted = cv2.perspectiveTransform(src_pts.reshape(-1, 1, 2), H).reshape(-1, 2)
     residuals = np.linalg.norm(dst_pts - predicted, axis=1)
     outlier_mask = residuals > residual_threshold
-
     if not outlier_mask.any():
-        return grid, centers, []
+        return grid, []
 
-    # Second pass: re-fit from clean dots only for better prediction
-    clean_src = src_pts[~outlier_mask]
-    clean_dst = dst_pts[~outlier_mask]
-    H_clean, _ = cv2.findHomography(
-        clean_src, clean_dst, cv2.RANSAC, residual_threshold
+    dropped = [grid_keys[i] for i in range(len(grid_keys)) if outlier_mask[i]]
+    pruned = {k: v for k, v in grid.items() if k not in set(dropped)}
+    logger.warning(
+        f"Grid outlier check: dropped {len(dropped)} dot(s) more than {residual_threshold:g} px "
+        f"from the grid homography (max {residuals[outlier_mask].max():.1f} px). Droplets or "
+        f"occlusion on the board, or lens distortion at the periphery -- if the latter, the "
+        f"distortion fit is under-sampled there."
     )
-    if H_clean is None:
-        H_clean = H
-
-    # Infill: replace outlier positions with model predictions
-    outlier_keys = [grid_keys[i] for i in range(len(grid_keys)) if outlier_mask[i]]
-    outlier_src = np.array(outlier_keys, dtype=np.float32)
-    infilled_positions = cv2.perspectiveTransform(
-        outlier_src.reshape(-1, 1, 2),
-        H_clean,
-    ).reshape(-1, 2)
-
-    infilled_nodes: List[Tuple[int, int]] = []
-    for key, new_pos in zip(outlier_keys, infilled_positions):
-        centers.append(new_pos)
-        grid[key] = len(centers) - 1
-        infilled_nodes.append(key)
-
-    n_infilled = len(infilled_nodes)
-    if n_infilled > 0:
-        logger.info(
-            f"Grid outlier refinement: {n_infilled} droplet-biased dot(s) infilled from model"
-        )
-
-    return grid, centers, infilled_nodes
+    return pruned, dropped
 
 
 # ---------------------------------------------------------------------------
@@ -843,7 +816,7 @@ def detect_grid_automatic(
     success : bool
     grid_data : dict or None
         Contains: ``centers``, ``grid_indices``, ``synthetic_mask`` (bool per
-        point: True = rescued/infilled, not a measured blob centroid),
+        point: True = template-rescued, not a measured blob centroid),
         ``n_cols``, ``n_rows``, ``spacing_px``, ``angle_deg``, ``grid_spacing_mm``.
     info : dict
         Detection metadata and diagnostics.
@@ -958,11 +931,9 @@ def detect_grid_automatic(
         spacing_px,
     )
 
-    # Step 4: Grid smoothness enforcement — detect droplet-biased dots, infill from model
-    validated_grid, rescued_centers, infilled_nodes = _refine_grid_outliers(
-        validated_grid,
-        rescued_centers,
-    )
+    # Step 4: Grid smoothness check — drop dots that disagree with the grid homography
+    validated_grid, dropped_nodes = _drop_grid_outliers(validated_grid, rescued_centers)
+    info["n_outliers_dropped"] = len(dropped_nodes)
 
     # Step 5: Prune orphaned points
     validated_grid = _filter_connected_dict(validated_grid)
@@ -978,19 +949,13 @@ def detect_grid_automatic(
     )
     grid_indices = np.array(grid_keys_final, dtype=np.int32)
 
-    # Provenance masks: rescued (template-matched) and infilled (model-predicted)
-    # points, named in the pre-normalization key frame — the same frame as
-    # grid_keys_final (the index shift below rewrites the ndarray, not the dict
-    # keys). A node rescued in Step 3 and then infilled in Step 4 ends up in both
-    # lists; infill is its final state, so it counts as infilled only. The two
-    # masks are therefore disjoint, and the counts stay self-consistent
-    # (n_rescued + n_infilled == n_synthetic) after the prune/island filters
-    # below trim them in lockstep with the points.
-    infilled_set = set(infilled_nodes)
-    rescued_set = set(rescued_nodes) - infilled_set
+    # Provenance mask: rescued (template-matched) points, named in the pre-normalization
+    # key frame — the same frame as grid_keys_final (the index shift below rewrites the
+    # ndarray, not the dict keys). A rescued node dropped in Step 4 is simply absent.
+    # Nothing is model-predicted any more, so synthetic == rescued.
+    rescued_set = set(rescued_nodes)
     rescued_mask = np.array([k in rescued_set for k in grid_keys_final], dtype=bool)
-    infilled_mask = np.array([k in infilled_set for k in grid_keys_final], dtype=bool)
-    synthetic_mask = rescued_mask | infilled_mask
+    synthetic_mask = rescued_mask.copy()
 
     # Normalize so minimum index is (0, 0)
     if len(grid_indices) > 0:
@@ -1004,7 +969,6 @@ def detect_grid_automatic(
             n_island = int(np.sum(~comp_mask))
             final_centers = final_centers[comp_mask]
             rescued_mask = rescued_mask[comp_mask]
-            infilled_mask = infilled_mask[comp_mask]
             synthetic_mask = synthetic_mask[comp_mask]
             grid_indices = grid_indices[comp_mask]
             grid_indices[:, 0] -= grid_indices[:, 0].min()
@@ -1065,16 +1029,14 @@ def detect_grid_automatic(
     if not (
         len(grid_indices) == n_final
         and len(rescued_mask) == n_final
-        and len(infilled_mask) == n_final
         and len(synthetic_mask) == n_final
     ):
         raise RuntimeError("synthetic/provenance mask desynced from final grid points")
 
-    # Counts are survivors-in-the-final-grid, not operations attempted: a
-    # rescued/infilled dot pruned as an orphan or island above is gone from both
-    # the mask and these numbers, so the figure and the persisted diagnostics agree.
+    # Counts are survivors-in-the-final-grid, not operations attempted: a rescued dot
+    # pruned as an orphan or island above is gone from both the mask and these numbers,
+    # so the figure and the persisted diagnostics agree.
     info["n_rescued"] = int(np.count_nonzero(rescued_mask))
-    info["n_infilled"] = int(np.count_nonzero(infilled_mask))
     info["n_synthetic"] = int(np.count_nonzero(synthetic_mask))
 
     grid_data = {

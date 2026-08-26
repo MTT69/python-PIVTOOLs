@@ -303,7 +303,18 @@ def compute_z_and_offsets(
     on both cameras has xy_offset=0; the other level has xy_offset=level_offset_mm.
     Ported verbatim from v1. Mono uses only the 'Cam1' slice (cam1's Z values are
     independent of stereo_config).
+
+    Raises ``ValueError`` for a ``same_side`` rig whose cameras clicked different
+    levels: both see the same face, so the datum fiducial must be the same physical
+    dot. Composing the two poses otherwise puts their world origins ``level_offset_mm``
+    apart in X/Y with a normal-looking rms on each camera (review 2026-08-26).
     """
+    if stereo_config == "same_side" and cam1_clicked_level != cam2_clicked_level:
+        raise ValueError(
+            f"stepped same_side rig: cam1 clicked the {cam1_clicked_level!r} level but "
+            f"cam2 clicked {cam2_clicked_level!r}; both cameras must click the same "
+            f"fiducial dot on the same face"
+        )
     step = board.step_height_mm
     thickness = board.board_thickness_mm
     offset = board.level_offset_mm

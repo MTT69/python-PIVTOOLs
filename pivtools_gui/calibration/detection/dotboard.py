@@ -71,7 +71,7 @@ class DotboardDetector:
             )
             board_to_pixel = H
 
-        # Scalar diagnostics live in `info` (n_rescued, n_infilled,
+        # Scalar diagnostics live in `info` (n_rescued, n_outliers_dropped,
         # ransac_n_rejected, edge_fraction, warning, ...); grid_data scalars
         # (n_cols, spacing_px, ...) overlay them where both exist.
         diagnostics = {k: v for k, v in info.items() if np.isscalar(v)}

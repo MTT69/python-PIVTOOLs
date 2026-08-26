@@ -86,6 +86,23 @@ def test_joint_record_pose_diversity_roundtrip(tmp_path, n_cams):
     assert back.tilt_floor_deg == pd.tilt_floor_deg
 
 
+def test_joint_record_rejects_foreign_contract_version(tmp_path):
+    """The stamp is compared on load (it was write-only until 2026-08-26)."""
+    rec = _joint_record()
+    rec.contract_version = 999  # save_joint stamps the record's value verbatim
+    p = REC.save_joint(rec, tmp_path)
+    with pytest.raises(ValueError, match="contract_version 999"):
+        REC.load_joint(p)
+
+
+def test_stereo_model_dir_is_order_independent(tmp_path):
+    """(2, 1) and (1, 2) name ONE record, never two forks of the same pair."""
+    assert REC.stereo_model_dir_for_source(tmp_path, 2, 1) == REC.stereo_model_dir_for_source(
+        tmp_path, 1, 2
+    )
+    assert REC.stereo_model_dir_for_source(tmp_path, 2, 1).parent.name == "stereo_cam1_cam2"
+
+
 def test_load_camera_model_prefers_joint(tmp_path):
     """With a joint record present, the resolver returns its per-camera view."""
     root = tmp_path

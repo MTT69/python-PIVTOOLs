@@ -962,6 +962,30 @@ def snap_fiducial():
 # ---------------------------------------------------------------------------
 
 
+def _fit_knobs(source_idx: int, board: str, data: dict) -> dict:
+    """Fit knobs for the mono/stereo Calibrator, read exactly as the CLI reads them.
+
+    ``calibration_cli`` takes ``distortion_model``, ``fix_aspect_ratio`` and
+    ``use_release_object`` from the sidecar's ``fit`` block and ``fix_k2`` from the
+    board's ``methods`` block. Until 2026-08-26 this route hard-coded the distortion model
+    and left the other two at the dataclass defaults, so a sidecar set through the CLI
+    calibrated differently on GUI regenerate. A ``fix_k2`` in the request still wins
+    (the stereo hooks send it); it falls back to the sidecar, never to a literal.
+    """
+    settings = _settings_idx(source_idx)
+    fit = settings.get("fit") or {}
+    method = (settings.get("methods") or {}).get(board) or {}
+    fix_k2 = data.get("fix_k2")
+    if fix_k2 is None:
+        fix_k2 = method.get("fix_k2", False)
+    return {
+        "distortion_model": DistortionModel(fit.get("distortion_model", "standard")),
+        "fix_aspect_ratio": bool(fit.get("fix_aspect_ratio", True)),
+        "fix_k2": bool(fix_k2),
+        "use_release_object": bool(fit.get("use_release_object", False)),
+    }
+
+
 @calibration_bp.route("/calibration/generate_model", methods=["POST"])
 def generate_model():
     """Run the full calibration (mono or stereo), save it + proof figures into the source."""
@@ -1032,8 +1056,7 @@ def generate_model():
             sc = StereoCalibrator(
                 detector=detector,
                 board_type=board,
-                distortion_model=_MODEL,
-                fix_k2=bool(data.get("fix_k2", False)),
+                **_fit_knobs(source_idx, board, data),
             )
             record = sc.run_stereo(
                 imgs1,
@@ -1154,8 +1177,7 @@ def generate_model():
                 detector=detector,
                 board_type=board,
                 model_type=model_type,
-                distortion_model=_MODEL,
-                fix_k2=bool(data.get("fix_k2", False)),
+                **_fit_knobs(source_idx, board, data),
             )
             dets = (
                 list(cached) if cache_hit else _detect_parallel(board, params, imgs)
@@ -2092,14 +2114,19 @@ def _joint_setup(get: Callable[[str], Any]):
 
     datum_camera = _int_or("datum_camera", gg.get("datum_camera", cameras[0]))
     datum_view = _int_or("datum_view", gg.get("datum_view", 0))
-    n_views = _int_or(
-        "n_views",
-        (
-            get("frame_total")
-            if get("frame_total") not in (None, "")
-            else image_settings.get("n_views") or 10
-        ),
+    # Same contract as the CLI (_n_views_cli): request > sidecar image.n_views > loud error.
+    # No literal fallback -- a silent 10-view solve is a different calibration.
+    n_views_raw = next(
+        (v for v in (get("n_views"), get("frame_total"), image_settings.get("n_views"))
+         if v not in (None, "")),
+        None,
     )
+    if n_views_raw is None:
+        raise ValueError(
+            "joint: n_views is required -- send it in the request or set image.n_views in "
+            "the calibration settings sidecar"
+        )
+    n_views = int(n_views_raw)
     if n_views < 1:
         raise ValueError("joint: n_views must be >= 1")
     image_format = get("image_format") or image_settings.get("image_format")
@@ -2508,6 +2535,25 @@ def joint_generate():
         spec = _joint_spec(get, gg, board)
         origin_mm = _joint_origin_mm(board, gg)
         gen_dt = _generate_dt(get, source)
+        if board == "charuco":
+            # The dotboard wizard persists its datum through the click flow; ChArUco has no
+            # click flow, so persist the datum this request solves with. The CLI reads ONLY
+            # the sidecar, and without this it re-anchored on view 0 -- a different
+            # calibration from the same inputs (review 2026-08-26).
+            idir = _joint_inputs_dir(source_idx, board)
+            if idir is not None:
+                save_inputs(
+                    idir,
+                    path_type="joint",
+                    board_type=board,
+                    coords={
+                        **gg,
+                        "cameras": [int(c) for c in cameras],
+                        "datum_camera": int(datum_camera),
+                        "datum_view": int(datum_view),
+                        "board_release": board_release,
+                    },
+                )
     except (
         ValueError,
         TypeError,
@@ -2725,11 +2771,14 @@ def joint_model():
             "rms_px": float(jr.rms_px),
             "spacing_mm": float(jr.spacing_mm),
             "board_release": jr.board_release,
-            "converged": bool(meta.get("converged", 0)),
+            # Required keys: a joint record without them is stale and must be re-solved.
+            # No defaults -- a fabricated 0.0 agreement or converged=False reads as a
+            # verdict the solve never gave (review 2026-08-26).
+            "converged": bool(meta["converged"]),
             "cross_camera_board_agreement_mm": float(
-                meta.get("cross_camera_board_agreement_mm", 0.0)
+                meta["cross_camera_board_agreement_mm"]
             ),
-            "n_board_dots": int(meta.get("n_board_dots", len(jr.board))),
+            "n_board_dots": int(meta["n_board_dots"]),
             "image_sizes": {
                 str(c): [
                     int(jr.models[c].image_size[0]),

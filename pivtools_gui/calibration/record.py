@@ -60,7 +60,12 @@ def mono_model_dir_for_source(source: Path, camera: int, board: str) -> Path:
 
 
 def stereo_model_dir_for_source(source: Path, cam1: int, cam2: int) -> Path:
-    return root_for_source(source) / f"stereo_cam{cam1}_cam{cam2}" / "model"
+    """Rig-level dir for a stereo pair. The pair is canonicalised (ascending) so
+    ``(2, 1)`` and ``(1, 2)`` resolve to ONE record rather than silently forking two
+    calibrations of the same physical pair (review 2026-08-26). The record itself still
+    stores ``cam1``/``cam2`` in the order the solve used."""
+    a, b = sorted((int(cam1), int(cam2)))
+    return root_for_source(source) / f"stereo_cam{a}_cam{b}" / "model"
 
 
 def joint_model_dir_for_source(source: Path, board: str) -> Path:
@@ -373,6 +378,24 @@ def _scale_factor_from(obj) -> ScaleFactorModel:
     )
 
 
+def _check_contract(mat: dict, path: Path) -> int:
+    """Compare a record's stamped ``contract_version`` with ``CONTRACT_VERSION``.
+
+    Until 2026-08-26 the stamp was written and read but never compared, so the
+    module's promise that a stale model can never be silently misread was not
+    implemented. A missing stamp or a different version raises: re-solve the model.
+    """
+    if "contract_version" not in mat:
+        raise ValueError(f"{path} has no contract_version stamp -- re-solve the model")
+    v = int(_scalar(mat["contract_version"]))
+    if v != CONTRACT_VERSION:
+        raise ValueError(
+            f"{path} was written with contract_version {v}; this build reads "
+            f"{CONTRACT_VERSION} -- re-solve the model"
+        )
+    return v
+
+
 def _scalar(v):
     """Coerce a squeeze_me=loadmat scalar/0-d array to a python scalar/str."""
     a = np.asarray(v)
@@ -624,7 +647,7 @@ def load_mono(path: Path, model_type: Optional[str] = None) -> MonoRecord:
             np.asarray(mat["per_view_rms"], dtype=np.float64).reshape(-1)
         ),
         board_meta=_meta_from(mat.get("board_meta")),
-        contract_version=int(_scalar(mat["contract_version"])),
+        contract_version=_check_contract(mat, path),
     )
 
 
@@ -725,7 +748,7 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
         ),
         board_meta=_meta_from(mat.get("board_meta")),
         self_cal=_meta_from(mat.get("self_cal")),
-        contract_version=int(_scalar(mat["contract_version"])),
+        contract_version=_check_contract(mat, path),
     )
 
 
@@ -805,7 +828,7 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
         board_meta=_meta_from(mat.get("board_meta")),
         pose_diversity=_meta_from(mat.get("pose_diversity")),
         model_type=tag,
-        contract_version=int(_scalar(mat["contract_version"])),
+        contract_version=_check_contract(mat, path),
     )
 
 

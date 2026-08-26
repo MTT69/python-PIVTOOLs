@@ -272,6 +272,19 @@ def test_classifier_chirality_flips_across_the_board_plane():
     assert classify_stereo_config(back, front_a) == "transmission"  # symmetric
 
 
+def test_same_side_rejects_mismatched_clicked_levels():
+    """Both cameras see the same face, so different clicked levels is a click error,
+    not a geometry: composing the poses would put the two world origins
+    level_offset_mm apart with a healthy rms on each (review 2026-08-26)."""
+    from pivtools_gui.calibration.stepped_calibrate import compute_z_and_offsets
+
+    board = SteppedBoardSpec(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
+    with pytest.raises(ValueError, match="same fiducial"):
+        compute_z_and_offsets("same_side", "peak", "trough", board)
+    geo = compute_z_and_offsets("transmission", "peak", "trough", board)
+    assert geo["Cam1"]["z"]["peak"] == 0.0  # opposite faces stay legal
+
+
 def test_classifier_rejects_collinear_clicks():
     """Near-collinear +X/+Y clicks give an untrustworthy sign -> hard error."""
     bad = {"origin": [100.0, 100.0], "x_axis": [200.0, 100.0], "y_axis": [260.0, 100.3]}

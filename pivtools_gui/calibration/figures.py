@@ -212,7 +212,7 @@ def write_detection_figure(
         h, w = gray.shape[:2]
         scale = max(1, w // 1400)
 
-        # Show only genuinely-detected, accepted dots. Synthetic (rescued/infilled) points are
+        # Show only genuinely-detected, accepted dots. Synthetic (template-rescued) points are
         # dropped from the FIGURE (they are still stored in the record/sidecar); RANSAC-rejected
         # points are already absent from the detection result. dotboard-only — charuco has no mask.
         synth = detection.synthetic_mask

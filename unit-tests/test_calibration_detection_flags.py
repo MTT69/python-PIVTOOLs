@@ -28,9 +28,10 @@ N_COLS, N_ROWS = 10, 8
 SPACING_PX = 40  # dot pitch
 DOT_RADIUS = 8
 MARGIN = 60
-# Displacement for the droplet-biased dot: above the refine threshold (2 px)
+# Displacement for the droplet-biased dot: above the outlier threshold (2 px)
 # but inside the step-2 RANSAC gate (0.15 * spacing = 6 px), so the dot survives
-# grid assembly and is caught + infilled by _refine_grid_outliers.
+# grid assembly and is caught + DROPPED by _drop_grid_outliers (nothing is infilled
+# from the homography since 2026-08-26: it cannot tell a droplet from distortion).
 INFILL_SHIFT_PX = 4
 FAINT_GRAY = 235  # faint dot: missed by the blob detector, NCC still ~1
 
@@ -38,7 +39,7 @@ FAINT_GRAY = 235  # faint dot: missed by the blob detector, NCC still ~1
 def _dot_grid_image(displace=None, faint=None) -> np.ndarray:
     """White background, black dots on a regular grid.
 
-    displace : (col, row) dot drawn INFILL_SHIFT_PX off-lattice (forces infill).
+    displace : (col, row) dot drawn INFILL_SHIFT_PX off-lattice (forces a drop).
     faint : (col, row) dot drawn at FAINT_GRAY (blob detector misses it; the
         template-matching rescue can still find it — NCC is contrast-invariant).
     """
@@ -69,7 +70,7 @@ def test_clean_grid_has_no_synthetic_points():
     mask = grid["synthetic_mask"]
     assert mask.dtype == bool and len(mask) == len(grid["centers"])
     assert mask.sum() == 0
-    assert info["n_rescued"] == 0 and info["n_infilled"] == 0
+    assert info["n_rescued"] == 0 and info["n_outliers_dropped"] == 0
 
 
 def test_forced_infill_mask_matches_diagnostics(make_figures):
@@ -78,18 +79,20 @@ def test_forced_infill_mask_matches_diagnostics(make_figures):
     assert ok
     mask = grid["synthetic_mask"]
 
-    # The displaced dot MUST be infilled; the faint dot may or may not be
-    # rescued, but the mask must agree with the diagnostics either way.
-    assert info["n_infilled"] >= 1
-    assert int(mask.sum()) == info["n_rescued"] + info["n_infilled"]
+    # The displaced dot MUST be dropped, never replaced by a model prediction; the
+    # faint dot may or may not be rescued, but the mask must agree with the
+    # diagnostics either way.
+    assert info["n_outliers_dropped"] >= 1
+    assert int(mask.sum()) == info["n_rescued"]
     assert info["n_synthetic"] == int(mask.sum())
 
-    # The infilled point sits on the lattice (model prediction), not at the
-    # displaced blob: every synthetic point is within 1 px of a lattice node.
+    # No surviving point sits at the displaced blob's position, and no point was
+    # fabricated at its lattice node: the node is absent from the grid.
     centers = np.asarray(grid["centers"], dtype=np.float64)
-    lattice_err = np.abs((centers[mask] - MARGIN) % SPACING_PX)
-    lattice_err = np.minimum(lattice_err, SPACING_PX - lattice_err)
-    assert np.all(lattice_err < 1.0)
+    gi = np.asarray(grid["grid_indices"])
+    node = np.array([MARGIN + 4 * SPACING_PX, MARGIN + 3 * SPACING_PX], dtype=np.float64)
+    assert np.min(np.linalg.norm(centers - node, axis=1)) > 0.5 * SPACING_PX
+    assert len(gi) == len(centers)
 
     if make_figures:
         from pivtools_gui.calibration import figures
@@ -135,8 +138,11 @@ def test_extra_cluster_does_not_corrupt_mask():
     mask = grid["synthetic_mask"]
     centers = grid["centers"]
     assert len(mask) == len(centers)  # alignment invariant
-    assert info["n_grid_points"] == N_COLS * N_ROWS  # island excluded
-    assert int(mask.sum()) == info["n_rescued"] + info["n_infilled"]
+    # island excluded; a lattice dot whose blob the island disturbed is DROPPED now
+    # (it used to be infilled), so the count is the lattice minus the drops
+    assert info["n_outliers_dropped"] <= 1
+    assert info["n_grid_points"] + info["n_outliers_dropped"] == N_COLS * N_ROWS
+    assert int(mask.sum()) == info["n_rescued"]
     assert info["n_synthetic"] == int(mask.sum())
 
 
@@ -147,14 +153,12 @@ def test_detection_result_carries_mask_and_diagnostics():
     assert det.synthetic_mask is not None
     assert det.synthetic_mask.dtype == bool
     assert len(det.synthetic_mask) == det.n
-    assert det.synthetic_mask.sum() >= 1
+    # the displaced dot is dropped, not fabricated: nothing synthetic remains
+    assert det.synthetic_mask.sum() == det.diagnostics["n_rescued"]
     # info scalars now reach DetectionResult.diagnostics (B4 feedstock)
-    for key in ("n_rescued", "n_infilled", "ransac_n_rejected", "edge_fraction"):
+    for key in ("n_rescued", "n_outliers_dropped", "ransac_n_rejected", "edge_fraction"):
         assert key in det.diagnostics
-    assert (
-        det.diagnostics["n_infilled"]
-        == int(det.synthetic_mask.sum()) - det.diagnostics["n_rescued"]
-    )
+    assert det.diagnostics["n_outliers_dropped"] >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -163,17 +167,17 @@ def test_detection_result_carries_mask_and_diagnostics():
 
 
 def _fake_detection(
-    success=True, n=12, n_rescued=0, n_infilled=0, warning=None
+    success=True, n=12, n_rescued=0, n_outliers_dropped=0, warning=None
 ) -> DetectionResult:
     diag = {
         "n_rescued": n_rescued,
-        "n_infilled": n_infilled,
+        "n_outliers_dropped": n_outliers_dropped,
         "ransac_n_rejected": 1,
         "edge_fraction": 0.05,
     }
     if warning:
         diag["warning"] = warning
-    n_synth = n_rescued + n_infilled
+    n_synth = n_rescued  # dropped dots are absent, not synthetic
     mask = np.zeros(n, dtype=bool)
     mask[:n_synth] = True
     return DetectionResult(
@@ -189,14 +193,14 @@ def _fake_detection(
 def test_view_diagnostics_summary_arrays():
     dets = [
         _fake_detection(n_rescued=2),
-        _fake_detection(n_infilled=3, warning="partial board"),
+        _fake_detection(n_outliers_dropped=3, warning="partial board"),
     ]
     s = view_diagnostics_summary(dets)
     np.testing.assert_array_equal(s["view_index"], [0, 1])
     np.testing.assert_array_equal(s["success"], [1, 1])
     np.testing.assert_array_equal(s["n_rescued"], [2, 0])
-    np.testing.assert_array_equal(s["n_infilled"], [0, 3])
-    np.testing.assert_array_equal(s["n_synthetic"], [2, 3])
+    np.testing.assert_array_equal(s["n_outliers_dropped"], [0, 3])
+    np.testing.assert_array_equal(s["n_synthetic"], [2, 0])
     np.testing.assert_array_equal(s["ransac_n_rejected"], [1, 1])
     assert s["warnings"] == "view 1: partial board"
 
@@ -236,7 +240,7 @@ def test_mono_record_view_diagnostics_roundtrip(tmp_path):
 
 def test_stereo_record_nested_view_diagnostics_roundtrip(tmp_path):
     vd1 = view_diagnostics_summary([_fake_detection(n_rescued=1)])
-    vd2 = view_diagnostics_summary([_fake_detection(n_infilled=2)])
+    vd2 = view_diagnostics_summary([_fake_detection(n_outliers_dropped=2)])
     record = rec.StereoRecord(
         cam1=1,
         cam2=2,
@@ -258,7 +262,7 @@ def test_stereo_record_nested_view_diagnostics_roundtrip(tmp_path):
         np.asarray(got["cam1"]["n_rescued"]).reshape(-1), vd1["n_rescued"]
     )
     np.testing.assert_array_equal(
-        np.asarray(got["cam2"]["n_infilled"]).reshape(-1), vd2["n_infilled"]
+        np.asarray(got["cam2"]["n_outliers_dropped"]).reshape(-1), vd2["n_outliers_dropped"]
     )
     np.testing.assert_array_equal(
         np.asarray(got["cam2"]["n_synthetic"]).reshape(-1), vd2["n_synthetic"]

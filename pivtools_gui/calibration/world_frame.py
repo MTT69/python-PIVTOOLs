@@ -31,6 +31,38 @@ def _snap(pts_px: np.ndarray, click_xy) -> int:
     return int(idx)
 
 
+def _axes_from_deltas(dx: np.ndarray, dy: np.ndarray) -> Tuple[int, int, int, int]:
+    """Grid axis and sign for +X and +Y from the origin->click grid deltas.
+
+    Returns ``(ax_x, ax_y, sx, sy)``: which grid axis (0=col, 1=row) +X follows, the
+    other for +Y, and the sign along each. Raises ``ValueError`` instead of guessing when
+    a click cannot decide: a +X or +Y click that snapped to the origin dot (zero
+    delta), an exactly diagonal +X click (tied |dcol| == |drow|), a +Y click with no
+    component along its axis, or +X and +Y on the same grid axis. Before 2026-08-26
+    these resolved silently to sign +1 / the column axis, which can flip handedness with
+    a normal-looking reprojection rms.
+    """
+    dx = np.asarray(dx, dtype=np.int64).reshape(2)
+    dy = np.asarray(dy, dtype=np.int64).reshape(2)
+    if not dx.any():
+        raise ValueError("world frame: the +X click snapped to the origin dot")
+    if not dy.any():
+        raise ValueError("world frame: the +Y click snapped to the origin dot")
+    if abs(dx[0]) == abs(dx[1]):
+        raise ValueError(
+            f"world frame: the +X click is diagonal on the grid (delta {dx.tolist()}); "
+            "click a dot along one grid line from the origin"
+        )
+    ax_x = 0 if abs(dx[0]) > abs(dx[1]) else 1
+    ax_y = 1 - ax_x
+    if dy[ax_y] == 0:
+        raise ValueError(
+            f"world frame: the +Y click (delta {dy.tolist()}) lies along the +X axis; "
+            "click a dot along the other grid line from the origin"
+        )
+    return ax_x, ax_y, int(np.sign(dx[ax_x])), int(np.sign(dy[ax_y]))
+
+
 def resolve_world_frame(
     grid_indices: np.ndarray,
     image_points: np.ndarray,
@@ -68,12 +100,7 @@ def resolve_world_frame(
     dx = gi[ix].astype(np.int64) - g_o
     dy = gi[iy].astype(np.int64) - g_o
 
-    # Which grid axis (0=col, 1=row) does +X follow? +Y takes the other.
-    ax_x = 0 if abs(dx[0]) >= abs(dx[1]) else 1
-    ax_y = 1 - ax_x
-    sx = int(np.sign(dx[ax_x])) or 1
-    sy = int(np.sign(dy[ax_y])) or 1
-
+    ax_x, ax_y, sx, sy = _axes_from_deltas(dx, dy)
     swap = ax_x == 1  # +X follows the row axis
     # col_sign = +X sign, row_sign = +Y sign (see WorldFrame docstring mapping).
     return WorldFrame(
@@ -104,10 +131,7 @@ def resolve_world_frame_from_grid(origin_gi, x_axis_gi, y_axis_gi) -> WorldFrame
     dx = np.asarray(x_axis_gi, dtype=np.int64).reshape(2) - g_o
     dy = np.asarray(y_axis_gi, dtype=np.int64).reshape(2) - g_o
 
-    ax_x = 0 if abs(dx[0]) >= abs(dx[1]) else 1
-    ax_y = 1 - ax_x
-    sx = int(np.sign(dx[ax_x])) or 1
-    sy = int(np.sign(dy[ax_y])) or 1
+    ax_x, ax_y, sx, sy = _axes_from_deltas(dx, dy)
     swap = ax_x == 1
     return WorldFrame(
         mode="grid",

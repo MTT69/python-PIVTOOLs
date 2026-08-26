@@ -186,6 +186,46 @@ def test_world_frame_orthogonal(charuco_planar):
     assert w_y[1] > 0 and abs(w_y[0]) < 1e-6
 
 
+@pytest.mark.parametrize(
+    "x_gi, y_gi, swap, sx, sy",
+    [
+        ((1, 0), (0, 1), False, 1, 1),
+        ((-1, 0), (0, 1), False, -1, 1),
+        ((1, 0), (0, -1), False, 1, -1),
+        ((-1, 0), (0, -1), False, -1, -1),
+        ((0, 1), (1, 0), True, 1, 1),
+        ((0, -1), (1, 0), True, -1, 1),
+        ((0, 1), (-1, 0), True, 1, -1),
+        ((0, -2), (-3, 0), True, -1, -1),
+    ],
+)
+def test_world_frame_every_sign_and_swap(x_gi, y_gi, swap, sx, sy):
+    """Every click direction resolves to the documented sign/swap and maps the +X dot
+    to +x, the +Y dot to +y (until 2026-08-26 only the (+,+, no swap) case was tested)."""
+    wf = WF.resolve_world_frame_from_grid((3, 3), (3 + x_gi[0], 3 + x_gi[1]), (3 + y_gi[0], 3 + y_gi[1]))
+    assert (wf.swap_axes, wf.col_sign, wf.row_sign) == (swap, sx, sy)
+    gi = np.array([[3, 3], [3 + x_gi[0], 3 + x_gi[1]], [3 + y_gi[0], 3 + y_gi[1]]])
+    w = WF.apply_world_frame(gi, 10.0, wf)
+    assert np.allclose(w[0, :2], 0.0)
+    assert w[1, 0] > 0 and abs(w[1, 1]) < 1e-9
+    assert w[2, 1] > 0 and abs(w[2, 0]) < 1e-9
+
+
+@pytest.mark.parametrize(
+    "x_gi, y_gi, match",
+    [
+        ((3, 3), (3, 4), "snapped to the origin"),
+        ((4, 3), (3, 3), "snapped to the origin"),
+        ((5, 5), (3, 4), "diagonal"),
+        ((5, 3), (6, 3), "along the \\+X axis"),
+    ],
+)
+def test_world_frame_rejects_undecidable_clicks(x_gi, y_gi, match):
+    """A tied, zero, or collinear click raises instead of resolving to +1 / column."""
+    with pytest.raises(ValueError, match=match):
+        WF.resolve_world_frame_from_grid((3, 3), x_gi, y_gi)
+
+
 def test_charuco_y_not_inverted(charuco_planar):
     """Regression: calibration output must be physics-correct in Y (no inversion)."""
     imgs, _ = charuco_planar
@@ -223,6 +263,13 @@ def test_charuco_stereo_recovery(stereo_render):
     )
     assert ang < 0.3
     assert float(np.linalg.norm(rec.T_stereo)) == pytest.approx(50.0, abs=1.0)
+    # The vector, not just its length: a permuted or sign-flipped baseline axis has
+    # the same norm and the same relative angle (review 2026-08-26).
+    np.testing.assert_allclose(
+        np.asarray(rec.T_stereo).reshape(3),
+        1000.0 * np.asarray(stereo_render["T_stereo"]).reshape(3),  # render is in m
+        atol=1.0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +331,15 @@ def test_dotboard_stereo_recovery(stereo_render):
     )
     assert ang < 0.5
     assert float(np.linalg.norm(rec.T_stereo)) == pytest.approx(50.0, abs=1.5)
+    # Measured 2026-08-26 when the vector check was added: the dotboard pair recovers
+    # T = [50.26, 0.01, 1.79] mm for a [50, 0, 0] truth -- a 1.8 mm z bias the norm check
+    # never saw (|T| = 50.29). Tolerance set from that measurement; the bias is an open
+    # finding (REVIEW-FINDINGS-2026-08-26.md, T5), not an accepted property.
+    np.testing.assert_allclose(
+        np.asarray(rec.T_stereo).reshape(3),
+        1000.0 * np.asarray(stereo_render["T_stereo"]).reshape(3),  # render is in m
+        atol=2.5,
+    )
 
 
 def test_stereo_origin_mm_reaches_cam2(stereo_render):
