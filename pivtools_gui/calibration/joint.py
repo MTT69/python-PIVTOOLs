@@ -93,6 +93,10 @@ class JointResult:
     rms_px: float  # overall reprojection RMS
     per_camera_rms: Dict[int, float]
     cross_camera_board_agreement_mm: float  # 0 by construction (one shared board)
+    # The pose/board-release alternation met its |d rms| < 1e-4 px stop. Always False under
+    # board_release='none' (nothing alternates). Deliberately NOT folded with the final
+    # bundle's least_squares status: that always hits max_nfev=300 (verified not to limit
+    # the answer: x10 cap moves it 0.14 mm / 1e-4 px), so it would read 'no' on every solve.
     converged: bool
     pose_diversity: "PoseDiversity"  # read-only diagnostic, see pose_diversity()
     info: Dict[str, object] = field(default_factory=dict)
@@ -322,7 +326,7 @@ class _JointBA:
 
     def __init__(
         self,
-        nominal: np.ndarray,
+        board_seed: np.ndarray,
         observations: list,
         cams: Sequence[int],
         view_keys: Sequence[ViewKey],
@@ -332,8 +336,10 @@ class _JointBA:
     ):
         if mode not in ("full3d", "z_only", "none"):
             raise ValueError(f"_JointBA supports full3d|z_only|none, got {mode!r}")
-        self.nominal = nominal  # (N,3) current board (used for held rows)
-        self.N = nominal.shape[0]
+        # (N,3) board as it stands after the alternation (held rows keep these values);
+        # NOT the flat nominal grid that run_joint's ``nominal`` names.
+        self.board_seed = board_seed
+        self.N = board_seed.shape[0]
         self.cams = list(cams)
         self.cam_index = {c: i for i, c in enumerate(self.cams)}
         self.view_keys = list(view_keys)
@@ -433,7 +439,7 @@ class _JointBA:
         return r3, t3
 
     def board_from(self, x):
-        board = self.nominal.copy()
+        board = self.board_seed.copy()
         b = x[self._n_intr + self._n_pose :]
         if self._per_board == 3:
             board[self.free_rows] = b.reshape(-1, 3)
@@ -1307,6 +1313,14 @@ def run_joint(
         ba_mode = board_release
     else:
         free_rows, ba_mode = [], "none"
+        if board_release != "none":
+            log.warning(
+                "joint: board_release=%r requested but only %d rows are seen by >= 2 rays "
+                "(need 3 for the board gauge) -- the bundle runs with the board held fixed",
+                board_release,
+                len(released_rows),
+            )
+    info["effective_board_release"] = ba_mode
     ba = _JointBA(board, observations, cams, view_keys, free_rows, ba_mode, datum_view)
     x_seed = ba.pack(K_by_cam, dist_by_cam, rig_by_cam, board_pose_by_view, board)
     rms_rigid_seed = ba.rms(x_seed)  # rigid, so >= rms_alt in general (lossy factorisation)

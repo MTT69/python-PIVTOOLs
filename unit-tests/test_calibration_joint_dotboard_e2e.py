@@ -74,10 +74,16 @@ def test_dotboard_joint_pinhole_end_to_end(tmp_path):
         res.n_board_dots > 40
     )  # a real shared board (cols 0..11 x rows 0..8, partial per cam)
 
+    # Stage rms and the board mode actually run travel with the driver result.
+    assert res.info["effective_board_release"] == "full3d"
+    assert res.info["rms_after_alternation"] <= res.rms_px + 1e-9
+    assert res.info["n_released"] <= res.n_board_dots
+    assert res.pose_diversity is not None and res.pose_diversity.degenerate is False
     # The record is on disk and reloads with the same shape.
     assert len(res.paths) == 1
     jr = load_joint(res.paths[0])
     assert jr.board_type == "dotboard"
+    assert jr.pose_diversity  # stored, not {}
     assert sorted(jr.cameras) == cams
     assert jr.spacing_mm == pytest.approx(SPACING)
     for c in cams:

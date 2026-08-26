@@ -74,6 +74,11 @@ from pivtools_gui.calibration.inputs_store import (
     save_inputs,
     try_load_inputs,
 )
+from pivtools_gui.calibration.joint import (
+    PoseDiversity,
+    format_pose_diversity,
+    pose_diversity_from_meta,
+)
 from pivtools_gui.calibration.joint_driver import run_joint_from_spec
 from pivtools_gui.calibration.pipeline import Calibrator, build_scale_factor_record
 from pivtools_gui.calibration.settings_seed import seed_settings
@@ -2421,6 +2426,41 @@ def joint_resolve_grid():
     )
 
 
+def _pose_diversity_payload(pd: Optional[PoseDiversity]) -> Optional[dict]:
+    """JSON-safe view of the pose-diversity diagnostic, or ``None`` when absent.
+
+    ``None`` means the record predates the diagnostic (or the solve is polynomial, which has
+    no poses) -- the frontend shows nothing rather than a fabricated all-clear. NaN metrics
+    (azimuth/anisotropy below two tilted views) go through ``_finite_or_none``.
+    """
+    if pd is None:
+        return None
+    return {
+        "degenerate": bool(pd.degenerate),
+        "cameras": [int(c) for c in pd.cameras],
+        "flag_low_tilt": {str(c): bool(pd.flag_low_tilt[c]) for c in pd.cameras},
+        "flag_single_azimuth": {
+            str(c): bool(pd.flag_single_azimuth[c]) for c in pd.cameras
+        },
+        "flag_constant_standoff": {
+            str(c): bool(pd.flag_constant_standoff[c]) for c in pd.cameras
+        },
+        "tilt_deg_median": {
+            str(c): _finite_or_none(pd.tilt_deg_median[c]) for c in pd.cameras
+        },
+        "tilt_anisotropy": {
+            str(c): _finite_or_none(pd.tilt_anisotropy[c]) for c in pd.cameras
+        },
+        "standoff_range_fraction": {
+            str(c): _finite_or_none(pd.standoff_range_fraction[c]) for c in pd.cameras
+        },
+        "flagged_views": [[int(c), int(v)] for c, v in pd.flagged_views],
+        "view_rms_px": {f"{c}-{v}": _finite_or_none(r) for (c, v), r in pd.view_rms_px.items()},
+        "board_planarity_rms_mm": _finite_or_none(pd.board_planarity_rms_mm),
+        "report": format_pose_diversity(pd),
+    }
+
+
 def _finite_or_none(x) -> Optional[float]:
     """Float for JSON, or None when non-finite.
 
@@ -2568,6 +2608,7 @@ def joint_generate():
                 ),
                 n_board_dots=int(res.n_board_dots),
                 paths=[str(p) for p in res.paths],
+                pose_diversity=_pose_diversity_payload(res.pose_diversity),
             )
         except (
             Exception
@@ -2699,6 +2740,10 @@ def joint_model():
             "per_camera": per_camera,
             "baselines_mm": baselines_mm,
             "geometry": _geometry_payload(meta),
+            # None when the record predates the diagnostic -- never a default all-clear.
+            "pose_diversity": _pose_diversity_payload(
+                pose_diversity_from_meta(jr.pose_diversity) if jr.pose_diversity else None
+            ),
         }
     )
 

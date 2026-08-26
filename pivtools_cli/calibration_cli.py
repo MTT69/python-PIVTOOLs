@@ -1185,6 +1185,12 @@ def detect_joint_command(args) -> "Path | List[Path]":
         f"[calibration] joint {board} cams={res.cameras} rms={res.rms_px:.4f}px "
         f"({rms_str}) release={board_release} converged={res.converged} -> {path}"
     )
+    print(
+        f"[calibration] joint stages: rms after alternation (free poses) "
+        f"{res.info['rms_after_alternation']:.4f}px, rigid seed {res.info['rms_rigid_seed']:.4f}px, "
+        f"final {res.rms_px:.4f}px; board mode run={res.info['effective_board_release']}, "
+        f"released rows={res.info['n_released']}/{res.n_board_dots}"
+    )
     if res.pose_diversity is not None:
         from pivtools_gui.calibration.joint import format_pose_diversity
 

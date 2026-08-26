@@ -315,6 +315,12 @@ def run_joint_from_spec(
             "datum_view": datum_view,
             "board_release": board_release,
             "bootstrap": result.info.get("bootstrap", {}),
+            # Solve-stage rms so a caller can see the rigid-rig price (final rms is expected
+            # above the free-pose alternation rms) and the board mode actually run.
+            "rms_after_alternation": float(result.info["rms_after_alternation"]),
+            "rms_rigid_seed": float(result.info["rms_rigid_seed"]),
+            "effective_board_release": str(result.info["effective_board_release"]),
+            "n_released": int(result.info["n_released"]),
         },
         pose_diversity=result.pose_diversity,
     )
