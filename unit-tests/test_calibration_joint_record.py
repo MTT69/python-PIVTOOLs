@@ -6,6 +6,11 @@ import numpy as np
 import pytest
 
 from pivtools_gui.calibration import record as REC
+from pivtools_gui.calibration.joint import (
+    pose_diversity_from_meta,
+    pose_diversity_to_meta,
+)
+from test_calibration_joint_diversity import _BOARD, _rig, pose_diversity
 from pivtools_gui.calibration.camera_model import CameraModel, PolynomialModel
 
 
@@ -55,6 +60,30 @@ def test_joint_record_roundtrip(tmp_path):
     for k, v in rec.board.items():
         np.testing.assert_allclose(r2.board[k], v)
     np.testing.assert_allclose(r2.world_frame.origin_mm, [5.0, -3.0])
+    assert r2.pose_diversity == {}  # no diagnostic saved -> {} back, not zeros
+
+
+@pytest.mark.parametrize("n_cams", [1, 2])
+def test_joint_record_pose_diversity_roundtrip(tmp_path, n_cams):
+    """The .mat round-trip of the diagnostic, including the single-camera squeeze."""
+    specs = {
+        c: [(0.0 if c == 1 else 20.0, 90.0 * i, 700.0 + 40 * i) for i in range(3)]
+        for c in range(1, n_cams + 1)
+    }
+    poses, rows, rms = _rig(specs)
+    rms[(1, 1)] = 2.0
+    pd = pose_diversity(_BOARD, poses, rows, rms)
+    rec = _joint_record()
+    rec.pose_diversity = pose_diversity_to_meta(pd)
+    r2 = REC.load_joint(REC.save_joint(rec, tmp_path))
+    back = pose_diversity_from_meta(r2.pose_diversity)
+    assert back.cameras == pd.cameras
+    assert back.degenerate is pd.degenerate is True
+    assert back.flag_low_tilt == pd.flag_low_tilt
+    assert back.flagged_views == [(1, 1)]
+    assert back.view_rms_px == pytest.approx(pd.view_rms_px)
+    assert back.tilt_deg_median == pytest.approx(pd.tilt_deg_median)
+    assert back.tilt_floor_deg == pd.tilt_floor_deg
 
 
 def test_load_camera_model_prefers_joint(tmp_path):

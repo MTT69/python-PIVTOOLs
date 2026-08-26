@@ -21,7 +21,12 @@ from . import record as rec
 from .camera_model import DistortionModel
 from .detection.base import DetectionResult
 from .global_grid import GlobalGridSpec, resolve_global_grid
-from .joint import run_joint, run_joint_polynomial
+from .joint import (
+    PoseDiversity,
+    pose_diversity_to_meta,
+    run_joint,
+    run_joint_polynomial,
+)
 
 ViewKey = Tuple[int, int]
 
@@ -45,6 +50,8 @@ class JointDriverResult:
     )
     n_board_dots: int  # released board size (pinhole); 0 for polynomial
     info: Dict[str, object] = field(default_factory=dict)
+    # Pinhole only. A polynomial map has no pose, so the metric does not exist for it.
+    pose_diversity: Optional[PoseDiversity] = None
 
 
 def _check_some_detected(detections_by_cam: Dict[int, List[DetectionResult]]) -> None:
@@ -250,6 +257,7 @@ def run_joint_from_spec(
         board_release=result.board_release,
         per_camera_rms=result.per_camera_rms,
         rms_px=result.rms_px,
+        pose_diversity=pose_diversity_to_meta(result.pose_diversity),
         board_meta={
             "converged": int(result.converged),
             "n_views": n_views,
@@ -308,4 +316,5 @@ def run_joint_from_spec(
             "board_release": board_release,
             "bootstrap": result.info.get("bootstrap", {}),
         },
+        pose_diversity=result.pose_diversity,
     )

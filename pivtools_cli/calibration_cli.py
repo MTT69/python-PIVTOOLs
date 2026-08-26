@@ -1185,6 +1185,10 @@ def detect_joint_command(args) -> "Path | List[Path]":
         f"[calibration] joint {board} cams={res.cameras} rms={res.rms_px:.4f}px "
         f"({rms_str}) release={board_release} converged={res.converged} -> {path}"
     )
+    if res.pose_diversity is not None:
+        from pivtools_gui.calibration.joint import format_pose_diversity
+
+        print(format_pose_diversity(res.pose_diversity))
     return path
 
 

@@ -47,7 +47,11 @@ def _cid(gx: int, gy: int) -> int:
 
 
 def _dataset(
-    seed: int = 0, flat: bool = True, noise_px: float = 0.0, n_views: int = _N_VIEWS
+    seed: int = 0,
+    flat: bool = True,
+    noise_px: float = 0.0,
+    n_views: int = _N_VIEWS,
+    fronto: bool = False,
 ):
     """Synthetic charuco detections for a fixed 3-camera rig over several board poses.
 
@@ -61,6 +65,9 @@ def _dataset(
     ``noise_px`` adds isotropic Gaussian corner noise. It is drawn from a SEPARATE stream so
     the board poses are identical at every noise level, which keeps runs comparable.
     ``n_views`` sets how many board poses are shot; the first is always the identity (datum).
+    ``fronto`` keeps every board pose parallel to the datum (no tilt), sliding it +-20 % in
+    standoff instead: the degenerate pose set the diversity diagnostic must detect. Camera 1
+    then sees zero tilt; cameras 2 and 3 see their fixed 0.25 rad rig angle.
     """
     rng = np.random.default_rng(seed)
     noise_rng = np.random.default_rng(seed + 10_000)
@@ -73,6 +80,10 @@ def _dataset(
 
     poses = [(np.eye(3), np.zeros(3))]
     for _ in range(1, n_views):
+        if fronto:
+            tb = np.array([*rng.uniform(-12, 12, 2), rng.uniform(-0.2, 0.2) * 700.0])
+            poses.append((np.eye(3), tb))
+            continue
         rb = cv2.Rodrigues(rng.uniform(-0.30, 0.30, 3) * [1, 1, 0.3])[0]
         poses.append((rb, rng.uniform(-12, 12, 3)))
 
@@ -349,6 +360,8 @@ def test_charuco_joint_pinhole_recovers_intrinsics():
     assert (
         res.cross_camera_board_agreement_mm == 0.0
     )  # one shared board by construction
+    assert res.pose_diversity.degenerate is False
+    assert res.pose_diversity.flagged_views == []
 
 
 def test_charuco_joint_polynomial_shares_one_frame():

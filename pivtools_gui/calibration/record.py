@@ -170,6 +170,12 @@ class JointRecord:
     per_camera_rms: Dict[int, float] = field(default_factory=dict)
     rms_px: float = 0.0
     board_meta: Dict[str, Any] = field(default_factory=dict)
+    # Pose-diversity diagnostic as the flat parallel-array dict from
+    # ``joint.pose_diversity_to_meta`` (inflate with ``joint.pose_diversity_from_meta``).
+    # A solve output, so a typed field rather than ``board_meta`` (which leaks into every
+    # per-camera MonoRecord). ``{}`` means the record predates the diagnostic; never
+    # default a missing field inside a present block.
+    pose_diversity: Dict[str, Any] = field(default_factory=dict)
     model_type: str = "pinhole"
     contract_version: int = CONTRACT_VERSION
 
@@ -754,6 +760,7 @@ def save_joint(record: JointRecord, model_dir: Path) -> Path:
         ).reshape(1, -1),
         "rms_px": float(record.rms_px),
         "board_meta": _meta_to_dict(record.board_meta),
+        "pose_diversity": _meta_to_dict(record.pose_diversity),
     }
     savemat(str(path), data, oned_as="row")
     return path
@@ -796,6 +803,7 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
         per_camera_rms=per_cam_rms,
         rms_px=float(_scalar(mat["rms_px"])),
         board_meta=_meta_from(mat.get("board_meta")),
+        pose_diversity=_meta_from(mat.get("pose_diversity")),
         model_type=tag,
         contract_version=int(_scalar(mat["contract_version"])),
     )

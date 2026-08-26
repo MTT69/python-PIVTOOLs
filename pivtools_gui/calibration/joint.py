@@ -94,6 +94,7 @@ class JointResult:
     per_camera_rms: Dict[int, float]
     cross_camera_board_agreement_mm: float  # 0 by construction (one shared board)
     converged: bool
+    pose_diversity: "PoseDiversity"  # read-only diagnostic, see pose_diversity()
     info: Dict[str, object] = field(default_factory=dict)
 
 
@@ -664,6 +665,401 @@ def _bootstrap_camera(
     return K, dist, lab
 
 
+# ---------------------------------------------------------------------------
+# Pose-diversity diagnostic — read-only, computed from the converged solution
+# ---------------------------------------------------------------------------
+#
+# A low reprojection rms is NOT evidence that the intrinsics are identifiable. Measured on the
+# unit-test 3-camera charuco rig (12 views, 0.3 px noise, figures/debug/
+# synth3cam_fx-error_fronto-vs-tilted-standoff.png, 2026-08-26): a board that never tilts gives
+# ~1000 % fx error at exactly the tilted reference's 0.4 px rms, and sliding it +-20 % in
+# standoff does not help (each view adds one unknown Z_v and one equation fx/Z_v). Under a
+# released board (``full3d``) one untilted camera drags every camera's fx off by ~14 % even when
+# the others saw 14 deg of tilt, so ``degenerate`` is a rig-level verdict.
+#
+# Thresholds are anchored on the reference set (Downloads/calibration-test-morgan, 3 cameras,
+# 20 views, healthy: tilt 2.5-64 deg, azimuth spread ~178 deg, standoff range ~160 mm) and on
+# the synthetic above. They are detectors for the unambiguous corner, not a grade: absence of a
+# flag is not a certificate, and no GOOD verdict is ever printed.
+_TILT_FLOOR_DEG = 1.0  # a view tilted less than this has no usable azimuth
+_DEGENERATE_TILT_MEDIAN_DEG = 5.0  # median tilt below this: fx is not separable from standoff
+_DEGENERATE_AZIMUTH_SPREAD_DEG = 30.0  # tilt directions within this arc: one-axis tilting
+_DEGENERATE_ANISOTROPY = 0.10  # sqrt(lam_min/lam_max) of the tilt-vector second moment
+_DEGENERATE_STANDOFF_FRACTION = 0.02  # (max-min)/median standoff below this: fixed distance
+_DEGENERATE_DEPTH_RATIO = 0.02  # in-view depth extent / standoff below this: no perspective
+# A view whose rms exceeds this multiple of its camera's median view rms is flagged. On the
+# reference set the settled views fit at 0.5-0.8 px and three views shot before the rig
+# settled fit at 1.1-1.6 px (validation/pre_change/README.md, 2026-08-26).
+_VIEW_RMS_OUTLIER_FACTOR = 2.0
+
+
+@dataclass
+class PoseDiversity:
+    """How well the shot board poses condition the intrinsics, per camera, plus per-view rms.
+
+    Every per-camera dict is keyed by camera id. ``tilt_azimuth_spread_deg`` is the arc of
+    tilt AXES (azimuth modulo 180: leaning a hinge both ways is one axis). It and
+    ``tilt_anisotropy`` are NaN when ``n_views_tilt_above_floor < 2`` (azimuth is undefined for
+    an untilted view); they are always read together with that count. ``degenerate`` is
+    rig-level: one camera with ``flag_low_tilt`` makes every camera's intrinsics suspect under a
+    released board. ``flag_single_azimuth`` and ``flag_constant_standoff`` are reported and
+    printed but do not set ``degenerate`` — no experiment has shown either alone breaks
+    identifiability, and a wrong DEGENERATE is as misleading as a wrong GOOD.
+    """
+
+    cameras: List[int]
+    tilt_floor_deg: float
+    board_planarity_rms_mm: float
+    n_views: Dict[int, int]
+    n_views_tilt_above_floor: Dict[int, int]
+    tilt_deg_min: Dict[int, float]
+    tilt_deg_median: Dict[int, float]
+    tilt_deg_max: Dict[int, float]
+    tilt_azimuth_spread_deg: Dict[int, float]
+    tilt_anisotropy: Dict[int, float]
+    standoff_mm_min: Dict[int, float]
+    standoff_mm_median: Dict[int, float]
+    standoff_mm_max: Dict[int, float]
+    standoff_range_fraction: Dict[int, float]
+    depth_ratio_max: Dict[int, float]
+    flag_low_tilt: Dict[int, bool]
+    flag_single_azimuth: Dict[int, bool]
+    flag_constant_standoff: Dict[int, bool]
+    degenerate: bool
+    view_rms_px: Dict[ViewKey, float]
+    view_rms_median_px: Dict[int, float]
+    flagged_views: List[ViewKey]
+
+
+def _board_plane_normal(board: np.ndarray) -> Tuple[np.ndarray, float]:
+    """Unit normal of the board's best-fit plane and the rms out-of-plane distance (mm).
+
+    SVD of the centred points; the normal is the smallest-singular-value direction. Raises
+    ``ValueError`` for fewer than 3 points, a non-finite board, or a collinear one (the second
+    singular value below 1e-9 of the first — the plane is then undefined and there is no
+    honest fallback normal).
+    """
+    P = np.asarray(board, dtype=np.float64).reshape(-1, 3)
+    if P.shape[0] < 3:
+        raise ValueError(f"pose_diversity: board has {P.shape[0]} points, need >= 3")
+    if not np.all(np.isfinite(P)):
+        raise ValueError("pose_diversity: board contains non-finite coordinates")
+    Q = P - P.mean(axis=0)
+    _, s, vt = np.linalg.svd(Q, full_matrices=False)
+    if s[1] <= 1e-9 * s[0]:
+        raise ValueError("pose_diversity: board points are collinear; no plane normal")
+    normal = vt[2] / np.linalg.norm(vt[2])
+    planarity = float(np.sqrt(np.mean((Q @ normal) ** 2)))
+    return normal, planarity
+
+
+def _circular_range_deg(angles_deg: Sequence[float], period: float = 360.0) -> float:
+    """Arc (deg) spanned by a set of angles on a circle of ``period``: ``period - largest
+    wrap-aware gap``.
+
+    ``{10, 350}`` spans 20 deg, not 340. One angle spans 0. With ``period=180`` the angles
+    are tilt AXES: a board hinged forward (azimuth 0) and back (azimuth 180) is one axis and
+    spans 0, which is what the single-axis detector needs (measured on the reference set,
+    2026-08-26: azimuth spread 178 deg but anisotropy 0.06 -- one hinge leaned both ways).
+    """
+    a = np.sort(np.mod(np.asarray(angles_deg, dtype=np.float64), period))
+    if a.size < 2:
+        return 0.0
+    gaps = np.diff(np.concatenate([a, [a[0] + period]]))
+    return float(period - gaps.max())
+
+
+def pose_diversity(
+    board: np.ndarray,
+    pose_by_view: Dict[ViewKey, Tuple[np.ndarray, np.ndarray]],
+    rows_of_view: Dict[ViewKey, Sequence[int]],
+    view_rms_px: Dict[ViewKey, float],
+) -> PoseDiversity:
+    """Pose-diversity metrics and detectors from the converged poses (no re-fit).
+
+    ``board`` is ``(N,3)`` world mm, ``pose_by_view[(cam, view)] = (R, t)`` maps world to
+    camera as ``X_cam = R @ X + t`` (the ``_camera_center`` convention), ``rows_of_view`` gives
+    each view's board rows, ``view_rms_px`` each view's reprojection rms. Tilt is the angle
+    between the board normal (canonicalised to face the camera) and the optical axis; azimuth is
+    the image-plane direction the normal leans; standoff is the median camera-frame depth of the
+    view's rows; depth ratio is the in-view depth extent over the standoff (roughly
+    ``W sin(theta) / Z``, the conditioning the fit actually sees). Raises ``ValueError`` on a
+    pose with no rows, non-finite poses, a board behind a camera, or an unusable board plane.
+    """
+    P = np.asarray(board, dtype=np.float64).reshape(-1, 3)
+    normal, planarity = _board_plane_normal(P)
+    cams = sorted({k[0] for k in pose_by_view})
+    tilt: Dict[int, List[float]] = {c: [] for c in cams}
+    azim: Dict[int, List[float]] = {c: [] for c in cams}
+    standoff: Dict[int, List[float]] = {c: [] for c in cams}
+    depth_ratio: Dict[int, List[float]] = {c: [] for c in cams}
+    for k in sorted(pose_by_view):
+        rows = list(rows_of_view.get(k, []))
+        if not rows:
+            raise ValueError(f"pose_diversity: view {k} has no board rows")
+        R = np.asarray(pose_by_view[k][0], dtype=np.float64).reshape(3, 3)
+        t = np.asarray(pose_by_view[k][1], dtype=np.float64).reshape(3)
+        if not (np.all(np.isfinite(R)) and np.all(np.isfinite(t))):
+            raise ValueError(f"pose_diversity: non-finite pose for view {k}")
+        n_cam = R @ normal
+        if n_cam[2] > 0:
+            n_cam = -n_cam  # face the camera: the optical axis is +z, a facing normal has z<0
+        tilt[k[0]].append(float(np.degrees(np.arccos(np.clip(-n_cam[2], -1.0, 1.0)))))
+        azim[k[0]].append(float(np.degrees(np.arctan2(n_cam[1], n_cam[0]))))
+        z = (P[rows] @ R.T + t)[:, 2]
+        z_med = float(np.median(z))
+        if z_med <= 0:
+            raise ValueError(f"pose_diversity: view {k} places the board behind the camera")
+        standoff[k[0]].append(z_med)
+        depth_ratio[k[0]].append(float((z.max() - z.min()) / z_med))
+
+    names = (
+        "n_views",
+        "n_above",
+        "t_min",
+        "t_med",
+        "t_max",
+        "spread",
+        "aniso",
+        "s_min",
+        "s_med",
+        "s_max",
+        "s_frac",
+        "dr_max",
+        "low_tilt",
+        "single_az",
+        "const_standoff",
+    )
+    out: Dict[str, Dict[int, object]] = {name: {} for name in names}
+    for c in cams:
+        tl, az, so, dr = (np.asarray(x[c]) for x in (tilt, azim, standoff, depth_ratio))
+        above = tl > _TILT_FLOOR_DEG
+        n_above = int(above.sum())
+        if n_above >= 2:
+            spread = _circular_range_deg(az[above], period=180.0)
+            vec = tl[above, None] * np.column_stack(
+                [np.cos(np.radians(az[above])), np.sin(np.radians(az[above]))]
+            )
+            lam = np.linalg.eigvalsh(vec.T @ vec / n_above)
+            aniso = float(np.sqrt(max(lam[0], 0.0) / lam[1])) if lam[1] > 0 else 0.0
+        else:
+            spread, aniso = float("nan"), float("nan")
+        s_frac = float((so.max() - so.min()) / np.median(so))
+        low_tilt = (
+            n_above < 2
+            or float(np.median(tl)) < _DEGENERATE_TILT_MEDIAN_DEG
+            or float(dr.max()) < _DEGENERATE_DEPTH_RATIO
+        )
+        single_az = n_above >= 2 and (
+            spread < _DEGENERATE_AZIMUTH_SPREAD_DEG or aniso < _DEGENERATE_ANISOTROPY
+        )
+        const_standoff = s_frac < _DEGENERATE_STANDOFF_FRACTION
+        vals = (
+            len(tl),
+            n_above,
+            float(tl.min()),
+            float(np.median(tl)),
+            float(tl.max()),
+            spread,
+            aniso,
+            float(so.min()),
+            float(np.median(so)),
+            float(so.max()),
+            s_frac,
+            float(dr.max()),
+            bool(low_tilt),
+            bool(single_az),
+            bool(const_standoff),
+        )
+        for name, v in zip(names, vals):
+            out[name][c] = v
+
+    rms_med = {
+        c: float(np.median([r for k, r in view_rms_px.items() if k[0] == c])) for c in cams
+    }
+    flagged = sorted(
+        k for k, r in view_rms_px.items() if r > _VIEW_RMS_OUTLIER_FACTOR * rms_med[k[0]]
+    )
+    return PoseDiversity(
+        cameras=cams,
+        tilt_floor_deg=_TILT_FLOOR_DEG,
+        board_planarity_rms_mm=planarity,
+        n_views=out["n_views"],
+        n_views_tilt_above_floor=out["n_above"],
+        tilt_deg_min=out["t_min"],
+        tilt_deg_median=out["t_med"],
+        tilt_deg_max=out["t_max"],
+        tilt_azimuth_spread_deg=out["spread"],
+        tilt_anisotropy=out["aniso"],
+        standoff_mm_min=out["s_min"],
+        standoff_mm_median=out["s_med"],
+        standoff_mm_max=out["s_max"],
+        standoff_range_fraction=out["s_frac"],
+        depth_ratio_max=out["dr_max"],
+        flag_low_tilt=out["low_tilt"],
+        flag_single_azimuth=out["single_az"],
+        flag_constant_standoff=out["const_standoff"],
+        degenerate=any(out["low_tilt"].values()),
+        view_rms_px={k: float(v) for k, v in sorted(view_rms_px.items())},
+        view_rms_median_px=rms_med,
+        flagged_views=flagged,
+    )
+
+
+_POSE_DIVERSITY_CAMERA_FIELDS = (
+    "n_views",
+    "n_views_tilt_above_floor",
+    "tilt_deg_min",
+    "tilt_deg_median",
+    "tilt_deg_max",
+    "tilt_azimuth_spread_deg",
+    "tilt_anisotropy",
+    "standoff_mm_min",
+    "standoff_mm_median",
+    "standoff_mm_max",
+    "standoff_range_fraction",
+    "depth_ratio_max",
+    "flag_low_tilt",
+    "flag_single_azimuth",
+    "flag_constant_standoff",
+    "view_rms_median_px",
+)
+_POSE_DIVERSITY_INT_FIELDS = (
+    "n_views",
+    "n_views_tilt_above_floor",
+    "flag_low_tilt",
+    "flag_single_azimuth",
+    "flag_constant_standoff",
+)
+
+
+def pose_diversity_to_meta(pd: PoseDiversity) -> Dict[str, object]:
+    """Flatten to parallel ``(1,C)`` / ``(1,V)`` arrays for the ``.mat`` record.
+
+    Keyed by ``cameras`` (camera ids) and ``view_cam``/``view_index`` (per-view rows), never by
+    camera id as a field name (a struct field starting with a digit is silently dropped by
+    ``savemat``). Flags are int, never strings (unequal strings become a padded char matrix).
+    A single-camera rig's arrays come back from ``loadmat(squeeze_me=True)`` as scalars;
+    :func:`pose_diversity_from_meta` reshapes them.
+    """
+    meta: Dict[str, object] = {
+        "cameras": np.asarray(pd.cameras, dtype=np.int64).reshape(1, -1),
+        "tilt_floor_deg": float(pd.tilt_floor_deg),
+        "board_planarity_rms_mm": float(pd.board_planarity_rms_mm),
+        "degenerate": int(pd.degenerate),
+    }
+    for name in _POSE_DIVERSITY_CAMERA_FIELDS:
+        d = getattr(pd, name)
+        dtype = np.int64 if name in _POSE_DIVERSITY_INT_FIELDS else np.float64
+        meta[name] = np.asarray([d[c] for c in pd.cameras], dtype=dtype).reshape(1, -1)
+    keys = sorted(pd.view_rms_px)
+    meta["view_cam"] = np.asarray([k[0] for k in keys], dtype=np.int64).reshape(1, -1)
+    meta["view_index"] = np.asarray([k[1] for k in keys], dtype=np.int64).reshape(1, -1)
+    meta["view_rms_px"] = np.asarray(
+        [pd.view_rms_px[k] for k in keys], dtype=np.float64
+    ).reshape(1, -1)
+    flagged = set(pd.flagged_views)
+    meta["view_flagged"] = np.asarray(
+        [int(k in flagged) for k in keys], dtype=np.int64
+    ).reshape(1, -1)
+    return meta
+
+
+def pose_diversity_from_meta(meta: Dict[str, object]) -> PoseDiversity:
+    """Inverse of :func:`pose_diversity_to_meta`; tolerates ``squeeze_me`` scalars.
+
+    A missing key raises ``KeyError`` — a record with a ``pose_diversity`` block that lacks a
+    field is stale and must be re-solved, never patched with a default.
+    """
+
+    def arr(name, dtype=np.float64):
+        return np.asarray(meta[name], dtype=dtype).reshape(-1)
+
+    cams = [int(c) for c in arr("cameras", np.int64)]
+    per_cam = {}
+    for name in _POSE_DIVERSITY_CAMERA_FIELDS:
+        if name in _POSE_DIVERSITY_INT_FIELDS:
+            v = arr(name, np.int64)
+            cast = bool if name.startswith("flag_") else int
+        else:
+            v = arr(name)
+            cast = float
+        if v.size != len(cams):
+            raise ValueError(
+                f"pose_diversity: field {name!r} has {v.size} entries for {len(cams)} cameras"
+            )
+        per_cam[name] = {c: cast(x) for c, x in zip(cams, v)}
+    vc, vi = arr("view_cam", np.int64), arr("view_index", np.int64)
+    vr, vf = arr("view_rms_px"), arr("view_flagged", np.int64)
+    keys = [(int(c), int(v)) for c, v in zip(vc, vi)]
+    return PoseDiversity(
+        cameras=cams,
+        tilt_floor_deg=float(np.asarray(meta["tilt_floor_deg"]).reshape(-1)[0]),
+        board_planarity_rms_mm=float(
+            np.asarray(meta["board_planarity_rms_mm"]).reshape(-1)[0]
+        ),
+        degenerate=bool(int(np.asarray(meta["degenerate"]).reshape(-1)[0])),
+        view_rms_px={k: float(r) for k, r in zip(keys, vr)},
+        flagged_views=[k for k, f in zip(keys, vf) if f],
+        **per_cam,
+    )
+
+
+def format_pose_diversity(pd: PoseDiversity) -> str:
+    """Human-readable report for the CLI. Never prints a GOOD verdict."""
+    lines = ["Pose diversity (from the converged poses; a detector, not a grade):"]
+    for c in pd.cameras:
+        n_above = pd.n_views_tilt_above_floor[c]
+        lines.append(
+            f"  cam{c}: {pd.n_views[c]} views, tilt {pd.tilt_deg_min[c]:.1f} / "
+            f"{pd.tilt_deg_median[c]:.1f} / {pd.tilt_deg_max[c]:.1f} deg (min/med/max), "
+            f"standoff {pd.standoff_mm_min[c]:.0f}-{pd.standoff_mm_max[c]:.0f} mm "
+            f"(range {100 * pd.standoff_range_fraction[c]:.0f} % of median), "
+            f"depth ratio max {pd.depth_ratio_max[c]:.3f}"
+        )
+        if n_above >= 2:
+            lines.append(
+                f"        tilt-axis spread {pd.tilt_azimuth_spread_deg[c]:.0f} deg (of 180) over "
+                f"{n_above} tilted views, anisotropy {pd.tilt_anisotropy[c]:.2f}"
+            )
+        else:
+            lines.append(
+                f"        tilt azimuth undefined: only {n_above} view(s) tilted above "
+                f"{pd.tilt_floor_deg:.1f} deg"
+            )
+        for name, text in (
+            ("flag_low_tilt", "LOW TILT: fx is not separable from standoff"),
+            ("flag_single_azimuth", "single tilt axis: re-shoot with tilts in more directions"),
+            ("flag_constant_standoff", "constant standoff: the board never moved in depth"),
+        ):
+            if getattr(pd, name)[c]:
+                lines.append(f"        {name}: {text}")
+        lines.append(f"        per-view rms median {pd.view_rms_median_px[c]:.3f} px")
+    if pd.flagged_views:
+        worst = ", ".join(
+            f"cam{c} view {v} ({pd.view_rms_px[(c, v)]:.2f} px)" for c, v in pd.flagged_views
+        )
+        lines.append(
+            f"  WARNING views above {_VIEW_RMS_OUTLIER_FACTOR:g}x their camera's median rms: "
+            f"{worst}. The rig or board moved, or the model is worst there; if a flagged "
+            f"view is the datum, the world plane is that view's, not the rig's."
+        )
+    lines.append(f"  board planarity rms {pd.board_planarity_rms_mm:.3f} mm")
+    if pd.degenerate:
+        fired = [f"cam{c}" for c in pd.cameras if pd.flag_low_tilt[c]]
+        lines.append(
+            f"  WARNING the pose set is DEGENERATE ({', '.join(fired)} never tilted the "
+            f"board). The reprojection RMS above is NOT evidence that the intrinsics are "
+            f"identifiable; under a released board every camera's focal length is suspect. "
+            f"Re-shoot with the board tilted >= 15 deg in several directions."
+        )
+    else:
+        lines.append(
+            "  no degeneracy detected (absence of a flag is not a certificate of quality)"
+        )
+    return "\n".join(lines)
+
+
 def run_joint(
     detections_by_cam: Dict[int, List[DetectionResult]],
     global_index: Dict[ViewKey, np.ndarray],
@@ -962,7 +1358,7 @@ def run_joint(
         pose_by_view[k] = (cv2.Rodrigues(rvec)[0], tvec)
 
     # ---- assemble per-camera models (the rig pose; world = datum board plane) + RMS ----
-    models, per_cam_rms = {}, {}
+    models, per_cam_rms, view_rms_px = {}, {}, {}
     for c in cams:
         R, t = rig_by_cam[c]
         sq, n = 0.0, 0
@@ -978,7 +1374,9 @@ def run_joint(
                 dist_by_cam[c],
             )
             d = proj.reshape(-1, 2) - det_of[k].image_points
-            sq += float((d**2).sum())
+            sq_k = float((d**2).sum())
+            view_rms_px[k] = float(np.sqrt(sq_k / len(rows_of_view[k])))
+            sq += sq_k
             n += len(rows_of_view[k])
         per_cam_rms[c] = float(np.sqrt(sq / n))
         models[c] = CameraModel(
@@ -990,6 +1388,10 @@ def run_joint(
             distortion_model=distortion_model,
             rms=per_cam_rms[c],
         )
+
+    # Pose-diversity diagnostic: a solve result, not a figure, so no try/except — a failure
+    # here means malformed poses the user must see.
+    diversity = pose_diversity(board, pose_by_view, rows_of_view, view_rms_px)
 
     board_dict = {keys[i]: board[i].copy() for i in range(N)}
     wf = WorldFrame(mode="global_grid", origin_mm=np.array([ox, oy], dtype=np.float64))
@@ -1009,6 +1411,7 @@ def run_joint(
         per_camera_rms=per_cam_rms,
         cross_camera_board_agreement_mm=0.0,
         converged=converged,
+        pose_diversity=diversity,
         info=info,
     )
 
