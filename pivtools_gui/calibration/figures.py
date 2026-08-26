@@ -1892,6 +1892,15 @@ def write_joint_figures(
     # Dewarp agreement proof (image-based; needs the datum-view images).
     if image_loader is not None:
         datum_imgs = {c: image_loader(c, datum_view) for c in cams}
+        # The rigid-rig solve does not require every camera to observe the datum view (traverse
+        # rigs), so a missing image here is legitimate -- but the proof figure it skips must be
+        # named, never dropped silently.
+        no_datum = [c for c in cams if datum_imgs[c] is None]
+        if no_datum:
+            logger.warning(
+                f"joint figures: cameras {no_datum} have no image for datum view {datum_view}; "
+                f"their dewarp proof figure is skipped (the solve itself does not need it)"
+            )
         if len(cams) == 1:
             c = cams[0]
             if datum_imgs[c] is not None:

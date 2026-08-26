@@ -94,9 +94,13 @@ def run_joint_from_spec(
     ``spec`` is the dotboard click record (``None`` for ChArUco, whose corner ids give the grid
     directly). ``cameras`` is the EXPECTED camera set (defaults to the cameras present in
     ``image_size_by_cam``); it is asserted against the cameras the grid actually resolves so a
-    silently-dropped camera fails loudly rather than calibrating a subset. Raises ``ValueError``
-    on any failed view, an unresolvable grid, or a camera/board mismatch — callers translate that
-    to their own error surface (CLI ``SystemExit`` / route JSON).
+    silently-dropped camera fails loudly rather than calibrating a subset. Individual failed views
+    are skipped (see :func:`_check_some_detected`); raises ``ValueError`` when a camera detected
+    nothing, on an unresolvable grid, or on a camera/board mismatch. The datum-view requirement
+    differs by model: the pinhole solve is a rigid rig and needs only a connected chain of shared
+    views across the cameras (a camera may miss the datum view -- traverse rigs), whereas the
+    polynomial solve fits each camera on its own datum image and raises for a camera that missed
+    it. Callers translate ``ValueError`` to their own error surface (CLI ``SystemExit`` / route JSON).
 
     ``figure_dir`` writes the proof-figure suite beside the record — the pinhole bundle for a
     pinhole solve, the per-camera polynomial figures (detection, fit residual, dewarped board,

@@ -916,7 +916,12 @@ def first_view_orientation_candidates(
     its reference views are not resolved, or when the anchor/detection is missing — the GUI then
     has nothing to ask. Candidates are ordered by descending homography fit (best first), though
     for a true lattice fold the fits are equal and the order is immaterial.
+
+    ``spec`` is ``None`` on the ChArUco path (corner ids are absolute, so there is no click
+    anchor and no mirror ambiguity); a failed ChArUco frame then has no candidates to offer.
     """
+    if spec is None:
+        return []
     anchor = next(
         (a for a in spec.anchors if a.camera == camera and a.view == view), None
     )
