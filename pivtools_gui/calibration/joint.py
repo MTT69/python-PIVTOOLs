@@ -1047,8 +1047,7 @@ def format_pose_diversity(pd: PoseDiversity) -> str:
         )
         lines.append(
             f"  WARNING views above {_VIEW_RMS_OUTLIER_FACTOR:g}x their camera's median rms: "
-            f"{worst}. The rig or board moved, or the model is worst there; if a flagged "
-            f"view is the datum, the world plane is that view's, not the rig's."
+            f"{worst}."
         )
     lines.append(f"  board planarity rms {pd.board_planarity_rms_mm:.3f} mm")
     if pd.degenerate:
