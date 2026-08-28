@@ -35,6 +35,7 @@ from pivtools_core.image_handling.path_utils import (
     validate_images_generic,
 )
 from pivtools_core.paths import count_vector_files_by_name, get_data_paths
+from pivtools_core.validation import validate_memory_for_images
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
@@ -1327,15 +1328,6 @@ def validate_files():
             cfg.data.setdefault("images", {})["image_shape"] = [h, w]
             break
 
-    # Memory estimation check — fail validation if worker memory is insufficient
-    memory_warning = None
-    if overall_valid:
-        from pivtools_core.validation import validate_memory_for_images
-
-        memory_warning = validate_memory_for_images(cfg) or None
-        if memory_warning:
-            overall_valid = False
-
     # Stale multi-camera config detection: every camera folder (e.g. source/Cam1)
     # is missing, but files matching the pattern sit directly in the source folder
     # → this is a single-camera layout left over from a previous multi-camera run.
@@ -1370,7 +1362,6 @@ def validate_files():
         {
             "valid": overall_valid,
             "detected_count": top_detected_count,
-            "memory_warning": memory_warning,
             "suggested_camera_count": suggested_camera_count,
             "suggested_camera_count_files": suggested_camera_count_files,
             "details": results,
@@ -2349,6 +2340,20 @@ def clear_output():
             "errors": errors,
         }
     )
+
+
+@api_bp.route("/memory_check", methods=["GET"])
+def memory_check():
+    """Worker-memory estimate for the current batch size and image shape.
+
+    Shown by the Run PIV panel, next to the controls that change the estimate.
+    It is a warning, not a gate — validate_config treats it the same way.
+
+    Returns {"warning": str | None}. Reads one image via Config.image_shape;
+    None when no image can be read, because there is nothing to estimate yet.
+    """
+    cfg = get_config()
+    return jsonify({"warning": validate_memory_for_images(cfg) or None})
 
 
 @api_bp.route("/system_info", methods=["GET"])
