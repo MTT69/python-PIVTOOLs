@@ -1,7 +1,7 @@
 """
 Shared utilities for synthetic calibration board generation.
 
-Used by generate_synthetic_charuco.py and generate_synthetic_dotboard.py.
+Used by generate_synthetic_charuco.py and generate_synthetic_stereo.py.
 """
 
 from pathlib import Path

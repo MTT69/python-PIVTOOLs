@@ -63,6 +63,9 @@ def view_diagnostics_summary(
         "n_outliers_dropped": np.array(
             [int(g.get("n_outliers_dropped", 0) or 0) for g in diags], dtype=np.int64
         ),
+        "n_border_dropped": np.array(
+            [int(g.get("n_border_dropped", 0) or 0) for g in diags], dtype=np.int64
+        ),
         "ransac_n_rejected": np.array(
             [int(g.get("ransac_n_rejected", 0) or 0) for g in diags], dtype=np.int64
         ),

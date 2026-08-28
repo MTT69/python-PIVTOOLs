@@ -187,12 +187,15 @@ def _photometric_flat_field(
     return flat_field, thresh
 
 
-def _extract_blob_centers(thresh: np.ndarray) -> np.ndarray:
+def _extract_blob_centers(thresh: np.ndarray) -> Tuple[np.ndarray, int]:
     """Extract sub-pixel blob centers from a binary threshold image.
 
-    Finds external contours, filters by circularity (> 0.4) and area
-    (0.15x–3.0x median), then fits a least-squares ellipse to each
-    surviving contour for sub-pixel center accuracy.
+    Finds external contours, drops any contour that touches the image border
+    (a dot cut by the frame edge has no measurable centre: ``fitEllipse`` on
+    the truncated contour shifts inward by up to the clipped width, measured
+    +/-2 px on 2026-08-28, under the outlier gate), filters the rest by
+    circularity (> 0.4) and area (0.15x–3.0x median), then fits a
+    least-squares ellipse to each surviving contour for sub-pixel accuracy.
 
     Parameters
     ----------
@@ -203,12 +206,27 @@ def _extract_blob_centers(thresh: np.ndarray) -> np.ndarray:
     -------
     centers : ndarray, shape (N, 2), dtype float32
         Sub-pixel blob centers. Empty (0, 2) array if none found.
+    n_border_dropped : int
+        Contours rejected because they touch the image border.
     """
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    img_h, img_w = thresh.shape[:2]
+
+    # Border rejection first, so a clipped half-dot never enters the median area.
+    n_border_dropped = 0
+    interior_contours = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if x == 0 or y == 0 or x + w == img_w or y + h == img_h:
+            n_border_dropped += 1
+            continue
+        interior_contours.append(cnt)
+    if n_border_dropped:
+        logger.debug(f"Dropped {n_border_dropped} blob(s) touching the image border")
 
     # Geometric filtering: circularity + minimum area
     circular_contours = []
-    for cnt in contours:
+    for cnt in interior_contours:
         if len(cnt) < 5:
             continue
         area = cv2.contourArea(cnt)
@@ -220,7 +238,7 @@ def _extract_blob_centers(thresh: np.ndarray) -> np.ndarray:
             circular_contours.append(cnt)
 
     if not circular_contours:
-        return np.empty((0, 2), dtype=np.float32)
+        return np.empty((0, 2), dtype=np.float32), n_border_dropped
 
     # Median-area band-pass filter: reject dots that are too small or too large
     areas = np.array([cv2.contourArea(c) for c in circular_contours])
@@ -233,9 +251,9 @@ def _extract_blob_centers(thresh: np.ndarray) -> np.ndarray:
             valid_centers.append([ellipse[0][0], ellipse[0][1]])
 
     if not valid_centers:
-        return np.empty((0, 2), dtype=np.float32)
+        return np.empty((0, 2), dtype=np.float32), n_border_dropped
 
-    return np.array(valid_centers, dtype=np.float32)
+    return np.array(valid_centers, dtype=np.float32), n_border_dropped
 
 
 def detect_dotboard_blobs(
@@ -266,7 +284,7 @@ def detect_dotboard_blobs(
         Empty (0, 2) array if detection failed.
     info : dict
         Diagnostic metadata: ``flat_field``, ``thresh``, ``image_mode``,
-        ``n_blobs_detected``, and ``_polarity_results`` (list of per-polarity
+        ``n_blobs_detected``, ``n_border_dropped``, and ``_polarity_results`` (list of per-polarity
         results for grid-quality selection by ``detect_grid_automatic``).
     """
     info: Dict[str, Any] = {}
@@ -282,7 +300,7 @@ def detect_dotboard_blobs(
     polarity_results = []
     for invert in [False, True]:
         ff, thresh = _photometric_flat_field(work, invert=invert)
-        centers = _extract_blob_centers(thresh)
+        centers, n_border_dropped = _extract_blob_centers(thresh)
         polarity_results.append(
             {
                 "centers": centers,
@@ -290,6 +308,7 @@ def detect_dotboard_blobs(
                 "thresh": thresh,
                 "invert": invert,
                 "n_blobs": len(centers),
+                "n_border_dropped": n_border_dropped,
             }
         )
 
@@ -300,6 +319,7 @@ def detect_dotboard_blobs(
     info["thresh"] = best["thresh"]
     info["image_mode"] = "inverted" if best["invert"] else "original"
     info["n_blobs_detected"] = len(centers)
+    info["n_border_dropped"] = best["n_border_dropped"]
     info["_polarity_results"] = polarity_results
 
     logger.debug(
@@ -869,6 +889,7 @@ def detect_grid_automatic(
             best_polarity_info = {
                 "image_mode": "inverted" if pr["invert"] else "original",
                 "n_blobs_detected": pr["n_blobs"],
+                "n_border_dropped": pr["n_border_dropped"],
             }
 
     if best_grid is None or len(best_grid) < 9:

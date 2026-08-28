@@ -1,8 +1,12 @@
 """End-to-end recovery tests for the calibration package.
 
-Hermetic tracks (always run): synthetic ChArUco (OpenCV) and dotboard (OpenCV)
-calibration recovery — planar + stereo — plus the world-frame resolver, distortion
-recovery, 3C reconstruction, the file-IO apply path, and the ChArUco-Y regression.
+Hermetic tracks (always run): synthetic ChArUco (OpenCV) calibration recovery —
+planar + stereo — plus the world-frame resolver, distortion recovery, 3C
+reconstruction, the file-IO apply path, and the ChArUco-Y regression.
+
+No synthetic dotboard accuracy track: the renderer rounded dot centres to
+integer pixels and limited the detector it tested (removed 2026-08-28).
+Dotboard accuracy is checked on a real board with a known setup.
 
 The SIG dotboard + 3C track lives in test_calibration_sig.py (skipped if the SIG
 binary/ncgen are absent), to keep this suite fast and dependency-free.
@@ -21,12 +25,8 @@ import pytest
 
 from pivtools_cli.generate_synthetic_charuco import generate_charuco_dataset
 from pivtools_cli.generate_synthetic_stereo import (
-    DOT_COLS,
-    DOT_ROWS,
-    DOT_SPACING_MM,
     compose_stereo_poses,
     generate_charuco_images,
-    generate_dotboard_images,
     make_camera_matrix,
     make_poses,
     make_stereo_transform,
@@ -44,7 +44,6 @@ from pivtools_gui.calibration.detection.charuco import (
     CharucoBoardDetector,
     CharucoParams,
 )
-from pivtools_gui.calibration.detection.dotboard import DotboardDetector, DotboardParams
 from pivtools_gui.calibration.pipeline import Calibrator
 from pivtools_gui.calibration.stereo_model import (
     StereoCalibrator,
@@ -100,20 +99,12 @@ def stereo_render(tmp_path_factory):
     cp2 = compose_stereo_poses(cp1, Rs, Ts)
     generate_charuco_images(d / "ch1", cam, cp1, W, H)
     generate_charuco_images(d / "ch2", cam, cp2, W, H)
-    # dotboard
-    dbw = (DOT_COLS - 1) * DOT_SPACING_MM / 1000.0
-    dc = np.array([dbw / 2, (DOT_ROWS - 1) * DOT_SPACING_MM / 2000.0, 0])
-    dp1 = make_poses(12, dc, fx, W, dbw, (0.80, 0.55))
-    dp2 = compose_stereo_poses(dp1, Rs, Ts)
-    generate_dotboard_images(d / "dot1", cam, dp1, W, H)
-    generate_dotboard_images(d / "dot2", cam, dp2, W, H)
     load = lambda p: [cv2.imread(str(f), 0) for f in sorted(p.glob("calib*.png"))]
     return {
         "cam": cam,
         "R_stereo": Rs,
         "T_stereo": Ts,
         "charuco": (load(d / "ch1"), load(d / "ch2")),
-        "dotboard": (load(d / "dot1"), load(d / "dot2"), dp1, dp2),
     }
 
 
@@ -272,76 +263,6 @@ def test_charuco_stereo_recovery(stereo_render):
     )
 
 
-# ---------------------------------------------------------------------------
-# Dotboard
-# ---------------------------------------------------------------------------
-
-
-def test_dotboard_mono_recovery(stereo_render, make_figures):
-    imgs1, _imgs2, _p1, _p2 = stereo_render["dotboard"]
-    det = DotboardDetector(DotboardParams(DOT_SPACING_MM))
-    d0 = det.detect(imgs1[0])
-    assert d0.success and d0.n >= 170
-    rec = Calibrator(det, "dotboard").run_mono(
-        imgs1, camera=1, spacing_mm=DOT_SPACING_MM
-    )
-    assert rec.camera_model.rms < 1.0
-    assert abs(rec.camera_model.K[0, 0] - 1000) / 1000 < 0.01
-    if make_figures:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(imgs1[0], cmap="gray")
-        ax.scatter(d0.image_points[:, 0], d0.image_points[:, 1], s=8, c="lime")
-        ax.set_title(f"dotboard detect {d0.n} dots (fx={rec.camera_model.K[0,0]:.0f})")
-        fig.savefig(_figpath("dotboard-detect"), dpi=110)
-        plt.close(fig)
-
-
-def test_dotboard_stereo_recovery(stereo_render):
-    imgs1, imgs2, p1, p2 = stereo_render["dotboard"]
-    cam = stereo_render["cam"]
-    det = DotboardDetector(DotboardParams(DOT_SPACING_MM))
-
-    def clicks_for(pose):
-        rvec, tvec = pose
-        objs = np.array([[0, 0, 0], [0.015, 0, 0], [0, 0.015, 0]], float)
-        pr, _ = cv2.projectPoints(objs, rvec, tvec, cam, np.zeros(5))
-        pr = pr.reshape(-1, 2)
-        return {"origin": pr[0], "x_axis": pr[1], "y_axis": pr[2]}
-
-    rec = StereoCalibrator(det, "dotboard").run_stereo(
-        imgs1,
-        imgs2,
-        1,
-        2,
-        clicks=clicks_for(p1[0]),
-        clicks2=clicks_for(p2[0]),
-        spacing_mm=DOT_SPACING_MM,
-    )
-    ang = np.degrees(
-        np.arccos(
-            np.clip(
-                (np.trace(rec.R_stereo @ stereo_render["R_stereo"].T) - 1) / 2, -1, 1
-            )
-        )
-    )
-    assert ang < 0.5
-    assert float(np.linalg.norm(rec.T_stereo)) == pytest.approx(50.0, abs=1.5)
-    # Measured 2026-08-26 when the vector check was added: the dotboard pair recovers
-    # T = [50.26, 0.01, 1.79] mm for a [50, 0, 0] truth -- a 1.8 mm z bias the norm check
-    # never saw (|T| = 50.29). Tolerance set from that measurement; the bias is an open
-    # finding (REVIEW-FINDINGS-2026-08-26.md, T5), not an accepted property.
-    np.testing.assert_allclose(
-        np.asarray(rec.T_stereo).reshape(3),
-        1000.0 * np.asarray(stereo_render["T_stereo"]).reshape(3),  # render is in m
-        atol=2.5,
-    )
-
-
 def test_stereo_origin_mm_reaches_cam2(stereo_render):
     """A non-zero origin_mm must shift BOTH cameras' world frames together (A2).
 
@@ -349,26 +270,17 @@ def test_stereo_origin_mm_reaches_cam2(stereo_render):
     so the composed stereo pose shifted by exactly that offset. The relative pose
     is invariant under a world re-origin, so the two runs must agree.
     """
-    imgs1, imgs2, p1, p2 = stereo_render["dotboard"]
-    cam = stereo_render["cam"]
-
-    def clicks_for(pose):
-        rvec, tvec = pose
-        objs = np.array([[0, 0, 0], [0.015, 0, 0], [0, 0.015, 0]], float)
-        pr, _ = cv2.projectPoints(objs, rvec, tvec, cam, np.zeros(5))
-        pr = pr.reshape(-1, 2)
-        return {"origin": pr[0], "x_axis": pr[1], "y_axis": pr[2]}
+    imgs1, imgs2 = stereo_render["charuco"]
 
     def run(origin_mm):
-        det = DotboardDetector(DotboardParams(DOT_SPACING_MM))
-        return StereoCalibrator(det, "dotboard").run_stereo(
+        det = CharucoBoardDetector(CHARUCO)
+        return StereoCalibrator(det, "charuco").run_stereo(
             imgs1,
             imgs2,
             1,
             2,
-            clicks=clicks_for(p1[0]),
-            clicks2=clicks_for(p2[0]),
-            spacing_mm=DOT_SPACING_MM,
+            clicks=None,
+            spacing_mm=CHARUCO.square_size_mm,
             origin_mm=origin_mm,
         )
 

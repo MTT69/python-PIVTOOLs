@@ -36,15 +36,17 @@ INFILL_SHIFT_PX = 4
 FAINT_GRAY = 235  # faint dot: missed by the blob detector, NCC still ~1
 
 
-def _dot_grid_image(displace=None, faint=None) -> np.ndarray:
+def _dot_grid_image(displace=None, faint=None, margin_right=MARGIN) -> np.ndarray:
     """White background, black dots on a regular grid.
 
     displace : (col, row) dot drawn INFILL_SHIFT_PX off-lattice (forces a drop).
     faint : (col, row) dot drawn at FAINT_GRAY (blob detector misses it; the
         template-matching rescue can still find it — NCC is contrast-invariant).
+    margin_right : distance from the last column to the right image edge. Below
+        DOT_RADIUS the last column is cut by the border.
     """
     h = 2 * MARGIN + (N_ROWS - 1) * SPACING_PX
-    w = 2 * MARGIN + (N_COLS - 1) * SPACING_PX
+    w = MARGIN + margin_right + (N_COLS - 1) * SPACING_PX
     img = np.full((h, w), 255, dtype=np.uint8)
     for r in range(N_ROWS):
         for c in range(N_COLS):
@@ -71,6 +73,33 @@ def test_clean_grid_has_no_synthetic_points():
     assert mask.dtype == bool and len(mask) == len(grid["centers"])
     assert mask.sum() == 0
     assert info["n_rescued"] == 0 and info["n_outliers_dropped"] == 0
+
+
+def test_border_clipped_dots_are_rejected():
+    """A dot cut by the image edge is dropped, never measured.
+
+    fitEllipse on a truncated contour shifts the centre inward by up to the
+    clipped width (measured 2026-08-28 on the synthetic stereo fixture: +/-2 px in x
+    at the frame edge, under the 2 px outlier gate). The rest of the grid is
+    unaffected, and the clean grid keeps every dot.
+    """
+    img = _dot_grid_image(margin_right=DOT_RADIUS // 2)
+    ok, grid, info = detect_grid_automatic(img)
+    assert ok
+    centers = np.asarray(grid["centers"], float)
+    assert len(centers) == N_ROWS * (N_COLS - 1)
+    assert info["n_border_dropped"] == N_ROWS
+    last_full_col_x = MARGIN + (N_COLS - 2) * SPACING_PX
+    assert centers[:, 0].max() < last_full_col_x + 0.5
+    # Every surviving centre sits on the drawn lattice.
+    cols = np.round((centers[:, 0] - MARGIN) / SPACING_PX)
+    rows = np.round((centers[:, 1] - MARGIN) / SPACING_PX)
+    lattice = np.column_stack([MARGIN + cols * SPACING_PX, MARGIN + rows * SPACING_PX])
+    assert np.abs(centers - lattice).max() < 0.1
+
+    ok_clean, grid_clean, info_clean = detect_grid_automatic(_dot_grid_image())
+    assert ok_clean and len(grid_clean["centers"]) == N_ROWS * N_COLS
+    assert info_clean["n_border_dropped"] == 0
 
 
 def test_forced_infill_mask_matches_diagnostics(make_figures):
@@ -156,7 +185,13 @@ def test_detection_result_carries_mask_and_diagnostics():
     # the displaced dot is dropped, not fabricated: nothing synthetic remains
     assert det.synthetic_mask.sum() == det.diagnostics["n_rescued"]
     # info scalars now reach DetectionResult.diagnostics (B4 feedstock)
-    for key in ("n_rescued", "n_outliers_dropped", "ransac_n_rejected", "edge_fraction"):
+    for key in (
+        "n_rescued",
+        "n_outliers_dropped",
+        "n_border_dropped",
+        "ransac_n_rejected",
+        "edge_fraction",
+    ):
         assert key in det.diagnostics
     assert det.diagnostics["n_outliers_dropped"] >= 1
 
@@ -167,11 +202,12 @@ def test_detection_result_carries_mask_and_diagnostics():
 
 
 def _fake_detection(
-    success=True, n=12, n_rescued=0, n_outliers_dropped=0, warning=None
+    success=True, n=12, n_rescued=0, n_outliers_dropped=0, n_border_dropped=0, warning=None
 ) -> DetectionResult:
     diag = {
         "n_rescued": n_rescued,
         "n_outliers_dropped": n_outliers_dropped,
+        "n_border_dropped": n_border_dropped,
         "ransac_n_rejected": 1,
         "edge_fraction": 0.05,
     }
@@ -193,13 +229,14 @@ def _fake_detection(
 def test_view_diagnostics_summary_arrays():
     dets = [
         _fake_detection(n_rescued=2),
-        _fake_detection(n_outliers_dropped=3, warning="partial board"),
+        _fake_detection(n_outliers_dropped=3, n_border_dropped=4, warning="partial board"),
     ]
     s = view_diagnostics_summary(dets)
     np.testing.assert_array_equal(s["view_index"], [0, 1])
     np.testing.assert_array_equal(s["success"], [1, 1])
     np.testing.assert_array_equal(s["n_rescued"], [2, 0])
     np.testing.assert_array_equal(s["n_outliers_dropped"], [0, 3])
+    np.testing.assert_array_equal(s["n_border_dropped"], [0, 4])
     np.testing.assert_array_equal(s["n_synthetic"], [2, 0])
     np.testing.assert_array_equal(s["ransac_n_rejected"], [1, 1])
     assert s["warnings"] == "view 1: partial board"
