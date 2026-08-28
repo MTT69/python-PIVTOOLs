@@ -7,6 +7,7 @@ dask[distributed]>=2025.7.0
 dask-jobqueue
 dask-image
 loguru>=0.7.3
+lz4>=4.3
 numpy>=2.2
 opencv-python>=4.12
 pandas>=2.3

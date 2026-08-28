@@ -1,33 +1,34 @@
 paths:
   base_paths:
-  - E:\Cavity_Flow_Results\90degree_250light_250hz_1000dt_0
+  - E:\andre Project_FlowMaster_260129_152105_x25\pivtools
   source_paths:
-  - F:\181124_polyamide\90degree_250light_250hz_1000dt_0
+  - E:\andre Project_FlowMaster_260129_152105_x25\Recording_Date=260129_Time=161637_AoA10.set
   active_paths:
   - 0
   camera_numbers:
   - 1
-  camera_count: 1
+  - 2
+  camera_count: 2
   camera_subfolders: []
 images:
   image_format:
-  - Camera%d.cine
+  - data.set
   vector_format:
   - '%05d.mat'
   dtype: float32
-  image_type: cine
+  image_type: lavision_set
   use_camera_subfolders: false
   start_index: 1
-  frame_stride: 1
-  pair_stride: 2
-  pairing_preset: skip_frames
+  frame_stride: 0
+  pair_stride: 1
+  pairing_preset: pre_paired
   num_loops: 1
-  num_images: 7200
+  num_images: 750
   image_shape:
-  - 1200
-  - 2560
+  - 3352
+  - 5312
 batches:
-  size: 50
+  size: 5
 logging:
   file: pypiv.log
   level: INFO
@@ -95,7 +96,7 @@ video:
   fps: 30
   crf: 15
   resolution: 4k
-  source_endpoint: regular
+  source_endpoint: stereo
 statistics:
   enabled_methods:
     inst_vorticity: true
@@ -118,7 +119,7 @@ statistics:
   gamma_radius: 4
   save_figures: true
   type_name: instantaneous
-  source_endpoint: regular
+  source_endpoint: stereo
 instantaneous_piv:
   window_size:
   - - 64
@@ -194,8 +195,8 @@ ensemble_piv:
   envelope_divide: false
 calibration:
   calibration_sources:
-  - E:\alk235\cam4_all_512_tiff\calibration
-  active: charuco
+  - E:\andre Project_FlowMaster_260129_152105_x25\Properties\Calibration
+  active: stereo_stepped
 filters:
 - type: time
 masking:
@@ -218,4 +219,4 @@ transforms:
   cameras:
     1:
       operations: []
-  source_endpoint: regular
+  source_endpoint: stereo

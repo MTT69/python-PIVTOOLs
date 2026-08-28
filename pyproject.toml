@@ -32,6 +32,7 @@ dependencies = [
     "dask-jobqueue",
     "dask-image",
     "loguru>=0.7.3",
+    "lz4>=4.3",  # C decoder for DaVis pack_type 20 .im7; pure-python fallback is ~30 MB/s
     "numpy>=2.2",
     "opencv-python>=4.12",
     "pandas>=2.3",
