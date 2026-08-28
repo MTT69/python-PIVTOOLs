@@ -99,6 +99,20 @@ def test_config_save_strips_non_pointer_keys(tmp_path):
     assert cal["active"] == "dotboard"
 
 
+def test_calibration_source_path_is_stripped(tmp_path):
+    """A pasted path with stray whitespace resolves to the clean path.
+
+    On 2026-08-28 a leading space in the GUI source field reached
+    ``save_settings`` as ``' C:\...\calibration'`` and ``mkdir`` raised
+    WinError 123 (a name starting with a space) on every settings autosave.
+    """
+    yaml_path = tmp_path / "config.yaml"
+    _write_yaml(yaml_path, {"calibration_sources": ["  /data/calib_a 	"], "active": "charuco"})
+    cfg = Config(path=str(yaml_path))
+    assert cfg.calibration_sources == [Path("/data/calib_a")]
+    assert cfg.get_calibration_source(0) == Path("/data/calib_a")
+
+
 def test_config_save_without_calibration_block(tmp_path):
     """No calibration block: save must neither crash nor invent one."""
     yaml_path = tmp_path / "config.yaml"

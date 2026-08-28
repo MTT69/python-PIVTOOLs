@@ -1344,7 +1344,9 @@ class Config:
         """
         calib_block = self.data.get("calibration", {}) or {}
         sources = calib_block.get("calibration_sources", [])
-        return [Path(s) for s in sources if s is not None] if sources else []
+        # str().strip(): a pasted path with a stray leading space reaches mkdir as
+        # ' C:\...' and Windows rejects it (WinError 123, seen 2026-08-28).
+        return [Path(str(s).strip()) for s in sources if s is not None] if sources else []
 
     def get_calibration_source(self, source_path_idx: int = 0) -> Path:
         """Get calibration source path for the given index.
