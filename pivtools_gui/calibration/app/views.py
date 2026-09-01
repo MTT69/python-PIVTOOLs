@@ -127,7 +127,7 @@ def _detect_parallel(board, params, imgs, spacing_mm=None, on_done=None):
 _datum_cache = {}
 _datum_lock = threading.Lock()
 
-# Joint multi-camera: detections cached per (source, board, n_views, format, params) so the
+# Joint multi-camera: detections cached per (source path, board, n_views, format, params) so the
 # live resolve-grid loop and the generate job do not re-detect every view on every call. The
 # in-memory layer is the fast path; the persistent layer is the sidecar inputs.mat (see
 # _joint_detect), keyed by _joint_det_key so a param change forces a re-detect.
@@ -896,13 +896,21 @@ def detect_frame():
 
 @calibration_bp.route("/calibration/detect_views", methods=["POST"])
 def detect_views():
-    """Detect every calibration view for one camera in a single round-trip.
+    """Detect every calibration view for one camera (mono) or a camera pair (stereo) and
+    write the result through to the ``inputs.mat`` sidecar that ``generate_model`` reads.
 
-    Backs the "Detect Dots" button for pinhole models, where the overlay should show
-    the full set of views the bundle fit will use. Frames that fail to load or detect
-    are skipped (a board is legitimately absent from some views) — not an error.
-    Like ``detect_frame`` this is overlay-only and does NOT touch the datum cache used
-    by ``snap_fiducial``.
+    Backs the "Detect Dots" button. The request shape mirrors ``generate_model``:
+    ``camera`` for mono, ``stereo`` + ``camera_pair`` for stereo, so the detections land in
+    the same sidecar the solve will look in, under the same ``det_key``. The response carries
+    the successful views per camera for the overlay; the sidecar receives the full per-view
+    list with failed detections kept in place (a board legitimately absent from a view is
+    dropped by the solve, not an error). Stored world-frame clicks are left untouched.
+
+    A view that fails to LOAD leaves the set incomplete: the overlay still shows what
+    detected, but the sidecar keeps its previous contents -- a partial set must never
+    overwrite a complete one -- and ``persisted`` is false with the reason. ``detect_frame``
+    (single-frame browsing) stays overlay-only for the same reason. Like ``detect_frame``
+    this does NOT touch the datum cache used by ``snap_fiducial``.
     """
     data = request.get_json() or {}
     try:
@@ -911,41 +919,92 @@ def detect_views():
         # See detect_datum: incomplete board geometry is routine, not a fault.
         logger.warning("calibration detect_views: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 200
-    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame_total = int(data.get("frame_total", 1))
     image_format = data.get("image_format")
     image_type = data.get("image_type")
-    try:
-        frame_count = get_calibration_frame_count(camera, get_config(), source_idx)
-    except Exception:
-        frame_count = 0
-    frames: dict[str, dict] = {}
-    width = height = 0
-    for frame in range(1, frame_total + 1):
+    stereo = bool(data.get("stereo", False))
+    if stereo:
+        pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
+        cameras = [int(pair[0]), int(pair[1])]
+    else:
+        cameras = [int(data.get("camera") or _rig(data.get).get("camera") or 1)]
+
+    by_camera: dict[str, dict] = {}
+    detections: dict[int, list] = {}
+    image_size_by_cam: dict[int, tuple] = {}
+    unloadable: list[str] = []
+    for camera in cameras:
+        frames: dict[str, dict] = {}
+        dets: list = []
+        width = height = 0
+        for frame in range(1, frame_total + 1):
+            try:
+                img = _load_one(camera, frame, source_idx, image_format, image_type)
+            except (FileNotFoundError, ValueError, IndexError) as exc:
+                unloadable.append(f"cam{camera} frame {frame}: {exc}")
+                continue
+            det = detector.detect(img)
+            dets.append(det)
+            h, w = np.asarray(img).shape[:2]
+            width, height = int(w), int(h)
+            if det.success:
+                frames[str(frame)] = {
+                    "image_points": det.image_points.tolist(),
+                    "grid_indices": det.grid_indices.tolist(),
+                    "n_points": det.n,
+                }
+        by_camera[str(camera)] = {
+            "frames": frames,
+            "n_detected": len(frames),
+            "width": width,
+            "height": height,
+        }
+        detections[camera] = dets
+        image_size_by_cam[camera] = (width, height)
+
+    persisted = False
+    persist_skipped: Optional[str] = None
+    if unloadable:
+        persist_skipped = "incomplete set, not persisted: " + "; ".join(unloadable)
+    else:
+        source = _source_path(source_idx)
+        model_dir = (
+            rec.stereo_model_dir_for_source(source, cameras[0], cameras[1])
+            if stereo
+            else rec.mono_model_dir_for_source(source, cameras[0], board)
+        )
+        det_key = joint_det_key(
+            board,
+            frame_total,
+            image_format,
+            infer_image_type(image_format),
+            cameras,
+            params,
+        )
         try:
-            img = _load_one(camera, frame, source_idx, image_format, image_type)
-        except (FileNotFoundError, ValueError, IndexError):
-            continue
-        det = detector.detect(img)
-        h, w = np.asarray(img).shape[:2]
-        width, height = int(w), int(h)
-        if det.success:
-            frames[str(frame)] = {
-                "image_points": det.image_points.tolist(),
-                "grid_indices": det.grid_indices.tolist(),
-                "n_points": det.n,
-            }
+            save_inputs(
+                model_dir,
+                path_type="stereo" if stereo else "mono",
+                board_type=board,
+                detections=detections,
+                image_size_by_cam=image_size_by_cam,
+                det_key=det_key,
+                board_params=rec.geometry_meta(board, params),
+            )
+            persisted = True
+        except OSError as exc:
+            # A read-only source: the overlay is still valid, the next Generate re-detects.
+            logger.warning("calibration detect_views: sidecar not written: %s", exc)
+            persist_skipped = f"sidecar not written: {exc}"
     return jsonify(
         {
             "success": True,
-            "camera": camera,
             "board": board,
-            "frames": frames,
-            "n_detected": len(frames),
-            "frame_count": frame_count,
-            "width": width,
-            "height": height,
+            "cameras": cameras,
+            "by_camera": by_camera,
+            "persisted": persisted,
+            "persist_skipped": persist_skipped,
         }
     )
 
@@ -1057,10 +1116,14 @@ def generate_model():
                 [cam1, cam2],
                 params,
             )
+            # The sidecar is always read: force_redetect bypasses its DETECTIONS only. The
+            # clicked world frame stored beside them must survive a Re-detect without a
+            # re-click (it is re-saved from `side.coords` below).
             force_redetect = bool(data.get("force_redetect", False))
-            side = None if force_redetect else try_load_inputs(model_dir)
+            side = try_load_inputs(model_dir)
             cache_hit = (
-                side is not None
+                not force_redetect
+                and side is not None
                 and side.det_key == det_key
                 and bool(side.detections)
                 and cam1 in side.detections
@@ -1151,8 +1214,10 @@ def generate_model():
             # Detection sidecar (parity with stereo/joint): reuse stored detections + clicks when
             # the request params still match (det_key), so a model can be regenerated without
             # re-detecting or re-clicking — and, with figures off, without the images on disk.
+            # As in the stereo branch: force_redetect bypasses the cached DETECTIONS only,
+            # the stored clicks are re-saved from `side.coords` below.
             force_redetect = bool(data.get("force_redetect", False))
-            side = None if force_redetect else try_load_inputs(model_dir)
+            side = try_load_inputs(model_dir)
             cached = (side.detections or {}).get(camera) if side else None
             # View count from the request/config, falling back to the sidecar's cached count so a
             # re-solve still resolves when the images (and thus the auto-count) are gone.
@@ -1178,7 +1243,12 @@ def generate_model():
                 params,
             )
             cached_size = None
-            cache_hit = side is not None and side.det_key == det_key and bool(cached)
+            cache_hit = (
+                not force_redetect
+                and side is not None
+                and side.det_key == det_key
+                and bool(cached)
+            )
             if cache_hit:
                 cached_size = side.image_size_by_cam.get(camera)
             # World-frame picks: the live request, else the stored coords (re-solve w/o re-click).
@@ -2203,8 +2273,10 @@ def _joint_detect(
     # The camera set is part of the key: a hit only detected the cameras it was asked for, so
     # reusing it for a different set would hand the solver a stale subset (caught by run_joint's
     # expected_cameras guard, but with a confusing message blaming the grid, not the cache).
+    # The source enters as its resolved PATH, not its index: an in-place edit of the path at
+    # the same index is a different rig and must not be served the old directory's detections.
     key = (
-        int(source_idx),
+        str(_source_path(source_idx)),
         str(board),
         int(n_views),
         str(image_format),
