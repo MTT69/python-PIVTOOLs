@@ -37,6 +37,7 @@ import numpy as np
 from scipy.io import loadmat, savemat
 
 from .detection.base import DetectionResult
+from .detection.grid_detection import DETECTOR_VERSION
 from .record import _empty_if_none, _scalar
 
 SCHEMA_VERSION = 1
@@ -84,9 +85,11 @@ def joint_det_key(board, n_views, image_format, image_type, cameras, params) -> 
     source need not be in the key. Stored next to the detections (``InputsRecord.det_key``) so a
     load reuses them only when the current request's params still match — and so the GUI route
     and the headless CLI, which compute it from the same fields, share one detection cache. A
-    changed n_views / format / board param yields a new key and forces a re-detect.
+    changed n_views / format / board param yields a new key and forces a re-detect, and so
+    does a bump of ``DETECTOR_VERSION`` (the detector code changed what it returns).
     """
     sig = (
+        int(DETECTOR_VERSION),
         str(board),
         int(n_views),
         str(image_format),

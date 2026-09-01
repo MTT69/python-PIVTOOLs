@@ -213,8 +213,9 @@ def write_detection_figure(
         scale = max(1, w // 1400)
 
         # Show only genuinely-detected, accepted dots. Synthetic (template-rescued) points are
-        # dropped from the FIGURE (they are still stored in the record/sidecar); RANSAC-rejected
-        # points are already absent from the detection result. dotboard-only — charuco has no mask.
+        # dropped from the FIGURE (they are still stored in the record/sidecar); points the RANSAC
+        # or the radial-aware outlier gate rejected are already absent from the detection result.
+        # dotboard-only — charuco has no mask.
         synth = detection.synthetic_mask
         if synth is not None:
             synth = np.asarray(synth, dtype=bool).reshape(-1)

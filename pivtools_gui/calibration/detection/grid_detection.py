@@ -6,7 +6,8 @@ calibration pipelines. Single canonical source — no copies elsewhere.
 
 Algorithm: photometric flat-fielding → contour/ellipse blob detection →
 direction histogram → reciprocal BFS grid assembly → RANSAC homography →
-template-matching rescue → connected component filtering.
+template-matching rescue → radial-aware outlier gate → connected component
+filtering.
 """
 
 from collections import deque
@@ -16,6 +17,7 @@ import cv2
 import numpy as np
 from loguru import logger
 from scipy.ndimage import uniform_filter1d
+from scipy.optimize import least_squares
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -743,12 +745,60 @@ def _filter_connected_dict(
     return filtered
 
 
-# Residual (px) against a pinhole homography of the grid above which a dot is DROPPED. A
-# homography cannot tell a droplet-displaced dot from lens distortion at the board edge, so
-# nothing is ever infilled from it (until 2026-08-26 outliers were overwritten with the
-# homography's prediction, which erased the distortion signal the intrinsics fit needs).
-# Dropping is honest: a missing dot costs coverage, a fabricated one biases k1/k2 silently.
+# Residual (px) against the grid model above which a dot is DROPPED. Nothing is ever
+# infilled from the model: until 2026-08-26 outliers were overwritten with the model's
+# prediction, which erased the distortion signal the intrinsics fit needs. Dropping is
+# honest -- a missing dot costs coverage, a fabricated one biases k1/k2 silently.
 _OUTLIER_RESIDUAL_PX = 2.0
+# The grid model is a homography of the grid index plus a two-term radial distortion about
+# a free centre (12 parameters), fitted with a soft-L1 loss so gross outliers do not drag
+# it. Until 2026-09-01 the reference was a RANSAC homography alone. A homography cannot
+# represent lens distortion, so on the gF_Ramp joint calibration it read 2-11 px of barrel
+# distortion as disagreement and dropped 33-41% of the board -- the periphery the k1/k2
+# intrinsics fit needs most. The radial terms absorb the distortion; a reflection seam
+# (a crease in the row pitch) still cannot be fitted and is dropped, after which the
+# largest-component filter removes the detached reflection.
+# Fit / drop / refit rounds. One round suffices when the board carries distortion, but a
+# board that IS an exact homography plus a coherent reflection block (two or more mirrored
+# rows) leaves the radial terms free to lean into the reflection, pulling board dots at the
+# seam past the gate (13% of a synthetic board, 2026-09-01). Refitting on the survivors
+# removes the lean; the kept set stabilised in two rounds on every fixture measured.
+_OUTLIER_FIT_ROUNDS = 3
+# Convergence tolerances stay at the least_squares defaults (1e-8): with ftol/xtol at 1e-6
+# the first round on gF_Ramp cam2 stopped at a wrong solution (k1 < 0, 934 of 1606 dots
+# flagged) and the refit rounds only partly recovered it. The full fit costs ~70 ms per view.
+_OUTLIER_FIT_MAX_NFEV = 200
+# Below this many dots the 12-parameter fit is under-determined for its purpose: gate on
+# the plain least-squares homography instead, and never refit a round on fewer survivors.
+_OUTLIER_FIT_MIN_DOTS = 20
+
+# Bump when the detector returns different points for the same image and parameters.
+# Folded into the detection cache key (``inputs_store.joint_det_key``) so cached detections
+# from an older detector are re-detected instead of silently reused by the next solve.
+#   1 -- 2026-09-01: outlier gate measures against a homography + radial distortion fit
+#        (was a RANSAC homography, which amputated the periphery of distorted views).
+DETECTOR_VERSION = 1
+
+
+def _grid_model_points(params: np.ndarray, src: np.ndarray, scale: float) -> np.ndarray:
+    """Project grid indices through the 12-parameter homography + radial model.
+
+    ``params`` = 8 homography entries (H[2, 2] fixed at 1), k1, k2, distortion centre
+    (cx, cy). The radius is normalised by ``scale`` (the board's extent) so k1/k2 stay O(1).
+    """
+    H = np.append(params[:8], 1.0).reshape(3, 3)
+    k1, k2, cx, cy = params[8:12]
+    proj = (H @ np.column_stack([src, np.ones(len(src))]).T).T
+    xy = proj[:, :2] / proj[:, 2:3]
+    d = xy - (cx, cy)
+    r2 = ((d / scale) ** 2).sum(axis=1)
+    return d * (1.0 + k1 * r2 + k2 * r2**2)[:, None] + (cx, cy)
+
+
+def _grid_model_residuals(
+    params: np.ndarray, src: np.ndarray, dst: np.ndarray, scale: float
+) -> np.ndarray:
+    return (_grid_model_points(params, src, scale) - dst).ravel()
 
 
 def _drop_grid_outliers(
@@ -756,13 +806,20 @@ def _drop_grid_outliers(
     centers,
     residual_threshold: float = _OUTLIER_RESIDUAL_PX,
 ) -> Tuple[Dict[Tuple[int, int], int], list]:
-    """Drop dots that disagree with a homography of the grid by more than the threshold.
+    """Drop dots that disagree with the radial-aware grid model by more than the threshold.
 
-    Fits a RANSAC homography grid-index -> pixel over all dots and removes every dot whose
-    residual exceeds ``residual_threshold``. Returns the pruned grid and the dropped keys.
-    Logs at WARNING with the count: on a wide, distorted lens the dropped dots are the
-    board's periphery, and a calibration missing them under-samples the distortion -- the
-    user should see that, not a silently thinner board.
+    Fits grid-index -> pixel as a homography plus two-term radial distortion (see the
+    constants above), iterating fit / drop / refit until the kept set is stable, and
+    removes every dot whose residual against the final model exceeds
+    ``residual_threshold``. Returns the pruned grid and the dropped keys. Lens distortion
+    is absorbed by the model, so what remains above the gate is a reflection seam,
+    a droplet or occlusion on the board, or a mis-assigned blob. Logs at WARNING with the
+    count so the user sees a thinner board rather than getting one silently.
+
+    If a round's fit does not converge, or leaves fewer than ``_OUTLIER_FIT_MIN_DOTS``
+    survivors to refit on, the gate stops and uses the residuals it already has (the
+    plain least-squares homography for round 1, the previous round otherwise), logged at
+    WARNING -- never keeping everything silently.
 
     Parameters
     ----------
@@ -774,15 +831,63 @@ def _drop_grid_outliers(
         Max residual in pixels to keep a dot.
     """
     grid_keys = list(grid.keys())
-    src_pts = np.array(grid_keys, dtype=np.float32)
-    dst_pts = np.array([centers[grid[k]] for k in grid_keys], dtype=np.float32)
+    src = np.array(grid_keys, dtype=np.float64)
+    dst = np.array([centers[grid[k]] for k in grid_keys], dtype=np.float64)
 
-    H, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, residual_threshold)
-    if H is None:
+    H0, _ = cv2.findHomography(src.astype(np.float32), dst.astype(np.float32), method=0)
+    if H0 is None:
         return grid, []
+    predicted = cv2.perspectiveTransform(
+        src.reshape(-1, 1, 2).astype(np.float32), H0
+    ).reshape(-1, 2)
+    residuals = np.linalg.norm(dst - predicted, axis=1)
 
-    predicted = cv2.perspectiveTransform(src_pts.reshape(-1, 1, 2), H).reshape(-1, 2)
-    residuals = np.linalg.norm(dst_pts - predicted, axis=1)
+    if len(src) >= _OUTLIER_FIT_MIN_DOTS:
+        centre = dst.mean(axis=0)
+        scale = float(np.linalg.norm(dst - centre, axis=1).max())
+        params = np.concatenate([(H0 / H0[2, 2]).ravel()[:8], [0.0, 0.0, *centre]])
+        active = np.ones(len(src), dtype=bool)
+        for fit_round in range(1, _OUTLIER_FIT_ROUNDS + 1):
+            fit = least_squares(
+                _grid_model_residuals,
+                params,
+                args=(src[active], dst[active], scale),
+                loss="soft_l1",
+                f_scale=residual_threshold,
+                max_nfev=_OUTLIER_FIT_MAX_NFEV,
+            )
+            if not fit.success:
+                logger.warning(
+                    f"Grid outlier check: radial-aware grid fit did not converge in round "
+                    f"{fit_round} ({fit.message}); gating on the "
+                    f"{'plain homography' if fit_round == 1 else 'previous round'} instead."
+                )
+                break
+            round_residuals = np.linalg.norm(
+                _grid_model_points(fit.x, src, scale) - dst, axis=1
+            )
+            survivors = round_residuals <= residual_threshold
+            if survivors.sum() < _OUTLIER_FIT_MIN_DOTS:
+                # A model that rejects most of the board is not one to refit on or gate
+                # with: keep the residuals of the previous round (plain homography for
+                # round 1) and say so.
+                logger.warning(
+                    f"Grid outlier check: radial-aware grid fit round {fit_round} kept fewer "
+                    f"than {_OUTLIER_FIT_MIN_DOTS} of {len(src)} dots; gating on the "
+                    f"{'plain homography' if fit_round == 1 else 'previous round'} instead."
+                )
+                break
+            params = fit.x
+            residuals = round_residuals
+            logger.debug(
+                f"Grid outlier check round {fit_round}: k1={params[8]:.4f} k2={params[9]:.4f}, "
+                f"{int((~survivors).sum())} above {residual_threshold:g} px, kept median "
+                f"{np.median(residuals[survivors]):.2f} px"
+            )
+            if np.array_equal(survivors, active):
+                break
+            active = survivors
+
     outlier_mask = residuals > residual_threshold
     if not outlier_mask.any():
         return grid, []
@@ -791,9 +896,8 @@ def _drop_grid_outliers(
     pruned = {k: v for k, v in grid.items() if k not in set(dropped)}
     logger.warning(
         f"Grid outlier check: dropped {len(dropped)} dot(s) more than {residual_threshold:g} px "
-        f"from the grid homography (max {residuals[outlier_mask].max():.1f} px). Droplets or "
-        f"occlusion on the board, or lens distortion at the periphery -- if the latter, the "
-        f"distortion fit is under-sampled there."
+        f"from the radial-aware grid fit (max {residuals[outlier_mask].max():.1f} px). "
+        f"A reflection seam, or droplets / occlusion on the board."
     )
     return pruned, dropped
 
@@ -814,7 +918,8 @@ def detect_grid_automatic(
 
     Full pipeline: photometric flat-fielding → contour/ellipse blob detection →
     direction histogram → reciprocal BFS grid assembly → RANSAC homography →
-    template-matching rescue → connected component filtering.
+    template-matching rescue → radial-aware outlier gate → connected component
+    filtering.
 
     Parameters
     ----------
@@ -952,7 +1057,7 @@ def detect_grid_automatic(
         spacing_px,
     )
 
-    # Step 4: Grid smoothness check — drop dots that disagree with the grid homography
+    # Step 4: Grid smoothness check — drop dots that disagree with the radial-aware grid fit
     validated_grid, dropped_nodes = _drop_grid_outliers(validated_grid, rescued_centers)
     info["n_outliers_dropped"] = len(dropped_nodes)
 

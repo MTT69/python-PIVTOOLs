@@ -197,6 +197,198 @@ def test_detection_result_carries_mask_and_diagnostics():
 
 
 # ---------------------------------------------------------------------------
+# Outlier gate — distortion must survive, reflections must not (Package A, 2026-09-01)
+# ---------------------------------------------------------------------------
+
+# A larger board rendered through a perspective tilt, optionally through radial lens
+# distortion, optionally with mirrored rows below the board (a reflection in the
+# surface the board stands on). Sized so the gate, not the step-2 RANSAC, decides.
+PERSP_N_COLS, PERSP_N_ROWS = 24, 16
+PERSP_SPACING_PX = 60
+PERSP_DOT_RADIUS = 6
+PERSP_MARGIN = 80
+# Row pitch at the far edge of the board over the pitch at the near edge (the tilt).
+PERSP_FAR_PITCH_RATIO = 0.9
+# Barrel term: the corner of the board moves DISTORTION_K1 * corner radius (~12 px at
+# this size). A plain homography leaves 3-6 px residuals at the periphery, the regime
+# measured on the gF_Ramp joint calibration (2-11 px on a 4872x3248 frame).
+DISTORTION_K1 = 0.015
+# Mirror plane below the last row, in units of the last row pitch. 0.5 would make the
+# first mirrored row an exact continuation of the lattice (no gate can see it); 0.6 puts
+# a crease at the seam like a real reflection.
+REFLECTION_GAP_FRAC = 0.6
+# Kept dots must sit on the rendered lattice to this tolerance (anti-aliased circles).
+LATTICE_TOL_PX = 0.75
+
+
+def _perspective_board_points(n_reflected_rows: int, k1: float):
+    """Board dots + mirrored rows, in pixels, after tilt and radial distortion.
+
+    Returns ``(board_xy, reflected_xy, image_shape)``. The board is a homography of the
+    lattice (rows compress toward the bottom by PERSP_FAR_PITCH_RATIO); the mirrored
+    rows are the last ``n_reflected_rows`` board rows reflected about a horizontal
+    plane REFLECTION_GAP_FRAC pitches below the last row. Barrel distortion with
+    coefficient ``k1`` (radius normalised by the board's corner radius) is then applied
+    about the image centre to every dot.
+    """
+    n_cols, n_rows, s, m = PERSP_N_COLS, PERSP_N_ROWS, PERSP_SPACING_PX, PERSP_MARGIN
+    persp = (1.0 / PERSP_FAR_PITCH_RATIO - 1.0) / ((n_rows - 1) * s)
+    c, r = np.meshgrid(np.arange(n_cols), np.arange(n_rows))
+    u = c.ravel() * s
+    v = r.ravel() * s
+    w_div = 1.0 + persp * v
+    half_width = (n_cols - 1) * s / 2
+    x = m + (u - half_width) / w_div + half_width
+    y = m + v / w_div
+    board = np.column_stack([x, y])
+
+    row_y = np.array([m + (rr * s) / (1.0 + persp * rr * s) for rr in range(n_rows)])
+    y_seam = row_y[-1] + REFLECTION_GAP_FRAC * (row_y[-1] - row_y[-2])
+    reflected = [
+        np.column_stack([x[r.ravel() == rr], 2.0 * y_seam - y[r.ravel() == rr]])
+        for rr in range(n_rows - 1, n_rows - 1 - n_reflected_rows, -1)
+    ]
+    all_pts = np.vstack([board] + reflected)
+
+    width = int(2 * m + (n_cols - 1) * s)
+    height = int(all_pts[:, 1].max() + m)
+    centre = np.array([width / 2, height / 2])
+    d = all_pts - centre
+    r_max = np.linalg.norm(board - centre, axis=1).max()
+    r2 = (np.linalg.norm(d, axis=1) / r_max) ** 2
+    all_pts = centre + d * (1.0 + k1 * r2)[:, None]
+    n_board = len(board)
+    return all_pts[:n_board], all_pts[n_board:], (height, width)
+
+
+def _render_dots(points: np.ndarray, shape) -> np.ndarray:
+    img = np.full(shape, 255, dtype=np.uint8)
+    for x, y in points:
+        cv2.circle(
+            img,
+            (int(round(x)), int(round(y))),
+            PERSP_DOT_RADIUS,
+            0,
+            -1,
+            lineType=cv2.LINE_AA,
+        )
+    return img
+
+
+def _split_kept(centers: np.ndarray, board: np.ndarray, reflected: np.ndarray):
+    """Count kept dots nearer a board dot than a reflected dot, and the converse."""
+    from scipy.spatial import cKDTree
+
+    d_board = cKDTree(board).query(centers)[0]
+    if len(reflected):
+        d_refl = cKDTree(reflected).query(centers)[0]
+    else:
+        d_refl = np.full(len(centers), np.inf)
+    on_board = d_board < d_refl
+    return int(on_board.sum()), int((~on_board).sum()), d_board[on_board]
+
+
+def test_distorted_board_periphery_survives():
+    """Radial lens distortion is not an outlier: the whole board is kept.
+
+    Regression for the gF_Ramp amputation (2026-09-01): a homography-only gate
+    dropped 33-41% of the board because it read distortion as disagreement.
+    """
+    board, reflected, shape = _perspective_board_points(0, DISTORTION_K1)
+    # Fixture self-check: the distortion is large enough that a plain homography
+    # cannot absorb it (otherwise this test would not exercise the gate).
+    c, r = np.meshgrid(np.arange(PERSP_N_COLS), np.arange(PERSP_N_ROWS))
+    src = np.column_stack([c.ravel(), r.ravel()]).astype(np.float32)
+    H, _ = cv2.findHomography(src, board.astype(np.float32), method=0)
+    pred = cv2.perspectiveTransform(src.reshape(-1, 1, 2), H).reshape(-1, 2)
+    assert np.linalg.norm(pred - board, axis=1).max() > 3.0
+
+    ok, grid, info = detect_grid_automatic(_render_dots(board, shape))
+    assert ok
+    assert info["ransac_n_rejected"] == 0
+    assert info["n_outliers_dropped"] == 0
+    centers = np.asarray(grid["centers"], dtype=np.float64)
+    n_board, n_refl, d_board = _split_kept(centers, board, reflected)
+    assert n_board == PERSP_N_COLS * PERSP_N_ROWS and n_refl == 0
+    assert d_board.max() < LATTICE_TOL_PX
+
+
+def test_distorted_board_with_reflection_keeps_whole_board():
+    """Distortion plus a two-row reflection: the board is kept whole and no
+    reflected dot survives (whichever stage rejects the reflection)."""
+    board, reflected, shape = _perspective_board_points(2, DISTORTION_K1)
+    ok, grid, info = detect_grid_automatic(_render_dots(np.vstack([board, reflected]), shape))
+    assert ok
+    centers = np.asarray(grid["centers"], dtype=np.float64)
+    n_board, n_refl, d_board = _split_kept(centers, board, reflected)
+    assert n_refl == 0
+    assert n_board == PERSP_N_COLS * PERSP_N_ROWS
+    assert d_board.max() < LATTICE_TOL_PX
+    assert info["ransac_n_rejected"] + info["n_outliers_dropped"] >= 1
+
+
+def test_reflection_seam_rows_dropped():
+    """No distortion, two mirrored rows that pass the step-2 RANSAC: the gate must
+    drop the reflection without eating the board.
+
+    Guards the failure mode found while porting the radial gate (2026-09-01): with
+    the board an exact homography, a single-round robust radial fit leans into a
+    coherent reflection block and drops 10-13% of the board next to the seam. The
+    drop-and-refit iteration removes that; this test pins it.
+    """
+    board, reflected, shape = _perspective_board_points(2, 0.0)
+    ok, grid, info = detect_grid_automatic(_render_dots(np.vstack([board, reflected]), shape))
+    assert ok
+    centers = np.asarray(grid["centers"], dtype=np.float64)
+    n_board, n_refl, d_board = _split_kept(centers, board, reflected)
+    assert n_refl == 0
+    assert info["n_outliers_dropped"] >= 1
+    # the two board dots at the seam corners sit on the crease and may go either way
+    assert n_board >= PERSP_N_COLS * PERSP_N_ROWS - 2
+    assert d_board.max() < LATTICE_TOL_PX
+
+
+def test_outlier_gate_refit_floor_is_visible():
+    """A refit round may not run on fewer than the minimum dot count.
+
+    14 of a 6x5 grid's 30 dots are scattered 8-15 px off-lattice, so the first robust
+    round sides with the 16 clean dots, below ``_OUTLIER_FIT_MIN_DOTS``. The gate must
+    stop there with a WARNING and gate on the residuals it already has, never refit
+    12 parameters on 16 dots.
+    """
+    from loguru import logger
+
+    from pivtools_gui.calibration.detection.grid_detection import (
+        _OUTLIER_FIT_MIN_DOTS,
+        _drop_grid_outliers,
+    )
+
+    n_cols, n_rows, pitch = 6, 5, 50.0
+    rng = np.random.default_rng(3)
+    grid = {}
+    centers = []
+    for r in range(n_rows):
+        for c in range(n_cols):
+            grid[(c, r)] = len(centers)
+            centers.append([100.0 + c * pitch, 100.0 + r * pitch])
+    centers = np.asarray(centers)
+    scattered = rng.choice(len(centers), size=14, replace=False)
+    shift = rng.uniform(8.0, 15.0, size=(14, 2)) * rng.choice([-1.0, 1.0], size=(14, 2))
+    centers[scattered] += shift
+    assert len(grid) >= _OUTLIER_FIT_MIN_DOTS > len(grid) - len(scattered)
+
+    messages = []
+    sink = logger.add(lambda m: messages.append(m.record["message"]), level="WARNING")
+    try:
+        pruned, dropped = _drop_grid_outliers(grid, np.asarray(centers))
+    finally:
+        logger.remove(sink)
+    assert len(pruned) + len(dropped) == len(grid)
+    assert set(pruned) | set(dropped) == set(grid)
+    assert any("fewer than" in m for m in messages), messages
+
+
+# ---------------------------------------------------------------------------
 # B4 — per-view diagnostics summary + .mat persistence
 # ---------------------------------------------------------------------------
 
