@@ -15,7 +15,7 @@ import dask
 import dask.array as da
 import numpy as np
 from dask import config as dask_config
-from flask import Blueprint, Flask, jsonify, request, send_from_directory
+from flask import Blueprint, Flask, abort, jsonify, request, send_from_directory
 from flask_compress import Compress
 from flask_cors import CORS
 from loguru import logger
@@ -36,6 +36,7 @@ from pivtools_core.image_handling.path_utils import (
 )
 from pivtools_core.paths import count_vector_files_by_name, get_data_paths
 from pivtools_core.validation import validate_memory_for_images
+from pivtools_gui.errors import register_json_error_handlers
 from pivtools_gui.masking.app.views import masking_bp
 from pivtools_gui.piv_runner import get_runner
 from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
@@ -54,6 +55,7 @@ from pivtools_gui.vector_statistics.app.views import statistics_bp
 from pivtools_gui.video_maker.app.views import video_maker_bp
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+register_json_error_handlers(app)
 CORS(app)
 Compress(app)
 app.config["COMPRESS_MIN_SIZE"] = 500
@@ -2411,6 +2413,10 @@ app.register_blueprint(api_bp)
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react_app(path):
+    if path.startswith("backend/"):
+        # An unknown API route must be a JSON 404 (pivtools_gui.errors), never
+        # index.html at 200 — the frontend would parse that HTML as JSON.
+        abort(404, description=f"no such backend route: /{path}")
     if path != "" and os.path.exists(app.static_folder + "/" + path):
         # This serves static files like .js, .css, images
         return send_from_directory(app.static_folder, path)
