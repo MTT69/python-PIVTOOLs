@@ -670,7 +670,13 @@ def validate():
 def detect_datum():
     """Detect the datum view for a camera; cache it and return dot pixels for clicking."""
     data = request.get_json() or {}
-    cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    try:
+        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    except ValueError as exc:
+        # Missing board geometry is a routine incomplete-form condition, not a fault —
+        # the message is already actionable, so one WARNING line, no traceback.
+        logger.warning("calibration detect_datum: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 200
     camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame = _datum_frame(data.get)
@@ -833,7 +839,12 @@ def detect_frame():
     are picked on the datum frame; this route is for inspection.
     """
     data = request.get_json() or {}
-    cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    try:
+        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    except ValueError as exc:
+        # See detect_datum: incomplete board geometry is routine, not a fault.
+        logger.warning("calibration detect_frame: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 200
     camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame = int(data.get("frame", 1))
@@ -894,7 +905,12 @@ def detect_views():
     by ``snap_fiducial``.
     """
     data = request.get_json() or {}
-    cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    try:
+        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    except ValueError as exc:
+        # See detect_datum: incomplete board geometry is routine, not a fault.
+        logger.warning("calibration detect_views: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 200
     camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame_total = int(data.get("frame_total", 1))
@@ -990,7 +1006,12 @@ def _fit_knobs(source_idx: int, board: str, data: dict) -> dict:
 def generate_model():
     """Run the full calibration (mono or stereo), save it + proof figures into the source."""
     data = request.get_json() or {}
-    cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    try:
+        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    except ValueError as exc:
+        # See detect_datum: incomplete board geometry is routine, not a fault.
+        logger.warning("calibration generate_model: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 200
     source_idx = _source_idx(data.get)
     image_format, image_type = data.get("image_format"), data.get("image_type")
     stereo = bool(data.get("stereo", False))
@@ -2131,7 +2152,10 @@ def _joint_setup(get: Callable[[str], Any]):
         raise ValueError("joint: n_views must be >= 1")
     image_format = get("image_format") or image_settings.get("image_format")
     image_type = get("image_type") or image_settings.get("image_type")
-    params = c2._board_params(settings.get("methods") or {}, board)
+    # Request board_params override the sidecar (same contract as _resolve_board): the GUI's
+    # live input wins over a debounce-lagged settings save, so a Detect click right after
+    # typing the geometry doesn't read a stale sidecar.
+    params = c2._board_params(settings.get("methods") or {}, board, get("board_params"))
     spacing = c2._spacing_mm(board, params)
     return (
         cfg,
@@ -2161,6 +2185,7 @@ def _joint_detect(
     spacing,
     *,
     refresh=False,
+    cached_only=False,
     progress_cb=None,
 ):
     """Detect every view of every camera, cached by (source, board, n_views, format, params).
@@ -2170,6 +2195,10 @@ def _joint_detect(
     overlay or abort the solve. The resolvers skip failed views (reporting them per-view) and the
     solve simply uses the views that detected. The cache makes the live resolve loop and the
     generate job cheap; pass refresh=True after the images change on disk.
+
+    ``cached_only=True`` (the GUI's automatic viewer probes) reads the caches and returns
+    ``(None, None)`` on a miss instead of detecting — only an explicit button push may start
+    a real detection. Never combined with ``refresh``.
     """
     # The camera set is part of the key: a hit only detected the cameras it was asked for, so
     # reusing it for a different set would hand the solver a stale subset (caught by run_joint's
@@ -2206,6 +2235,9 @@ def _joint_detect(
             with _joint_detect_lock:
                 _joint_detect_cache[key] = payload
             return payload["detections"], payload["image_size_by_cam"]
+
+    if cached_only:
+        return None, None
 
     total = len(cameras) * int(n_views)
     done = 0
@@ -2364,12 +2396,20 @@ def joint_resolve_grid():
             image_type,
             spacing,
             refresh=bool(get("refresh")),
+            cached_only=bool(get("cached_only")),
         )
     except (
+        FileNotFoundError,
         ValueError,
         TypeError,
-    ) as exc:  # TypeError: a malformed payload (non-int cameras etc.)
+    ) as exc:  # FileNotFoundError: a missing view image. TypeError: a malformed payload.
         return jsonify({"success": False, "error": str(exc)}), 200
+
+    if detections is None:
+        # cached_only probe missed both caches: nothing was ever detected (or the cached
+        # detections were made with different params). Not an error — the GUI stays quiet
+        # and waits for an explicit Detect push.
+        return jsonify({"success": False, "reason": "no_cached_detections"}), 200
 
     resolved = {}
     unresolved = []
@@ -2555,9 +2595,10 @@ def joint_generate():
                     },
                 )
     except (
+        FileNotFoundError,
         ValueError,
         TypeError,
-    ) as exc:  # TypeError: a malformed payload (non-int cameras etc.)
+    ) as exc:  # FileNotFoundError: a missing view image. TypeError: a malformed payload.
         return jsonify({"success": False, "error": str(exc)}), 200
 
     job_id = job_manager.create_job(
