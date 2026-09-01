@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 from typing import Optional, Tuple
 
+import cinereader as cr
 import numpy as np
 
 from .out_buffer import check_out
@@ -33,14 +34,6 @@ def _get_cached_metadata(file_path: str):
     Caching avoids re-reading the header for each frame pair,
     which significantly improves performance for large datasets.
     """
-    try:
-        import cinereader as cr
-    except ImportError as e:
-        raise ImportError(
-            "Reading .cine files requires the optional 'cinereader' dependency. "
-            "Install it with: pip install pivtools[cine]"
-        ) from e
-
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"CINE file not found: {file_path}")
@@ -90,14 +83,6 @@ def read_cine_pair(
         FileNotFoundError: If the .cine file doesn't exist
         ValueError: If requested frames are out of range
     """
-    try:
-        import cinereader as cr
-    except ImportError as e:
-        raise ImportError(
-            "Reading .cine files requires the optional 'cinereader' dependency. "
-            "Install it with: pip install pivtools[cine]"
-        ) from e
-
     metadata = _get_cached_metadata(file_path)
 
     # Convert user frame number to internal frame number
@@ -152,14 +137,6 @@ def read_cine_single(file_path: str, idx: int = 1) -> np.ndarray:
     Returns:
         np.ndarray: Shape (H, W) single frame as float32
     """
-    try:
-        import cinereader as cr
-    except ImportError as e:
-        raise ImportError(
-            "Reading .cine files requires the optional 'cinereader' dependency. "
-            "Install it with: pip install pivtools[cine]"
-        ) from e
-
     metadata = _get_cached_metadata(file_path)
     internal_idx = idx + metadata.FirstImageNo - 1
 
@@ -215,14 +192,6 @@ def get_cine_image_shape(file_path: str) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: (height, width) of images
     """
-    try:
-        import cinereader as cr
-    except ImportError as e:
-        raise ImportError(
-            "Reading .cine files requires the optional 'cinereader' dependency. "
-            "Install it with: pip install pivtools[cine]"
-        ) from e
-
     metadata = _get_cached_metadata(file_path)
     # Read first frame to get actual shape (metadata has biWidth/biHeight but
     # reading a frame ensures we get the exact array dimensions)

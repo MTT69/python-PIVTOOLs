@@ -2,7 +2,8 @@
 # package (HPC venvs, CI caches). pyproject.toml is AUTHORITATIVE — keep the
 # floors in sync with it. This file deliberately does NOT install pivtools
 # itself, so it needs no C toolchain; for a dev install use:
-#     pip install -e ".[cine,dev]"
+#     pip install -e ".[dev]"
+cinereader
 dask[distributed]>=2025.7.0
 dask-jobqueue
 dask-image
@@ -31,5 +32,4 @@ imagecodecs
 imageio-ffmpeg>=0.5.0
 bokeh
 # optional extras
-cinereader
 pytest>=8.4

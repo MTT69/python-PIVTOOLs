@@ -95,8 +95,8 @@ def test_load_images_graph_is_lazy_batched_float32(tmp_path, _clean_set_cache):
 # The contract (readers/out_buffer.py): (2, H, W) float32 C-contiguous, written
 # in place, returned, undefined after an exception. _read_batch relies on it to
 # decode straight into the batch with no per-pair copy (47 ms of a 298 ms .set
-# pair on alk235). .cine is the one branch not covered here: cinereader is not
-# installed on the development machine and no synthetic builder exists.
+# pair on alk235). .cine is the one branch not covered here: no synthetic
+# .cine builder exists.
 
 from test_calibration_cli_loader import _write_pack0_im7  # noqa: E402
 from test_frames_per_camera_and_shape import _make_im7_config  # noqa: E402

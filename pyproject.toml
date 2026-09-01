@@ -28,6 +28,7 @@ classifiers = [
 
 dependencies = [
     # Core dependencies (floors = versions validated in development)
+    "cinereader",  # Phantom .cine reader (pure-python wheel)
     "dask[distributed]>=2025.7.0",
     "dask-jobqueue",
     "dask-image",
@@ -60,7 +61,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cine = ["cinereader"]
 dev = ["pytest>=8.4"]
 
 [project.urls]
