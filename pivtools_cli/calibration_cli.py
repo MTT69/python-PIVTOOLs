@@ -508,6 +508,10 @@ def _load_one(
         use_camera_subfolders=use_camera_subfolders,
         normalize_uint8=False,
         num_cameras=num_cameras,
+        # One pass over the views, and _load_views holds the whole list itself.
+        # Caching here would only retain up to the whole frame-cache budget in
+        # dead arrays after that list is dropped, with no repeat read to serve.
+        use_cache=False,
     )
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

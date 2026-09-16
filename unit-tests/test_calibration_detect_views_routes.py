@@ -169,6 +169,14 @@ def test_detect_views_failed_view_is_stored_as_failed(env, monkeypatch):
     monkeypatch.setattr(
         V, "_resolve_board", lambda get, overrides=None: ({}, "dotboard", params, miss)
     )
+    # detect_views detects through _detect_parallel (which builds a detector per
+    # task -- cv2 detectors are not documented thread-safe), so a custom detector
+    # has to be injected at that seam, not only at _resolve_board.
+    monkeypatch.setattr(
+        V,
+        "_detect_parallel",
+        lambda board, p, imgs, spacing_mm=None, on_done=None: [miss.detect(i) for i in imgs],
+    )
     data = _post_views(client, camera=1)
 
     assert data["persisted"] is True

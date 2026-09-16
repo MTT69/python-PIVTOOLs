@@ -19,6 +19,8 @@ Routes (prefix ``/calibration`` under the app's ``/backend``):
 - GET  /calibration/datum_image     -> datum-view PNG for the click overlay
 - GET  /calibration/frame_image     -> any frame as PNG (frame navigation)
 - POST /calibration/detect_frame    -> detect an arbitrary frame + report frame count
+- POST /calibration/detect_views    -> detect every view, write through to inputs.mat
+- POST /calibration/restore_detections -> stored detections from inputs.mat, detecting nothing
 - POST /calibration/snap_fiducial   -> snap a click to the nearest detected dot
 - POST /calibration/generate_model  -> run the full calibration (mono/stereo), save + figures
 - GET  /calibration/model           -> summary of a saved model
@@ -914,7 +916,11 @@ def detect_views():
     """
     data = request.get_json() or {}
     try:
-        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+        # The detector instance is deliberately unused: detection runs through
+        # _detect_parallel, which builds one per task because cv2 detectors are
+        # not documented thread-safe. _resolve_board is still what validates the
+        # board geometry and yields the board name + params the pool needs.
+        cfg, board, params, _ = _resolve_board(data.get, data.get("board_params"))
     except ValueError as exc:
         # See detect_datum: incomplete board geometry is routine, not a fault.
         logger.warning("calibration detect_views: %s", exc)
@@ -936,7 +942,8 @@ def detect_views():
     unloadable: list[str] = []
     for camera in cameras:
         frames: dict[str, dict] = {}
-        dets: list = []
+        imgs: list = []
+        loaded: list[int] = []
         width = height = 0
         for frame in range(1, frame_total + 1):
             try:
@@ -944,10 +951,19 @@ def detect_views():
             except (FileNotFoundError, ValueError, IndexError) as exc:
                 unloadable.append(f"cam{camera} frame {frame}: {exc}")
                 continue
-            det = detector.detect(img)
-            dets.append(det)
+            imgs.append(img)
+            loaded.append(frame)
             h, w = np.asarray(img).shape[:2]
             width, height = int(w), int(h)
+
+        # Detection is the expensive half and each view is independent, so the
+        # whole set goes through the shared pool — the same call generate_model
+        # already makes (and the reason detections are built there per task:
+        # cv2 detector objects are not documented thread-safe). Results come back
+        # in image order, so ``loaded`` still lines up with ``dets``. A 40-view
+        # Detect Dots was ~30 s sequential on gF_Ramp.
+        dets: list = _detect_parallel(board, params, imgs)
+        for frame, det in zip(loaded, dets):
             if det.success:
                 frames[str(frame)] = {
                     "image_points": det.image_points.tolist(),
@@ -1006,6 +1022,155 @@ def detect_views():
             "persisted": persisted,
             "persist_skipped": persist_skipped,
         }
+    )
+
+
+@calibration_bp.route("/calibration/restore_detections", methods=["POST"])
+def restore_detections():
+    """Return the detections already stored in ``inputs.mat`` — detecting nothing.
+
+    The read-only twin of ``detect_views``: same request body, same ``by_camera``
+    response shape, but no image is opened and no detector is built. This backs the
+    overlay a tab paints when it opens, so re-opening a calibrated source stops
+    re-detecting points that are already on disk two directories away.
+
+    POST rather than GET on purpose. The freshness gate is a ``joint_det_key`` that
+    folds in ``repr(params)`` — a nested board-geometry dict resolved by
+    ``_resolve_board``. Taking the same JSON body ``detect_views`` takes means the
+    key is reproduced by construction, so a mismatch can only mean the stored
+    detections are genuinely stale, never a query-string encoding artefact. It also
+    keeps the response uncacheable by the browser, which matters for a read of a
+    file that Re-detect rewrites.
+
+    Always HTTP 200, like ``stepped/restore_sequence``: this fires on every tab
+    open, and a 404 on first use would be noise, not information.
+
+    - ``exists: false`` — nothing usable on disk: first use, unreadable sidecar, or
+      a camera the stored set does not cover.
+    - ``fresh: false`` — stored, but under a different ``det_key``. **No points are
+      returned.** ``generate_model`` gates its own cache on the same key
+      (:``cache_hit`` below), so drawing those dots would misrepresent what Generate
+      is about to solve. ``stored`` reports the saved view count and geometry so the
+      GUI can say what changed rather than just "stale".
+    - ``fresh: true`` — ``by_camera`` exactly as ``detect_views`` returns it.
+
+    KNOWN LIMITATION, shared with ``generate_model`` and not introduced here: the
+    ``det_key`` carries no image mtime or hash, so re-shot images at the same path
+    with unchanged settings still read as fresh. Re-detect is the remedy.
+    """
+    data = request.get_json() or {}
+    try:
+        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+    except ValueError as exc:
+        # Incomplete board geometry (no dot spacing entered yet) is the routine
+        # first-visit state. Without geometry there is no det_key to compare, so
+        # there is nothing to restore — not an error.
+        logger.warning("calibration restore_detections: %s", exc)
+        return jsonify({"exists": False}), 200
+
+    source_idx = _source_idx(data.get)
+    frame_total = int(data.get("frame_total", 1))
+    image_format = data.get("image_format")
+    stereo = bool(data.get("stereo", False))
+    if stereo:
+        pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
+        cameras = [int(pair[0]), int(pair[1])]
+    else:
+        cameras = [int(data.get("camera") or _rig(data.get).get("camera") or 1)]
+
+    try:
+        source = _source_path(source_idx)
+    except (ValueError, IndexError) as exc:
+        logger.warning("calibration restore_detections: %s", exc)
+        return jsonify({"exists": False}), 200
+
+    model_dir = (
+        rec.stereo_model_dir_for_source(source, cameras[0], cameras[1])
+        if stereo
+        else rec.mono_model_dir_for_source(source, cameras[0], board)
+    )
+    side = try_load_inputs(model_dir)
+    if side is None or not side.detections:
+        return jsonify({"exists": False}), 200
+
+    # Every requested camera must be present. A half-restored stereo pair is
+    # worse than none: the two cameras are detected and persisted as ONE set
+    # under one det_key, and the solve expects both.
+    if any(cam not in side.detections for cam in cameras):
+        return jsonify({"exists": False}), 200
+
+    # Identical to detect_views' construction (see there) so a sidecar written by
+    # the CLI, by Detect Dots, or by a solve is matched by all of them.
+    det_key = joint_det_key(
+        board,
+        frame_total,
+        image_format,
+        infer_image_type(image_format),
+        cameras,
+        params,
+    )
+    if side.det_key != det_key:
+        stored_views = len(side.detections[cameras[0]])
+        return (
+            jsonify(
+                {
+                    "exists": True,
+                    "fresh": False,
+                    "by_camera": None,
+                    "stale_reason": (
+                        "saved detections were made with different settings"
+                    ),
+                    "stored": {
+                        "det_key": side.det_key,
+                        "n_views": stored_views,
+                        "board_params": side.board_params,
+                    },
+                }
+            ),
+            200,
+        )
+
+    by_camera: dict[str, dict] = {}
+    for camera in cameras:
+        dets = side.detections[camera]
+        frames: dict[str, dict] = {}
+        for view, det in enumerate(dets):
+            # A failed view is stored in place as DetectionResult(success=False),
+            # never as None, so the list stays dense and position i is frame i+1.
+            # That mapping holds because detect_views only persists a COMPLETE
+            # set: an unloadable view skips the write entirely, so no position
+            # can shift. Omit failures rather than emitting an empty point list —
+            # both render as "no detection", but only omission is honest about
+            # there being nothing there.
+            if not det.success:
+                continue
+            frames[str(view + 1)] = {
+                "image_points": det.image_points.tolist(),
+                "grid_indices": det.grid_indices.tolist(),
+                "n_points": det.n,
+            }
+        width, height = side.image_size_by_cam.get(camera, (0, 0))
+        by_camera[str(camera)] = {
+            "frames": frames,
+            "n_detected": len(frames),
+            "width": int(width),
+            "height": int(height),
+        }
+
+    return (
+        jsonify(
+            {
+                "exists": True,
+                "fresh": True,
+                "board": board,
+                "cameras": cameras,
+                "det_key": det_key,
+                "n_views": len(side.detections[cameras[0]]),
+                "by_camera": by_camera,
+                "stale_reason": None,
+            }
+        ),
+        200,
     )
 
 
