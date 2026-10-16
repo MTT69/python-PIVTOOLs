@@ -64,7 +64,8 @@ dependencies = [
 dev = ["pytest>=8.4"]
 
 [project.urls]
-Homepage = "https://github.com/MTT69/python-PIVTOOLs"
+Homepage = "https://www.piv.tools"
+Documentation = "https://www.piv.tools/manual"
 Repository = "https://github.com/MTT69/python-PIVTOOLs"
 Issues = "https://github.com/MTT69/python-PIVTOOLs/issues"
 

@@ -56,13 +56,13 @@ Starts the React-based GUI for interactive configuration and execution.
 
 Both `pivtools-cli` and `pivtools-gui` use `config.yaml` in the current working directory. On first launch, a default `config.yaml` is copied from the package if none exists.
 
-For detailed configuration options, see [piv.tools/manual](https://piv.tools/manual).
+For detailed configuration options, see [piv.tools/manual](https://www.piv.tools/manual).
 
 ## Reproducing the paper
 
 Validation data, benchmark scripts, synthetic image generator configs, calibration images, and pre-computed figures are deposited in the University of Southampton Pure repository:
 
-> **DOI:** *[pending]*
+> **DOI:** [10.5258/SOTON/D3981](https://doi.org/10.5258/SOTON/D3981) (mirrored at [huggingface.co/datasets/MTT69/TurbulentChannel](https://huggingface.co/datasets/MTT69/TurbulentChannel))
 
 This includes everything needed to reproduce the figures in the accompanying SoftwareX paper, including ground-truth statistics, CSV data for independent replotting, and scripts for end-to-end regeneration from PIVtools output.
 
@@ -74,7 +74,7 @@ This includes everything needed to reproduce the figures in the accompanying Sof
 
 If you use PIVtools in your research, please cite:
 
-> Taylor, M. T., Lawson, J. M., & Ganapathisubramani, B. (2026). PIVtools: A comprehensive open source software for particle image velocimetry. *SoftwareX*. *[DOI pending]*
+> Taylor, M. T., Lawson, J. M., & Ganapathisubramani, B. (2026). PIVtools: A comprehensive open source software for particle image velocimetry. *SoftwareX*, 35, 102967. [https://doi.org/10.1016/j.softx.2026.102967](https://doi.org/10.1016/j.softx.2026.102967)
 
 ## License
 
