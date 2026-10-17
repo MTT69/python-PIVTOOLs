@@ -43,12 +43,10 @@ from pivtools_gui.plotting.app.plotting_views import vector_plot_bp
 
 # Transform endpoints (per-file storage with backup/restore, used by frontend)
 from pivtools_gui.plotting.app.transform_views import transform_bp
-
 from pivtools_gui.utils import (
     camera_number,
-    get_display_contrast_stats,
-    numpy_to_base64,
-    numpy_to_png_base64,
+    encode_display_frame,
+    parse_display_bounds,
 )
 from pivtools_gui.vector_merging.app.views import merging_bp
 from pivtools_gui.vector_statistics.app.views import statistics_bp
@@ -180,7 +178,12 @@ def cam_folder_key(camera, cfg):
 
 
 def make_raw_cache_key(
-    source_path_idx: int, camera: int, idx: int, img_format: str, cfg
+    source_path_idx: int,
+    camera: int,
+    idx: int,
+    img_format: str,
+    display_bounds: tuple[float, float] | None,
+    cfg,
 ) -> tuple:
     """Generate consistent cache key for raw images. Include all parameters that affect output."""
     image_type = cfg.image_type
@@ -194,7 +197,7 @@ def make_raw_cache_key(
             if folder
             else cfg.source_paths[source_path_idx]
         )
-    return (str(source_path), camera, idx, img_format)
+    return (str(source_path), camera, idx, img_format, display_bounds)
 
 
 def cache_key(source_path_idx, camera, cfg):
@@ -288,10 +291,13 @@ def _preload_surrounding_frames(
     window: int = 10,
     img_format: str = "jpeg",
     auto_limits: bool = False,
+    display_bounds: tuple[float, float] | None = None,
 ):
     """
     Background task to preload frames starting from current_idx.
-    Loads 'window' frames forward from current_idx. Thread-safe.
+    Loads 'window' frames forward from current_idx, encoded with the manual
+    'display_bounds' or, when None, the auto window (see
+    encode_display_frame). Thread-safe.
     """
     import time as time_module
 
@@ -319,7 +325,7 @@ def _preload_surrounding_frames(
 
             # Use consistent cache key function
             cache_key_tuple = make_raw_cache_key(
-                source_path_idx, camera, idx, img_format, cfg
+                source_path_idx, camera, idx, img_format, display_bounds, cfg
             )
 
             # Thread-safe check if already cached
@@ -334,13 +340,13 @@ def _preload_surrounding_frames(
                 )
                 pair = read_pair(local_idx, resolved_source, camera, cfg)
 
-                # numpy_to_base64 handles sqrt + percentile clipping internally
-                b64_a = numpy_to_base64(pair[0], format=img_format)
-                b64_b = numpy_to_base64(pair[1], format=img_format)
-                stats = {
-                    "A": get_display_contrast_stats(pair[0]),
-                    "B": get_display_contrast_stats(pair[1]),
-                }
+                b64_a, stats_a = encode_display_frame(
+                    pair[0], img_format, display_bounds
+                )
+                b64_b, stats_b = encode_display_frame(
+                    pair[1], img_format, display_bounds
+                )
+                stats = {"A": stats_a, "B": stats_b}
 
                 # Thread-safe cache write with timestamp
                 access_time = time_module.time()
@@ -351,8 +357,9 @@ def _preload_surrounding_frames(
                         stats,
                         access_time,
                     )
-                    # Pin frame 1 entries
-                    if idx == 1:
+                    # Pin frame 1 entries at the auto window only: a manual
+                    # window is one of many and must stay evictable
+                    if idx == 1 and display_bounds is None:
                         FRAME_1_KEYS.add(cache_key_tuple)
                 preloaded += 1
             except Exception as e:
@@ -381,14 +388,22 @@ def get_frame_pair():
     idx = request.args.get("idx", type=int)
     source_path_idx = request.args.get("source_path_idx", default=0, type=int)
     img_format = request.args.get("format", default="jpeg", type=str).lower()
-    auto_limits = request.args.get("auto_limits", default="false").lower() == "true"
+    # Optional manual display window in intensity counts; absent = auto window
+    try:
+        display_bounds = parse_display_bounds(
+            request.args.get("vmin"), request.args.get("vmax")
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     # Validate format - default to jpeg for speed
     if img_format not in ("png", "jpeg"):
         img_format = "jpeg"
 
     # Use consistent cache key function
-    cache_key_tuple = make_raw_cache_key(source_path_idx, camera, idx, img_format, cfg)
+    cache_key_tuple = make_raw_cache_key(
+        source_path_idx, camera, idx, img_format, display_bounds, cfg
+    )
 
     # Determine source path for reading (if cache miss)
     if not cfg.image_format:
@@ -460,22 +475,17 @@ def get_frame_pair():
             500,
         )
 
-    # numpy_to_base64 handles sqrt + percentile clipping internally.
-    # get_display_contrast_stats computes a tighter auto-scale window
-    # so the slider starts at a useful narrowed range.
-    b64_a = numpy_to_base64(pair[0], format=img_format)
-    b64_b = numpy_to_base64(pair[1], format=img_format)
-    stats = {
-        "A": get_display_contrast_stats(pair[0]),
-        "B": get_display_contrast_stats(pair[1]),
-    }
+    b64_a, stats_a = encode_display_frame(pair[0], img_format, display_bounds)
+    b64_b, stats_b = encode_display_frame(pair[1], img_format, display_bounds)
+    stats = {"A": stats_a, "B": stats_b}
 
     # Thread-safe cache write with timestamp
     access_time = time_module.time()
     with cache_lock:
         raw_image_cache[cache_key_tuple] = (b64_a, b64_b, stats, access_time)
-        # Pin frame 1 entries
-        if idx == 1:
+        # Pin frame 1 entries at the auto window only: every committed manual
+        # window is a new key, and pinning those would defeat the cache cap
+        if idx == 1 and display_bounds is None:
             FRAME_1_KEYS.add(cache_key_tuple)
     manage_cache_size()
     _log_cache_contents()
@@ -501,7 +511,7 @@ def clear_raw_cache():
     with cache_lock:
         if exclude_camera is not None:
             cam = camera_number(exclude_camera)
-            # Cache key is (source_path, camera, idx, img_format) — camera is index 1
+            # Cache key is (source_path, camera, idx, img_format, display_bounds) — camera is index 1
             keys_to_remove = [k for k in raw_image_cache if k[1] != cam]
         else:
             keys_to_remove = list(raw_image_cache.keys())
@@ -534,7 +544,8 @@ def preload_images():
         "start_idx": 1,
         "count": 30,
         "source_path_idx": 0,
-        "format": "jpeg"
+        "format": "jpeg",
+        "vmin": 120, "vmax": 400  # optional manual display window (counts)
     }
     """
     data = request.get_json() or {}
@@ -544,6 +555,10 @@ def preload_images():
     source_path_idx = data.get("source_path_idx", 0)
     img_format = data.get("format", "jpeg").lower()
     auto_limits = data.get("auto_limits", False)
+    try:
+        display_bounds = parse_display_bounds(data.get("vmin"), data.get("vmax"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     # Validate format
     if img_format not in ("png", "jpeg"):
@@ -556,7 +571,16 @@ def preload_images():
     # So we pass count directly, not count // 2
     threading.Thread(
         target=_preload_surrounding_frames,
-        args=(source_path_idx, camera, start_idx, cfg, count, img_format, auto_limits),
+        args=(
+            source_path_idx,
+            camera,
+            start_idx,
+            cfg,
+            count,
+            img_format,
+            auto_limits,
+            display_bounds,
+        ),
         daemon=True,
     ).start()
 
@@ -569,6 +593,8 @@ def preload_images():
             "source_path_idx": source_path_idx,
             "format": img_format,
             "auto_limits": auto_limits,
+            "vmin": display_bounds[0] if display_bounds else None,
+            "vmax": display_bounds[1] if display_bounds else None,
         }
     )
 
@@ -697,22 +723,16 @@ def filter_images_endpoint():
             k = cache_key(source_path_idx, camera, cfg)
             processed_store["processed"].setdefault(k, {})
 
-            # Batch update dictionary — store as (b64_A, b64_B, stats) at insertion time.
-            # numpy_to_png_base64 handles sqrt + percentile clipping internally.
-            # get_display_contrast_stats provides a tighter auto-scale window.
-            processed_store["processed"][k].update(
-                {
-                    abs_idx: (
-                        numpy_to_png_base64(processed_all[rel][0]),
-                        numpy_to_png_base64(processed_all[rel][1]),
-                        {
-                            "A": get_display_contrast_stats(processed_all[rel][0]),
-                            "B": get_display_contrast_stats(processed_all[rel][1]),
-                        },
-                    )
-                    for rel, abs_idx in enumerate(indices)
-                }
-            )
+            # Store as (b64_A, b64_B, stats) at insertion time, encoded with the
+            # auto display window. Only PNGs are kept, so a manual window on
+            # these batch-filtered frames is remapped client-side within the
+            # encode span (enc_lo..enc_hi) rather than re-encoded.
+            entries = {}
+            for rel, abs_idx in enumerate(indices):
+                b64_a, stats_a = encode_display_frame(processed_all[rel][0], "png")
+                b64_b, stats_b = encode_display_frame(processed_all[rel][1], "png")
+                entries[abs_idx] = (b64_a, b64_b, {"A": stats_a, "B": stats_b})
+            processed_store["processed"][k].update(entries)
             _log_cache_contents()
 
         except Exception as e:
@@ -787,7 +807,11 @@ def filter_single_frame():
     frame_idx = int(data.get("frame_idx", 1))
     filters = data.get("filters", [])
     source_path_idx = data.get("source_path_idx", 0)
-    auto_limits = data.get("auto_limits", False)
+    # Optional manual display window (processed intensity units); absent = auto
+    try:
+        display_bounds = parse_display_bounds(data.get("vmin"), data.get("vmax"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     # Check if any batch filters are present (should use /filter endpoint instead)
     batch_filters = [f for f in filters if f.get("type") in ("time", "pod")]
@@ -846,17 +870,16 @@ def filter_single_frame():
         # Extract the single processed pair
         processed_pair = result[0]  # Shape: (2, H, W)
 
+        # Stats describe the PNG that was sent (encode span, auto window, data
+        # range), so they are always returned regardless of auto_limits.
+        b64_a, stats_a = encode_display_frame(processed_pair[0], "png", display_bounds)
+        b64_b, stats_b = encode_display_frame(processed_pair[1], "png", display_bounds)
         response = {
             "status": "ok",
-            "A": numpy_to_png_base64(processed_pair[0]),
-            "B": numpy_to_png_base64(processed_pair[1]),
+            "A": b64_a,
+            "B": b64_b,
+            "stats": {"A": stats_a, "B": stats_b},
         }
-
-        if auto_limits:
-            response["stats"] = {
-                "A": get_display_contrast_stats(processed_pair[0]),
-                "B": get_display_contrast_stats(processed_pair[1]),
-            }
 
         return jsonify(response)
 
