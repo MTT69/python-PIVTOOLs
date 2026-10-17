@@ -25,9 +25,7 @@ def _expected_vector_names(vector_format: str, num_frame_pairs: int) -> dict:
     return {vector_format % i: i for i in range(1, num_frame_pairs + 1)}
 
 
-def list_vector_files(
-    data_dir, vector_format: str, num_frame_pairs: int
-) -> list[Path]:
+def list_vector_files(data_dir, vector_format: str, num_frame_pairs: int) -> list[Path]:
     """Expected vector files present in ``data_dir``, in frame order.
 
     Uses a single :func:`os.scandir` instead of one ``Path.exists()`` per frame. On a
@@ -138,7 +136,6 @@ def get_data_paths(
     use_uncalibrated=False,
     use_stereo=False,
     stereo_camera_pair: Optional[Tuple[int, int]] = None,
-    calibration=False,
 ):
     """
     Construct directories for data, statistics, and videos.
@@ -153,18 +150,9 @@ def get_data_paths(
         use_uncalibrated: If True, return paths for uncalibrated data
         use_stereo: If True, return paths for stereo calibrated data
         stereo_camera_pair: Tuple of (cam1, cam2) for stereo paths (required if use_stereo=True)
-        calibration: If True, return calibration directory
     """
     base_dir = Path(base_dir)
     num_str = str(num_frame_pairs)
-
-    # Calibration data
-    if calibration:
-        cam_str = f"Cam{cam}"
-        calib_dir = base_dir / "calibration" / cam_str
-        if endpoint:
-            calib_dir = calib_dir / endpoint
-        return dict(calib_dir=calib_dir)
 
     # Stereo calibrated data - uses dedicated stereo path structure
     if use_stereo:

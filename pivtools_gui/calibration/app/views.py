@@ -24,7 +24,6 @@ Routes (prefix ``/calibration`` under the app's ``/backend``):
 - POST /calibration/snap_fiducial   -> snap a click to the nearest detected dot
 - POST /calibration/generate_model  -> run the full calibration (mono/stereo), save + figures
 - GET  /calibration/model           -> summary of a saved model
-- POST /calibration/measure         -> distance in mm between two pixels (back-projection)
 - GET  /calibration/figures|figure  -> list / serve the proof figures for a model
 - POST /calibration/global/compute  -> planar N-camera datum-chain shifts
 - POST /calibration/set_datum       -> shift a type's coordinates.mat (viewer datum/offset)
@@ -55,7 +54,6 @@ from pivtools_core.image_handling.calibration_loader import (
 )
 from pivtools_core.image_handling.path_utils import infer_image_type
 from pivtools_core.paths import get_data_paths, vector_glob_from_format
-from pivtools_gui.calibration import apply as c2apply
 from pivtools_gui.calibration import global_coords as gc2
 from pivtools_gui.calibration import record as rec
 from pivtools_gui.calibration import runio as c2runio
@@ -1748,65 +1746,8 @@ def load_model():
 
 
 # ---------------------------------------------------------------------------
-# Measure tool + figure serving
+# Figure serving
 # ---------------------------------------------------------------------------
-
-
-@calibration_bp.route("/calibration/measure", methods=["POST"])
-def measure():
-    """Distance in mm between two pixels, via the saved model's back-projection."""
-    data = request.get_json() or {}
-    cfg = _cfg()
-    board = data.get("board") or cfg.get("active", "charuco")
-    p1 = np.asarray(data.get("p1"), dtype=float)
-    p2 = np.asarray(data.get("p2"), dtype=float)
-    if p1.shape != (2,) or p2.shape != (2,):
-        return jsonify({"error": "p1 and p2 must be [x, y] pixel pairs"}), 400
-    z = float(data.get("z_world", 0.0))
-    tx = float(data.get("tilt_x", 0.0))
-    ty = float(data.get("tilt_y", 0.0))
-    try:
-        source = _source_path(_source_idx(data.get))
-        if bool(data.get("stereo", False)):
-            pair = (
-                data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
-            )
-            cam1, cam2 = int(pair[0]), int(pair[1])
-            model = rec.load_stereo(
-                rec.stereo_model_dir_for_source(source, cam1, cam2, board),
-                model_type=_model_type_arg(data.get, board, stereo=True),
-            ).model1
-        else:
-            camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
-            # Joint-preferred: a measure after a joint solve uses the unified rig model.
-            model = rec.mono_record_for_camera(
-                rec.mono_model_dir_for_source(source, camera, board),
-                camera,
-                _model_type_arg(data.get, board),
-            ).camera_model
-    except (FileNotFoundError, ValueError, IndexError) as exc:
-        return (
-            jsonify(
-                {
-                    "error": f"no saved model — generate the model first to measure in mm ({exc})"
-                }
-            ),
-            200,
-        )
-    world = c2apply.calibrate_coordinates(model, np.vstack([p1, p2]), z, tx, ty)
-    if not np.all(np.isfinite(world)):
-        return (
-            jsonify({"error": "back-projection failed (ray missed the sheet plane)"}),
-            200,
-        )
-    return jsonify(
-        {
-            "distance_mm": float(np.linalg.norm(world[1] - world[0])),
-            "distance_px": float(np.linalg.norm(p2 - p1)),
-            "world_p1": [float(world[0, 0]), float(world[0, 1])],
-            "world_p2": [float(world[1, 0]), float(world[1, 1])],
-        }
-    )
 
 
 @calibration_bp.route("/calibration/figures", methods=["GET"])
@@ -3137,6 +3078,8 @@ def _self_cal_payload(record) -> dict:
         "window_size": int(sc.get("window_size", 0)),
         "overlap": _finite_or_none(sc.get("overlap", 0.0)),
         "source": str(sc.get("source", "auto")),
+        # How many bakes the total spans; null when the block predates the counter.
+        "n_bakes": int(sc["n_bakes"]) if "n_bakes" in sc else None,
     }
 
 

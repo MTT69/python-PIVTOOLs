@@ -11,7 +11,7 @@ TTL'd server-side **sequence cache** keyed by an opaque ``sequence_id`` and neve
 serialises the ``_``-prefixed keys.
 
 Everything that is NOT stepped-specific — image source validation, frame serving,
-model load, the measure tool, figure serving, and apply — is the SAME board-agnostic
+model load, figure serving, and apply — is the SAME board-agnostic
 ``/calibration/*`` route in ``views.py`` driven with ``board="stepped"``; only the
 sequence detect + per-pose level labelling + the stepped fit live here.
 
