@@ -23,6 +23,7 @@ from .camera_model import (
 )
 from .detection.base import BoardDetector, DetectionResult
 from .record import MonoRecord, WorldFrame, geometry_meta
+from .runio import require_positive_dt
 from .world_frame import (
     apply_world_frame,
     resolve_world_frame,
@@ -283,6 +284,7 @@ def build_scale_factor_record(
     """
     if px_per_mm <= 0:
         raise ValueError(f"px_per_mm must be > 0, got {px_per_mm}")
+    dt = require_positive_dt(dt, "build_scale_factor_record")
     if x_dir not in ("right", "left"):
         raise ValueError(f"x_dir must be 'right' or 'left', got {x_dir!r}")
     if y_dir not in ("up", "down"):

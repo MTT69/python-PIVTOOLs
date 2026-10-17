@@ -22,21 +22,23 @@ are exercised against one another rather than against a hand-built sidecar.
 
 from __future__ import annotations
 
-import pivtools_gui.calibration.app.views as V
-from pivtools_gui.calibration import inputs_store as INP
-from pivtools_gui.calibration import record as rec
+# ruff: noqa: F811  (the imported ``env`` pytest fixture is re-bound by every test's parameter)
+from test_calibration_detect_views_routes import env  # noqa: F401  (pytest fixture)
 from test_calibration_detect_views_routes import (  # noqa: E402  (sibling-test reuse, as elsewhere)
     FMT,
     N_VIEWS,
     TILTS,
     _FakeDetector,
     _post_views,
-    env,
 )
 from test_calibration_sidecar_resolve import (  # noqa: E402
     _clicks_from_detection,
     _detection,
 )
+
+import pivtools_gui.calibration.app.views as V
+from pivtools_gui.calibration import inputs_store as INP
+from pivtools_gui.calibration import record as rec
 
 
 def _restore(client, **extra):
@@ -80,7 +82,7 @@ def test_restore_missing_camera_reports_absent(env):
     persisted as ONE set under one det_key, and the solve expects both."""
     client, base, _params = env
     INP.save_inputs(
-        rec.stereo_model_dir_for_source(base, 1, 2),
+        rec.stereo_model_dir_for_source(base, 1, 2, "dotboard"),
         path_type="stereo",
         board_type="dotboard",
         detections={1: [_detection(t)[0] for t in TILTS]},
@@ -160,7 +162,9 @@ def test_restore_omits_failed_views_so_that_frame_blanks(env, monkeypatch):
     monkeypatch.setattr(
         V,
         "_detect_parallel",
-        lambda board, p, imgs, spacing_mm=None, on_done=None: [miss.detect(i) for i in imgs],
+        lambda board, p, imgs, spacing_mm=None, on_done=None: [
+            miss.detect(i) for i in imgs
+        ],
     )
     _post_views(client, camera=1)
     side = INP.load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard"))

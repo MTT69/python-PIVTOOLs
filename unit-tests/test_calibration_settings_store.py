@@ -31,7 +31,8 @@ def _source(tmp_path):
 def test_root_for_source_directory_and_container(tmp_path):
     assert cs.root_for_source(tmp_path / "run1") == tmp_path / "run1" / "calibration"
     assert (
-        cs.root_for_source(tmp_path / "images.set") == tmp_path / "calibration"
+        cs.root_for_source(tmp_path / "images.set")
+        == tmp_path / "calibration" / "images"
     )
 
 
@@ -202,7 +203,7 @@ def test_seed_scale_factor_px_per_mm(tmp_path):
 
 def test_seed_camera_pair_from_stereo_dir_even_if_record_unreadable(tmp_path):
     src = _source(tmp_path)
-    model_dir = cs.root_for_source(src) / "stereo_cam2_cam3" / "model"
+    model_dir = cs.root_for_source(src) / "stereo_charuco_cam2_cam3" / "model"
     model_dir.mkdir(parents=True)
     (model_dir / "stereo_model_pinhole.mat").write_bytes(b"not a mat file")
     seeded = seed_settings(src)

@@ -53,14 +53,25 @@ def _geometry_to_method_block(geometry: Dict[str, Any]) -> Dict[str, Any]:
             if geometry.get(key) is not None:
                 block[key] = geometry[key]
     elif board == "charuco":
-        for key in ("squares_h", "squares_v", "marker_ratio", "aruco_dict", "min_corners"):
+        for key in (
+            "squares_h",
+            "squares_v",
+            "marker_ratio",
+            "aruco_dict",
+            "min_corners",
+        ):
             if geometry.get(key) is not None:
                 block[key] = geometry[key]
         # geometry stamps metres as square_size_m; the settings block uses square_size
         if geometry.get("square_size_m") is not None:
             block["square_size"] = geometry["square_size_m"]
     elif board == "stepped":
-        for key in ("dot_spacing_mm", "step_height_mm", "board_thickness_mm", "level_offset_mm"):
+        for key in (
+            "dot_spacing_mm",
+            "step_height_mm",
+            "board_thickness_mm",
+            "level_offset_mm",
+        ):
             if geometry.get(key) is not None:
                 block[key] = geometry[key]
     if geometry.get("model_type") is not None:
@@ -76,7 +87,9 @@ def _apply_method_block(
     if geometry and method_key in settings["methods"]:
         settings["methods"][method_key].update(_geometry_to_method_block(geometry))
     if board_meta.get("px_per_mm") is not None and method_key == "scale_factor":
-        settings["methods"]["scale_factor"]["px_per_mm"] = float(board_meta["px_per_mm"])
+        settings["methods"]["scale_factor"]["px_per_mm"] = float(
+            board_meta["px_per_mm"]
+        )
 
 
 def _apply_shared_rig(settings: Dict[str, Any], board_meta: Dict[str, Any]) -> None:
@@ -104,20 +117,25 @@ def _mono_candidates(root: Path) -> List[Tuple[Path, int, str]]:
             continue
         for board_dir in cam_dir.glob("*_planar"):
             board = board_dir.name[: -len("_planar")]
-            out.extend(
-                (p, camera, board) for p in board_dir.glob("model/model_*.mat")
-            )
+            out.extend((p, camera, board) for p in board_dir.glob("model/model_*.mat"))
     return out
 
 
 def _stereo_candidates(root: Path) -> List[Tuple[Path, int, int]]:
-    """(record_path, cam1, cam2) for every stereo record under the root."""
+    """(record_path, cam1, cam2) for every stereo record under the root.
+
+    Dirs follow ``record.stereo_model_dir_for_source``, i.e.
+    ``stereo_{board}_cam{A}_cam{B}``. The board itself is read from the record
+    (``board_type``), not the dir name.
+    """
     out: List[Tuple[Path, int, int]] = []
-    for pair_dir in root.glob("stereo_cam*_cam*"):
-        parts = pair_dir.name.split("_")  # stereo, cam{A}, cam{B}
+    for pair_dir in root.glob("stereo_*_cam*_cam*"):
+        parts = pair_dir.name.split("_")  # stereo, {board}, cam{A}, cam{B}
+        if len(parts) != 4:
+            continue
         try:
-            cam1, cam2 = int(parts[1][3:]), int(parts[2][3:])
-        except (IndexError, ValueError):
+            cam1, cam2 = int(parts[2][3:]), int(parts[3][3:])
+        except ValueError:
             continue
         out.extend((p, cam1, cam2) for p in pair_dir.glob("model/stereo_model_*.mat"))
     return out

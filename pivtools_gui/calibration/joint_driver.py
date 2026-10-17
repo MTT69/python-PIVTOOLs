@@ -27,6 +27,7 @@ from .joint import (
     run_joint,
     run_joint_polynomial,
 )
+from .runio import require_positive_dt
 
 ViewKey = Tuple[int, int]
 
@@ -115,6 +116,7 @@ def run_joint_from_spec(
     raw images for the image-based figures (detection overlays + dewarp) and may be ``None``
     (geometry figures still write). Figure failures are swallowed and never abort the calibration.
     """
+    dt = require_positive_dt(dt, "run_joint_from_spec")
     if board not in ("dotboard", "charuco"):
         raise ValueError(f"joint: board must be dotboard|charuco, got {board!r}")
     if model_type not in ("pinhole", "polynomial"):

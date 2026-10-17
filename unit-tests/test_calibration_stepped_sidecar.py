@@ -48,7 +48,7 @@ def test_sequence_sidecar_round_trip(tmp_path):
     params = SteppedBoardSpec()
     sv._save_sequence_sidecar(tmp_path, _entry(params))
 
-    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2)
+    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2, "stepped")
     assert (model_dir / "inputs.mat").is_file()
 
     side = try_load_inputs(model_dir)
@@ -83,7 +83,7 @@ def test_coords_spec_merges_with_sequence(tmp_path):
     """The clicks block persists and merges with the sequence descriptor (no clobber)."""
     params = SteppedBoardSpec()
     sv._save_sequence_sidecar(tmp_path, _entry(params))
-    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2)
+    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2, "stepped")
 
     specs = {
         1: (

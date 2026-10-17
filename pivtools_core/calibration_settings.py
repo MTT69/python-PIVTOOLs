@@ -1,10 +1,16 @@
 """pivtools_core.calibration_settings — per-source calibration settings sidecar.
 
 One ``settings.yaml`` per calibration source, living in the same
-``<source>/calibration`` root as the model records, holding the pre-model
-form state that used to sit (and go stale) in ``config.yaml``:
+calibration root as the model records, holding the pre-model form state that
+used to sit (and go stale) in ``config.yaml``:
 
     <root>/settings.yaml        root = root_for_source(source)
+
+    directory source  <dir>                 -> <dir>/calibration
+    container file    <parent>/<stem>.set   -> <parent>/calibration/<stem>
+
+Every source owns its root exclusively: several containers in one folder never
+share settings, model records or ``inputs.mat``.
 
 The persisted YAML config keeps only the pointer (``calibration_sources``,
 ``source``, ``source_idx``, ``active``); everything else about a calibration
@@ -46,15 +52,33 @@ SETTINGS_FILENAME = "settings.yaml"
 PathLike = Union[str, Path]
 
 
+# Single-file container formats whose frames all live inside one file. This is
+# the single place to register such a format: a source with one of these
+# suffixes (case-insensitive) is a FILE and gets its own per-stem calibration
+# root; every other path is a directory source.
+CONTAINER_SUFFIXES = frozenset({".set", ".cine"})
+
+CALIBRATION_DIRNAME = "calibration"
+
+
+def _is_container(source: Path) -> bool:
+    """True when ``source`` names a single-file container (by suffix, no disk access)."""
+    return source.suffix.lower() in CONTAINER_SUFFIXES
+
+
 def root_for_source(source: PathLike) -> Path:
     """Calibration-output root for an explicit source path.
 
-    Directory sources -> ``<source>/calibration``. Container-file sources
-    (``.set``/``.cine``) -> ``<source>.parent/calibration``.
+    Container-file sources (suffix in ``CONTAINER_SUFFIXES``, case-insensitive)
+    -> ``<parent>/calibration/<stem>``, so containers sharing a folder never
+    share a root. Everything else is a directory source -> ``<source>/calibration``
+    (a dot in a directory name, e.g. ``2026.10.17``, does not make it a file).
+    Pure path arithmetic: the source need not exist yet.
     """
     source = Path(source)
-    base = source.parent if source.suffix else source
-    return base / "calibration"
+    if _is_container(source):
+        return source.parent / CALIBRATION_DIRNAME / source.stem
+    return source / CALIBRATION_DIRNAME
 
 
 def settings_path(source: PathLike) -> Path:
@@ -180,7 +204,7 @@ def _missing_message(source: Path, path: Path) -> str:
         f"No calibration settings for source '{source}' (expected {path}). "
         "Open this source in the GUI Calibration tab (which seeds and saves "
         "settings) or run 'pivtools-cli init-settings "
-        f"--source \"{source}\"' and fill in the required fields."
+        f'--source "{source}"\' and fill in the required fields.'
     )
 
 

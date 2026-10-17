@@ -7,10 +7,10 @@ project can hold many runs and each calibration lives with the images it came fr
 No ``base_path/calibration`` fallback.
 
 Directory layout (root = ``<source>/calibration`` or, for container sources,
-``<source>.parent/calibration``):
+``<source>.parent/calibration/<source>.stem``; see ``root_for_source``):
 
     <root>/Cam{N}/{board}_planar/model/model_{model_type}.mat            (mono)
-    <root>/stereo_cam{A}_cam{B}/model/stereo_model_{model_type}.mat      (stereo)
+    <root>/stereo_{board}_cam{A}_cam{B}/model/stereo_model_{model_type}.mat  (stereo)
 
 Filenames are per model type (``model_pinhole.mat`` / ``model_polynomial.mat`` ...)
 so fitting a second type never clobbers the first. ``resolve_mono_path`` /
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from scipy.io import loadmat, savemat
@@ -59,13 +59,31 @@ def mono_model_dir_for_source(source: Path, camera: int, board: str) -> Path:
     return root_for_source(source) / f"Cam{camera}" / f"{board}_planar" / "model"
 
 
-def stereo_model_dir_for_source(source: Path, cam1: int, cam2: int) -> Path:
-    """Rig-level dir for a stereo pair. The pair is canonicalised (ascending) so
-    ``(2, 1)`` and ``(1, 2)`` resolve to ONE record rather than silently forking two
-    calibrations of the same physical pair (review 2026-08-26). The record itself still
-    stores ``cam1``/``cam2`` in the order the solve used."""
+def stereo_model_dir_for_source(source: Path, cam1: int, cam2: int, board: str) -> Path:
+    """Rig-level dir for a stereo pair calibrated with ``board``.
+
+    The pair is canonicalised (ascending) so ``(2, 1)`` and ``(1, 2)`` resolve to ONE
+    record rather than silently forking two calibrations of the same physical pair
+    (review 2026-08-26). The record itself still stores ``cam1``/``cam2`` in the order
+    the solve used.
+
+    The board is part of the path, as for mono (``Cam{N}/{board}_planar``) and joint
+    (``joint_{board}``) dirs: without it, dotboard, ChArUco and stepped calibrations of
+    one pair shared one model file, one ``inputs.mat`` and one figures folder and
+    silently overwrote each other.
+
+    ``board`` is the bare board name (``"dotboard"``, ``"charuco"``, ``"stepped"``).
+    An underscore is rejected: it would make the dir name ambiguous to parse
+    (``settings_seed`` splits it on ``_``), and it catches a fused config ``active``
+    name such as ``"stereo_charuco"`` that would otherwise silently resolve to a
+    ``stereo_stereo_charuco_...`` dir no calibration ever wrote.
+    """
+    if not isinstance(board, str) or not board or "_" in board:
+        raise ValueError(
+            f"stereo model dir needs a bare board name (e.g. 'charuco'), got {board!r}"
+        )
     a, b = sorted((int(cam1), int(cam2)))
-    return root_for_source(source) / f"stereo_cam{a}_cam{b}" / "model"
+    return root_for_source(source) / f"stereo_{board}_cam{a}_cam{b}" / "model"
 
 
 def joint_model_dir_for_source(source: Path, board: str) -> Path:
@@ -90,9 +108,11 @@ def mono_model_dir(config, source_path_idx: int, camera: int, board: str) -> Pat
     )
 
 
-def stereo_model_dir(config, source_path_idx: int, cam1: int, cam2: int) -> Path:
+def stereo_model_dir(
+    config, source_path_idx: int, cam1: int, cam2: int, board: str
+) -> Path:
     return stereo_model_dir_for_source(
-        config.get_calibration_source(source_path_idx), cam1, cam2
+        config.get_calibration_source(source_path_idx), cam1, cam2, board
     )
 
 
@@ -204,7 +224,9 @@ class StereoRecord:
     # post-model self-cal run. Empty == no self-cal == sheet at the datum plane.
     # Keys: z_offset (mm), tilt_x/tilt_y (rad), converged, final_rms_disparity,
     # n_iterations, n_images, window_size, overlap, source ("auto"|"manual").
-    # Regenerating the stereo model builds a fresh record with this empty, so a stale
+    # A baked block (baked=1, applied sheet zero) adds fitted_* (total sheet in the
+    # clicked frame), last_fitted_* (latest increment), n_bakes and the cumulative
+    # map cum_rvec_*/cum_t_* — see self_cal.baked_block. Regenerating the stereo model builds a fresh record with this empty, so a stale
     # offset can never bleed into the next run.
     self_cal: Dict[str, Any] = field(default_factory=dict)
     contract_version: int = CONTRACT_VERSION
@@ -747,6 +769,27 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
         self_cal=_meta_from(mat.get("self_cal")),
         contract_version=_check_contract(mat, path),
     )
+
+
+def record_pair(record: StereoRecord, requested: Sequence[int]) -> Tuple[int, int]:
+    """The record's ``(cam1, cam2)``, checked against the requested camera pair.
+
+    ``stereo_model_dir_for_source`` canonicalises the pair, so a request for ``(1, 2)``
+    loads a record solved as ``(2, 1)``. ``model1`` / ``model2`` (and
+    ``per_view_rms1`` / ``per_view_rms2``) belong to ``record.cam1`` / ``record.cam2``,
+    so every consumer must index camera data by the order returned here, never by the
+    request's order. Pairing by request order silently applies one camera's model to
+    the other camera's data.
+
+    Raises ``ValueError`` when the requested cameras are not the record's cameras.
+    """
+    pair = (int(record.cam1), int(record.cam2))
+    if {int(c) for c in requested} != set(pair):
+        raise ValueError(
+            f"stereo record is for cameras {pair} but cameras "
+            f"{[int(c) for c in requested]} were requested"
+        )
+    return pair
 
 
 def save_joint(record: JointRecord, model_dir: Path) -> Path:

@@ -329,8 +329,36 @@ def rebake_record(
     record.R_stereo, record.T_stereo = compose_stereo(record.model1, record.model2)
 
 
+# Cumulative-map fields a baked self_cal block must carry (see ``baked_block``).
+_CUM_RVEC_KEYS = ("cum_rvec_x", "cum_rvec_y", "cum_rvec_z")
+_CUM_T_KEYS = ("cum_t_x", "cum_t_y", "cum_t_z")
+
+
+def prev_cumulative(prev_block: Optional[dict]) -> Tuple[np.ndarray, np.ndarray, int]:
+    """``(R_prev, t_prev, n_bakes)`` already baked into a record's extrinsics.
+
+    An absent/empty or unbaked block means the extrinsics are still the clicked frame
+    (identity, zero, 0). A baked block must carry the cumulative map; one without it
+    predates cumulative tracking, so its fitted_* cannot be composed — raise.
+    """
+    if not prev_block or not int(prev_block.get("baked", 0)):
+        return np.eye(3), np.zeros(3), 0
+    required = _CUM_RVEC_KEYS + _CUM_T_KEYS + ("n_bakes",)
+    missing = [k for k in required if k not in prev_block]
+    if missing:
+        raise ValueError(
+            "stereo record carries a baked self-cal block without the cumulative "
+            f"map ({', '.join(missing)} missing) - it is stale; regenerate the "
+            "stereo model and re-run self-calibration"
+        )
+    rvec = np.array([float(prev_block[k]) for k in _CUM_RVEC_KEYS])
+    t_prev = np.array([float(prev_block[k]) for k in _CUM_T_KEYS])
+    return cv2.Rodrigues(rvec)[0], t_prev, int(prev_block["n_bakes"])
+
+
 def baked_block(
     result: SelfCalibrationResult,
+    prev_block: Optional[dict],
     *,
     n_images: int,
     window_size: int,
@@ -339,26 +367,64 @@ def baked_block(
 ) -> dict:
     """Provenance ``self_cal`` block for a correction baked into the extrinsics.
 
-    The applied correction (``z_offset``/``tilt_x``/``tilt_y``) is zero — it now lives
-    in the rebaked poses, so reconstruction consumers (``record.sc_*``,
-    ``regular_world_grid``) apply nothing further. The recovered sheet is preserved
-    under ``fitted_*`` and ``baked=1`` marks the record as carrying the correction in
-    its extrinsics. Scalars + one string only, so it round-trips through
-    ``record._meta_to_dict`` / ``_meta_from`` unchanged.
+    ``prev_block`` is the record's ``self_cal`` dict as it was BEFORE this run's
+    ``rebake_record``. ``result`` was measured in that (possibly already rebaked)
+    frame, so it is only the increment. Successive bakes compose as rigid NEW->OLD
+    maps ``X_orig = R_tot @ X_cur + t_tot``::
+
+        R_tot = R_prev @ R_new ,   t_tot = R_prev @ t_new + t_prev
+
+    with ``(R_new, t_new) = plane_to_world_correction(result)`` and identity/zero
+    before the first bake. The block stores:
+
+    - ``cum_rvec_*`` / ``cum_t_*``: the cumulative map (Rodrigues of ``R_tot``, ``t_tot``);
+    - ``fitted_*``: the TOTAL sheet in the original clicked frame, from
+      ``self_cal_frame.cumulative_sheet(R_tot, t_tot)``;
+    - ``last_fitted_*``: this run's increment; ``n_bakes``: number of bakes so far.
+
+    The applied correction (``z_offset``/``tilt_x``/``tilt_y``) is zero — it lives in
+    the rebaked poses, so reconstruction consumers (``record.sc_*``,
+    ``regular_world_grid``) apply nothing further — and ``baked=1`` marks the record.
+    Scalars + one string only, so it round-trips through ``record._meta_to_dict`` /
+    ``_meta_from`` unchanged.
+
+    Raises ``ValueError`` if ``prev_block`` is baked but lacks the cumulative fields.
     """
-    return {
+    from .self_cal_frame import cumulative_sheet, plane_to_world_correction
+
+    R_prev, t_prev, n_prev = prev_cumulative(prev_block)
+    R_new, t_new = plane_to_world_correction(
+        result.z_offset, result.tilt_x, result.tilt_y
+    )
+    R_tot = R_prev @ R_new
+    t_tot = R_prev @ t_new + t_prev
+    rvec_tot = cv2.Rodrigues(R_tot)[0].reshape(3)
+    z_tot, tx_tot, ty_tot = cumulative_sheet(R_tot, t_tot)
+
+    block = {
         "z_offset": 0.0,
         "tilt_x": 0.0,
         "tilt_y": 0.0,
         "baked": 1,
-        "fitted_z_offset": float(result.z_offset),
-        "fitted_tilt_x": float(result.tilt_x),
-        "fitted_tilt_y": float(result.tilt_y),
-        "converged": int(bool(result.converged)),
-        "final_rms_disparity": float(result.final_rms_disparity),
-        "n_iterations": int(result.n_iterations),
-        "n_images": int(n_images),
-        "window_size": int(window_size),
-        "overlap": float(overlap),
-        "source": source,
+        "n_bakes": n_prev + 1,
+        "fitted_z_offset": z_tot,
+        "fitted_tilt_x": tx_tot,
+        "fitted_tilt_y": ty_tot,
+        "last_fitted_z_offset": float(result.z_offset),
+        "last_fitted_tilt_x": float(result.tilt_x),
+        "last_fitted_tilt_y": float(result.tilt_y),
     }
+    block.update({k: float(v) for k, v in zip(_CUM_RVEC_KEYS, rvec_tot)})
+    block.update({k: float(v) for k, v in zip(_CUM_T_KEYS, t_tot)})
+    block.update(
+        {
+            "converged": int(bool(result.converged)),
+            "final_rms_disparity": float(result.final_rms_disparity),
+            "n_iterations": int(result.n_iterations),
+            "n_images": int(n_images),
+            "window_size": int(window_size),
+            "overlap": float(overlap),
+            "source": source,
+        }
+    )
+    return block

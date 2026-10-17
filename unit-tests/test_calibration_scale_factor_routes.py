@@ -212,3 +212,82 @@ def test_cli_default_still_loads_frame(tmp_path, monkeypatch):
 
     assert loader.calls == 1
     assert rec.load_mono(path, "scale_factor").camera_model.col_sign == 1
+
+
+# ---- dt must be finite and > 0 (velocity ~ 1/dt) -------------------------------------
+
+
+@pytest.mark.parametrize("bad", [0, -1e-3, float("nan"), float("inf")])
+def test_resolve_dt_rejects_non_positive_explicit(bad):
+    from pivtools_gui.calibration import runio
+
+    with pytest.raises(ValueError, match="dt"):
+        runio.resolve_dt(bad, None)
+
+
+@pytest.mark.parametrize("bad", [0.0, -2e-4, float("nan")])
+def test_resolve_dt_rejects_non_positive_stamped(bad):
+    from pivtools_gui.calibration import runio
+
+    with pytest.raises(ValueError, match="model-stamped"):
+        runio.resolve_dt(None, bad)
+
+
+def test_resolve_dt_accepts_positive():
+    from pivtools_gui.calibration import runio
+
+    assert runio.resolve_dt(None, 1e-4) == 1e-4
+    assert runio.resolve_dt(2e-4, 1e-4) == 2e-4
+
+
+@pytest.mark.parametrize("bad", [0, -1e-3, float("nan")])
+def test_build_scale_factor_record_rejects_bad_dt(bad):
+    with pytest.raises(ValueError, match="dt"):
+        build_scale_factor_record(camera=1, origin_px=(0.0, 0.0), px_per_mm=4.0, dt=bad)
+
+
+def test_generate_route_rejects_zero_dt(env):
+    client, base = env
+    data = client.post(
+        "/calibration/scale_factor/generate",
+        json={**_GENERATE_BODY, "use_image": False, "dt": 0},
+    ).get_json()
+    assert data["success"] is False
+    assert "dt" in data["error"]
+    assert not rec.mono_model_dir_for_source(base, 1, "scale_factor").exists()
+
+
+def test_cli_scale_factor_rejects_zero_dt(tmp_path, monkeypatch):
+    monkeypatch.setattr(c2, "get_config", lambda: _FakeConfig(tmp_path))
+    monkeypatch.setattr(c2, "_load_one", _never_read_image)
+    with pytest.raises(SystemExit, match="dt"):
+        c2.scale_factor_command(_cli_args(tmp_path, no_image=True, dt=0.0))
+
+
+def test_apply_route_rejects_zero_dt_before_job_starts(env, monkeypatch):
+    """Request dt=0 -> success False, and no job is created."""
+    import types
+
+    client, base = env
+    full_cfg = types.SimpleNamespace(vector_format="%05d.mat")
+    monkeypatch.setattr(V, "get_config", lambda: full_cfg)
+    monkeypatch.setattr(V, "_cfg", lambda: {"active": "scale_factor"})
+    monkeypatch.setattr(V, "_source_path", lambda idx: base)
+    unit = {
+        "stereo": False,
+        "record": types.SimpleNamespace(board_meta={"dt": 1e-4}),
+        "label": "u",
+        "out": base / "out",
+    }
+    monkeypatch.setattr(V, "_apply_units", lambda *a, **k: [unit])
+
+    def _no_job(*a, **k):
+        raise AssertionError("job must not start with an invalid dt")
+
+    monkeypatch.setattr(V.job_manager, "create_job", _no_job)
+
+    data = client.post(
+        "/calibration/apply", json={"board": "scale_factor", "dt": 0}
+    ).get_json()
+    assert data["success"] is False
+    assert "dt" in data["error"]

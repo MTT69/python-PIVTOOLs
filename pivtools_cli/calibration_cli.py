@@ -228,16 +228,21 @@ def _generate_dt_cli(args, source: Path) -> float:
     record carries it, and apply resolves request > model-stamped > error.
     """
     v = getattr(args, "dt", None)
-    if v is not None:
-        return float(v)
-    settings = cs.try_load_settings(source)
-    dt = ((settings or {}).get("rig") or {}).get("dt")
-    if dt is None:
-        raise SystemExit(
-            "calibration: dt is required to generate a model — pass --dt or set "
-            f"rig.dt in {cs.settings_path(source)} (velocity has no safe default)"
-        )
-    return float(dt)
+    if v is None:
+        settings = cs.try_load_settings(source)
+        v = ((settings or {}).get("rig") or {}).get("dt")
+        where = f"rig.dt in {cs.settings_path(source)}"
+        if v is None:
+            raise SystemExit(
+                "calibration: dt is required to generate a model — pass --dt or set "
+                f"{where} (velocity has no safe default)"
+            )
+    else:
+        where = "--dt"
+    try:
+        return runio.require_positive_dt(v, where)
+    except ValueError as exc:
+        raise SystemExit(f"calibration: {exc}") from None
 
 
 # ---------------------------------------------------------------------------
@@ -309,12 +314,8 @@ def _stepped_params_from(d: dict) -> SteppedParams:
     # dot_spacing/2 in SteppedParams), so it stays optional.
     lo = d.get("level_offset_mm")
     return SteppedParams(
-        dot_spacing_mm=float(
-            _require_geometry(d, "dot_spacing_mm", "methods.stepped")
-        ),
-        step_height_mm=float(
-            _require_geometry(d, "step_height_mm", "methods.stepped")
-        ),
+        dot_spacing_mm=float(_require_geometry(d, "dot_spacing_mm", "methods.stepped")),
+        step_height_mm=float(_require_geometry(d, "step_height_mm", "methods.stepped")),
         board_thickness_mm=float(
             _require_geometry(d, "board_thickness_mm", "methods.stepped")
         ),
@@ -602,9 +603,9 @@ def _reusable_stereo(
     """``(path, record)`` of an existing stereo model to reuse, or None to compute.
 
     Reuse requires the requested model_type present AND the stored board_type to
-    match: the stereo model dir is shared across board types (unlike mono dirs,
-    which embed the board in their path), so a stale other-board record must not
-    satisfy a detect run.
+    match. The stereo model dir already embeds the board (as mono and joint dirs
+    do), so the board_type check is defence in depth: a record that somehow sits
+    in another board's dir must still not satisfy a detect run.
     """
     if force:
         return None
@@ -650,7 +651,9 @@ def detect_mono_command(args):
     image_format = _image_format_cli(args, scfg, source)
     n_views = _n_views_cli(args, scfg, source)
     # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    start_index = int(
+        scfg.get("start_index") if scfg.get("start_index") is not None else 1
+    )
     datum_index = _resolve_datum_index(scfg)
     dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
     model_type = args.model_type or scfg.get(board, {}).get("model_type", "pinhole")
@@ -764,7 +767,9 @@ def detect_stereo_command(args):
     image_format = _image_format_cli(args, scfg, source)
     n_views = _n_views_cli(args, scfg, source)
     # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    start_index = int(
+        scfg.get("start_index") if scfg.get("start_index") is not None else 1
+    )
     datum_index = _resolve_datum_index(scfg)
     dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
     fix_aspect = bool(scfg.get("fix_aspect_ratio", True))
@@ -783,15 +788,17 @@ def detect_stereo_command(args):
         _load_grid(scfg.get("world_frame_grid_cam2")) if board == "dotboard" else None
     )
 
-    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
+    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2, board)
 
     # Reuse the shared model beside the calibration source images (see detect_mono).
     # This command's stereo fit is pinhole-only, so the reuse is too.
     reuse = _reusable_stereo(model_dir, board, "pinhole", getattr(args, "force", False))
     if reuse is not None:
         path, existing = reuse
+        # The reused record may have been solved as (cam2, cam1): label its rms by its own order.
+        rc1, rc2 = rec.record_pair(existing, (cam1, cam2))
         print(
-            f"[calibration] stereo {board} cam{cam1}-cam{cam2} reusing existing model "
+            f"[calibration] stereo {board} cam{rc1}-cam{rc2} reusing existing model "
             f"(rms=({existing.model1.rms:.4f},{existing.model2.rms:.4f})px) -> "
             f"{path} (--force to recompute)"
         )
@@ -1028,7 +1035,9 @@ def detect_joint_command(args) -> "Path | List[Path]":
     # getattr: the command is also driven by hand-built namespaces (tests) without the flags.
     arg_dc = getattr(args, "datum_camera", None)
     arg_dv = getattr(args, "datum_view", None)
-    datum_camera = int(arg_dc if arg_dc is not None else gg.get("datum_camera", cameras[0]))
+    datum_camera = int(
+        arg_dc if arg_dc is not None else gg.get("datum_camera", cameras[0])
+    )
     datum_view = int(arg_dv if arg_dv is not None else gg.get("datum_view", 0))
     model_type = args.model_type or scfg.get(board, {}).get("model_type", "pinhole")
     if model_type not in ("pinhole", "polynomial"):
@@ -1045,7 +1054,9 @@ def detect_joint_command(args) -> "Path | List[Path]":
     if n_views < 1:
         raise SystemExit("detect-joint: n_views must be >= 1")
     # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    start_index = int(
+        scfg.get("start_index") if scfg.get("start_index") is not None else 1
+    )
     image_format = _image_format_cli(args, scfg, source)
     # Distortion / fixed-aspect bind the pinhole bundle only; the polynomial map has no K/dist.
     dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
@@ -1285,9 +1296,7 @@ def apply_stereo_command(args):
                 "apply-stereo: pass --uncalibrated-dir-cam1 + --uncalibrated-dir-cam2, or --all-paths"
             )
         if not args.calibrated_dir:
-            raise SystemExit(
-                "apply-stereo: pass --calibrated-dir, or --all-paths"
-            )
+            raise SystemExit("apply-stereo: pass --calibrated-dir, or --all-paths")
         explicit = {
             "uncal1": args.uncalibrated_dir_cam1,
             "uncal2": args.uncalibrated_dir_cam2,
@@ -1368,10 +1377,14 @@ def self_calibrate_command(args):
     overlap = float(args.overlap if args.overlap is not None else 50.0)
     apply_filters = not getattr(args, "no_filters", False)
 
-    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
+    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2, board)
     record = rec.load_stereo(
         model_dir, model_type=_stereo_model_type(args, scfg, board)
     )
+    # Images load in the record's order: c2sc.run correlates imgs1 against model1.
+    cam1, cam2 = rec.record_pair(record, (cam1, cam2))
+    # Fail on a stale baked block before the expensive correlation loop.
+    c2sc.prev_cumulative(record.self_cal)
     figdir = (
         None
         if getattr(args, "no_figures", False)
@@ -1389,16 +1402,27 @@ def self_calibrate_command(args):
         overlap=overlap,
         figure_dir=figdir,
     )
+    # The previous block holds the map already baked into the poses; read it before
+    # the rebake so this run's increment composes onto it.
+    prev_block = record.self_cal
     c2sc.rebake_record(record, result.z_offset, result.tilt_x, result.tilt_y)
     record.self_cal = c2sc.baked_block(
-        result, n_images=len(imgs1), window_size=window_size, overlap=overlap
+        result,
+        prev_block,
+        n_images=len(imgs1),
+        window_size=window_size,
+        overlap=overlap,
     )
     path = rec.save_stereo(record, model_dir)
+    sc = record.self_cal
     print(
         f"[calibration] self-cal cam{cam1}-cam{cam2} baked into extrinsics "
-        f"z={result.z_offset:.4f}mm "
+        f"(bake #{sc['n_bakes']}) this run: z={result.z_offset:.4f}mm "
         f"tilt_x={np.degrees(result.tilt_x):+.4f}deg "
-        f"tilt_y={np.degrees(result.tilt_y):+.4f}deg "
+        f"tilt_y={np.degrees(result.tilt_y):+.4f}deg | total vs clicked frame: "
+        f"z={sc['fitted_z_offset']:.4f}mm "
+        f"tilt_x={np.degrees(sc['fitted_tilt_x']):+.4f}deg "
+        f"tilt_y={np.degrees(sc['fitted_tilt_y']):+.4f}deg "
         f"rms={result.final_rms_disparity:.4f}px converged={result.converged} "
         f"({result.n_iterations} iters) -> {path}"
     )
@@ -1419,7 +1443,9 @@ def scale_factor_command(args):
     scfg = _settings_cfg(source)
     camera = int(args.camera if args.camera is not None else scfg.get("camera") or 1)
     # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(scfg.get("start_index") if scfg.get("start_index") is not None else 1)
+    start_index = int(
+        scfg.get("start_index") if scfg.get("start_index") is not None else 1
+    )
     frame = int(args.frame if args.frame is not None else start_index)
     px_per_mm = float(args.px_per_mm)
     dt = _generate_dt_cli(args, source)
@@ -1756,8 +1782,16 @@ def register_calibration_subparsers(subparsers):
         choices=["cubic", "lanczos"],
         help="stereo cam2 resample kernel (default: lanczos / settings.yaml)",
     )
-    p.add_argument("--uncalibrated-dir-cam1", default=None)
-    p.add_argument("--uncalibrated-dir-cam2", default=None)
+    p.add_argument(
+        "--uncalibrated-dir-cam1",
+        default=None,
+        help="uncalibrated vectors of the stereo record's cam1 (the order the pair was solved in)",
+    )
+    p.add_argument(
+        "--uncalibrated-dir-cam2",
+        default=None,
+        help="uncalibrated vectors of the stereo record's cam2",
+    )
     p.add_argument("--calibrated-dir", default=None)
     p.add_argument(
         "--all-paths",

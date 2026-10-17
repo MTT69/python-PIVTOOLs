@@ -12,6 +12,7 @@ Y-flips — the sign is carried by the camera model.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import pickle
 import time
@@ -46,17 +47,38 @@ logger = logging.getLogger(__name__)
 ENSEMBLE_FILE = "ensemble_result.mat"
 
 
+def require_positive_dt(dt, where: str) -> float:
+    """Return ``dt`` as a float, raising ValueError unless it is finite and > 0.
+
+    Velocity scales as 1/dt, so a zero dt writes inf/NaN into every vector, a negative
+    dt silently flips the velocity sign, and a non-finite dt poisons the whole field.
+    ``where`` names the source of the value (for the error message).
+    """
+    try:
+        value = float(dt)
+    except (TypeError, ValueError):
+        raise ValueError(f"dt from {where} must be a number, got {dt!r}") from None
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(
+            f"dt from {where} must be finite and > 0 (velocity scales as 1/dt), "
+            f"got {dt!r}"
+        )
+    return value
+
+
 def resolve_dt(explicit_dt, model_dt) -> float:
     """Resolve the time-between-frames with NO silent default: explicit > model.
 
     Velocity scales linearly with dt, so a wrong dt silently corrupts every vector by a
     constant factor. There is therefore no safe default — and no config source: every
     record generated since dt stamping carries it in ``board_meta``, so a record
-    without one is stale. If neither source supplies dt, this raises.
+    without one is stale. If neither source supplies dt, this raises; a supplied dt
+    that is not finite and > 0 raises too (see ``require_positive_dt``).
     """
-    for cand in (explicit_dt, model_dt):
-        if cand is not None:
-            return float(cand)
+    if explicit_dt is not None:
+        return require_positive_dt(explicit_dt, "the explicit request/--dt")
+    if model_dt is not None:
+        return require_positive_dt(model_dt, "the model-stamped board_meta")
     raise ValueError(
         "dt could not be resolved — not given explicitly and not stamped in the "
         "model; re-generate the model (generation stamps dt) or pass dt"
@@ -97,6 +119,15 @@ def plan_apply_units(
     ``{"uncal1", "uncal2", "out"}`` (stereo). ``model_type`` picks the record when several
     types coexist in the model dir (None -> the single one present, ambiguity raises).
     A missing model fails loudly here (``load_*`` raises), before any job thread starts.
+
+    Stereo ``uncal1`` / ``uncal2`` follow the RECORD's camera order (``rec.record_pair``),
+    not ``camera_pair``'s: the pair dir is shared by ``(1, 2)`` and ``(2, 1)``, and
+    ``reconstruct_stereo_run`` pairs ``uncal1`` with ``record.model1``, which is
+    ``record.cam1``'s model. Explicit ``uncal1`` / ``uncal2`` must therefore be the
+    record's cam1 / cam2 vectors; they are used as given and the unit label names that
+    order. The derived output folder stays ``Cam{a}_Cam{b}`` in ``camera_pair`` order,
+    where the downstream readers look for it; the 3C field it holds is in the shared
+    world frame, so the pair's order does not change its content.
     """
     base_paths = full_cfg.base_paths
     nfp = full_cfg.num_frame_pairs
@@ -107,10 +138,13 @@ def plan_apply_units(
     units = []
     if stereo:
         pair = camera_pair or [1, 2]
-        cam1, cam2 = int(pair[0]), int(pair[1])
+        out_pair = (int(pair[0]), int(pair[1]))
         record = rec.load_stereo(
-            rec.stereo_model_dir_for_source(source, cam1, cam2), model_type=model_type
+            rec.stereo_model_dir_for_source(source, out_pair[0], out_pair[1], board),
+            model_type=model_type,
         )
+        # model1/model2 belong to record.cam1/cam2: read each camera's vectors in that order.
+        cam1, cam2 = rec.record_pair(record, out_pair)
         if explicit:
             return [
                 dict(
@@ -119,7 +153,7 @@ def plan_apply_units(
                     uncal1=Path(explicit["uncal1"]),
                     uncal2=Path(explicit["uncal2"]),
                     out=Path(explicit["out"]),
-                    label="manual",
+                    label=f"manual/Cam{cam1}_Cam{cam2}",
                     base=None,
                 )
             ]
@@ -134,10 +168,10 @@ def plan_apply_units(
             out = get_data_paths(
                 base,
                 nfp,
-                cam1,
+                out_pair[0],
                 type_name,
                 use_stereo=True,
-                stereo_camera_pair=(cam1, cam2),
+                stereo_camera_pair=out_pair,
             )["data_dir"]
             units.append(
                 dict(
@@ -146,7 +180,7 @@ def plan_apply_units(
                     uncal1=uncal1,
                     uncal2=uncal2,
                     out=out,
-                    label=f"{base.name}/Cam{cam1}_Cam{cam2}",
+                    label=f"{base.name}/Cam{out_pair[0]}_Cam{out_pair[1]}",
                     base=base,
                 )
             )
@@ -520,9 +554,7 @@ def _vectors_struct(
 # pickled into every task.
 
 
-def _mono_frame_task(
-    bmat_path: str, out_path: str, ctx: Optional[dict] = None
-) -> str:
+def _mono_frame_task(bmat_path: str, out_path: str, ctx: Optional[dict] = None) -> str:
     """Calibrate one vector .mat file. ``ctx`` defaults to the worker's payload."""
     c = ctx if ctx is not None else get_worker_payload()
     bmat = Path(bmat_path)
@@ -780,7 +812,9 @@ def reconstruct_stereo_run(
         "dt": dt,
         "interpolator": interpolator,
     }
-    tasks = [(str(bmats1[name]), str(bmats2[name]), str(out_dir / name)) for name in common]
+    tasks = [
+        (str(bmats1[name]), str(bmats2[name]), str(out_dir / name)) for name in common
+    ]
     written = _run_frame_tasks(_stereo_frame_task, tasks, ctx, progress_cb)
     # The regular world grid is frame-invariant — write coordinates once, and only if
     # at least one frame actually reconstructed (no frames -> no output).

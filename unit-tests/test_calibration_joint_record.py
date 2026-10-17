@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from test_calibration_joint_diversity import _BOARD, _rig, pose_diversity
 
 from pivtools_gui.calibration import record as REC
+from pivtools_gui.calibration.camera_model import CameraModel, PolynomialModel
 from pivtools_gui.calibration.joint import (
     pose_diversity_from_meta,
     pose_diversity_to_meta,
 )
-from test_calibration_joint_diversity import _BOARD, _rig, pose_diversity
-from pivtools_gui.calibration.camera_model import CameraModel, PolynomialModel
 
 
 def _cam(fx, cx, cy, tz):
@@ -97,10 +97,13 @@ def test_joint_record_rejects_foreign_contract_version(tmp_path):
 
 def test_stereo_model_dir_is_order_independent(tmp_path):
     """(2, 1) and (1, 2) name ONE record, never two forks of the same pair."""
-    assert REC.stereo_model_dir_for_source(tmp_path, 2, 1) == REC.stereo_model_dir_for_source(
-        tmp_path, 1, 2
+    assert REC.stereo_model_dir_for_source(
+        tmp_path, 2, 1, "dotboard"
+    ) == REC.stereo_model_dir_for_source(tmp_path, 1, 2, "dotboard")
+    assert (
+        REC.stereo_model_dir_for_source(tmp_path, 2, 1, "dotboard").parent.name
+        == "stereo_dotboard_cam1_cam2"
     )
-    assert REC.stereo_model_dir_for_source(tmp_path, 2, 1).parent.name == "stereo_cam1_cam2"
 
 
 def test_load_camera_model_prefers_joint(tmp_path):

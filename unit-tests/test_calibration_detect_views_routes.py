@@ -19,17 +19,17 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from flask import Flask
+from test_calibration_sidecar_resolve import (  # noqa: E402  (sibling-test reuse, as elsewhere)
+    SPACING_MM,
+    _clicks_from_detection,
+    _detection,
+)
 
 import pivtools_gui.calibration.app.views as V
 from pivtools_core.image_handling.path_utils import infer_image_type
 from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration import record as rec
 from pivtools_gui.calibration.detection.dotboard import DotboardParams
-from test_calibration_sidecar_resolve import (  # noqa: E402  (sibling-test reuse, as elsewhere)
-    SPACING_MM,
-    _clicks_from_detection,
-    _detection,
-)
 
 W, H = 1600, 1200
 FMT = "cal_%03d.tif"
@@ -79,15 +79,21 @@ def env(tmp_path, monkeypatch):
     detector = _FakeDetector()
     monkeypatch.setattr(V, "get_config", lambda: _FakeConfig(tmp_path))
     monkeypatch.setattr(
-        V, "_resolve_board", lambda get, overrides=None: ({}, "dotboard", params, detector)
+        V,
+        "_resolve_board",
+        lambda get, overrides=None: ({}, "dotboard", params, detector),
     )
     monkeypatch.setattr(
-        V, "_load_one", lambda cam, frame, src, fmt=None, typ=None: _frame_image(frame, cam)
+        V,
+        "_load_one",
+        lambda cam, frame, src, fmt=None, typ=None: _frame_image(frame, cam),
     )
     monkeypatch.setattr(
         V,
         "_detect_parallel",
-        lambda board, p, imgs, spacing_mm=None, on_done=None: [detector.detect(i) for i in imgs],
+        lambda board, p, imgs, spacing_mm=None, on_done=None: [
+            detector.detect(i) for i in imgs
+        ],
     )
     monkeypatch.setattr(V, "get_calibration_frame_count", lambda cam, cfg, src: N_VIEWS)
     app = Flask(__name__)
@@ -129,7 +135,9 @@ def test_detect_views_mono_writes_sidecar_and_keeps_clicks(env):
     assert data["persisted"] is True
     assert list(data["by_camera"]) == ["1"]
     assert data["by_camera"]["1"]["n_detected"] == N_VIEWS
-    assert data["by_camera"]["1"]["width"] == W and data["by_camera"]["1"]["height"] == H
+    assert (
+        data["by_camera"]["1"]["width"] == W and data["by_camera"]["1"]["height"] == H
+    )
     side = INP.load_inputs(mdir)
     assert side.det_key == _mono_key(params)
     assert [d.success for d in side.detections[1]] == [True] * N_VIEWS
@@ -145,12 +153,14 @@ def test_detect_views_stereo_writes_pair_sidecar_once(env):
 
     assert data["success"] is True and data["persisted"] is True
     assert sorted(data["by_camera"]) == ["1", "2"]
-    side = INP.load_inputs(rec.stereo_model_dir_for_source(base, 1, 2))
+    side = INP.load_inputs(rec.stereo_model_dir_for_source(base, 1, 2, "dotboard"))
     assert sorted(side.detections) == [1, 2]
     assert len(side.detections[2]) == N_VIEWS
     assert side.det_key == _mono_key(params, cameras=(1, 2))
     # Nothing leaks into the mono sidecars.
-    assert INP.try_load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard")) is None
+    assert (
+        INP.try_load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard")) is None
+    )
 
 
 def test_detect_views_failed_view_is_stored_as_failed(env, monkeypatch):
@@ -175,7 +185,9 @@ def test_detect_views_failed_view_is_stored_as_failed(env, monkeypatch):
     monkeypatch.setattr(
         V,
         "_detect_parallel",
-        lambda board, p, imgs, spacing_mm=None, on_done=None: [miss.detect(i) for i in imgs],
+        lambda board, p, imgs, spacing_mm=None, on_done=None: [
+            miss.detect(i) for i in imgs
+        ],
     )
     data = _post_views(client, camera=1)
 
@@ -254,20 +266,25 @@ def test_generate_force_redetect_keeps_stored_clicks(env):
     assert data["success"] is True, data
     assert data["detections_cached"] is False
     side = INP.load_inputs(mdir)
-    assert side.coords is not None, "force_redetect erased the stored world-frame clicks"
+    assert (
+        side.coords is not None
+    ), "force_redetect erased the stored world-frame clicks"
     assert np.allclose(side.coords["origin"], clicks["origin"])
     assert side.coords["origin_mm"] == clicks["origin_mm"]
 
 
 def test_generate_stereo_force_redetect_keeps_stored_clicks(env):
     client, base, params = env
-    sdir = rec.stereo_model_dir_for_source(base, 1, 2)
+    sdir = rec.stereo_model_dir_for_source(base, 1, 2, "dotboard")
     clicks = _clicks_from_detection(_detection(_tilt(1, 1))[0])
     INP.save_inputs(
         sdir,
         path_type="stereo",
         board_type="dotboard",
-        detections={c: [_detection(_tilt(f, c))[0] for f in range(1, N_VIEWS + 1)] for c in (1, 2)},
+        detections={
+            c: [_detection(_tilt(f, c))[0] for f in range(1, N_VIEWS + 1)]
+            for c in (1, 2)
+        },
         image_size_by_cam={1: (W, H), 2: (W, H)},
         det_key=_mono_key(params, cameras=(1, 2)),
         coords=clicks,
@@ -292,7 +309,9 @@ def test_generate_stereo_force_redetect_keeps_stored_clicks(env):
     assert data["success"] is True, data
     assert data["detections_cached"] is False
     side = INP.load_inputs(sdir)
-    assert side.coords is not None, "force_redetect erased the stored world-frame clicks"
+    assert (
+        side.coords is not None
+    ), "force_redetect erased the stored world-frame clicks"
     assert np.allclose(side.coords["origin"], clicks["origin"])
 
 
@@ -308,7 +327,9 @@ def test_joint_detect_memory_cache_follows_source_path(tmp_path, monkeypatch):
     current = {"path": dirs[0]}
     monkeypatch.setattr(V, "_source_path", lambda idx: current["path"])
     monkeypatch.setattr(
-        V, "_load_views", lambda cam, n, src, fmt, typ: [_frame_image(k + 1) for k in range(n)]
+        V,
+        "_load_views",
+        lambda cam, n, src, fmt, typ: [_frame_image(k + 1) for k in range(n)],
     )
     runs = {"n": 0}
 

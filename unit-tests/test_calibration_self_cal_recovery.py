@@ -156,9 +156,11 @@ def test_tilt_recovered(recovery):
 def test_recovered_sheet_bakes_into_record(tmp_path, recovery):
     """The recovered sheet bakes into the extrinsics and the block reloads as baked."""
     record, result, *_ = recovery
+    prev_block = record.self_cal
     SC.rebake_record(record, result.z_offset, result.tilt_x, result.tilt_y)
     record.self_cal = SC.baked_block(
         result,
+        prev_block,
         n_images=N_IMAGE_PAIRS,
         window_size=WINDOW_SIZE,
         overlap=OVERLAP,

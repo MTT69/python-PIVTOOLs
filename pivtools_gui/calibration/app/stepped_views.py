@@ -265,7 +265,9 @@ def _load_one(
 def _sidecar_model_dir(source, cameras: List[int]) -> Path:
     """Model dir whose ``inputs.mat`` carries this sequence (stereo pair vs mono)."""
     if len(cameras) >= 2:
-        return rec.stereo_model_dir_for_source(source, cameras[0], cameras[1])
+        return rec.stereo_model_dir_for_source(
+            source, cameras[0], cameras[1], "stepped"
+        )
     return rec.mono_model_dir_for_source(source, cameras[0], "stepped")
 
 
