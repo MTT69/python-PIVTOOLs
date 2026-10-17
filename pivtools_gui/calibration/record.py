@@ -362,8 +362,6 @@ def _scale_factor_to_dict(sf: ScaleFactorModel) -> Dict[str, Any]:
         "swap_axes": int(sf.swap_axes),
         "col_sign": int(sf.col_sign),
         "row_sign": int(sf.row_sign),
-        "image_width": int(sf.image_size[0]),
-        "image_height": int(sf.image_size[1]),
     }
 
 
@@ -371,7 +369,6 @@ def _scale_factor_from(obj) -> ScaleFactorModel:
     return ScaleFactorModel(
         origin_px=np.asarray(obj.origin_px, dtype=np.float64).reshape(2),
         mm_per_pixel=float(_scalar(obj.mm_per_pixel)),
-        image_size=(int(_scalar(obj.image_width)), int(_scalar(obj.image_height))),
         swap_axes=int(_scalar(obj.swap_axes)),
         col_sign=int(_scalar(obj.col_sign)),
         row_sign=int(_scalar(obj.row_sign)),

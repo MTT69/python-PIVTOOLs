@@ -163,7 +163,6 @@ def test_seed_recovers_board_meta_from_mono_record(tmp_path):
         camera=2,
         origin_px=(0.0, 0.0),
         px_per_mm=10.0,
-        image_size=(100, 100),
         dt=1.0,
     )
     record.board_meta = {
@@ -193,7 +192,6 @@ def test_seed_scale_factor_px_per_mm(tmp_path):
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=13.65,
-        image_size=(100, 100),
         dt=0.0057,
     )
     REC.save_mono(record, REC.mono_model_dir_for_source(src, 1, "scale_factor"))
@@ -243,7 +241,6 @@ def test_seed_shared_rig_keys_come_from_newest_record(tmp_path):
             camera=camera,
             origin_px=(0.0, 0.0),
             px_per_mm=10.0,
-            image_size=(100, 100),
             dt=dt,
         )
         record.board_meta["geometry"] = {"board_type": board}

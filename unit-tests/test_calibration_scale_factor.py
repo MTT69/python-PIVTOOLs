@@ -17,8 +17,6 @@ from pivtools_gui.calibration import record as REC
 from pivtools_gui.calibration.camera_model import ScaleFactorModel
 from pivtools_gui.calibration.pipeline import build_scale_factor_record
 
-IMAGE_SIZE = (1600, 1200)
-
 
 # ---------------------------------------------------------------------------
 # back_project_to_plane algebra
@@ -32,7 +30,6 @@ def test_back_project_known_points():
         camera=1,
         origin_px=(100.0, 200.0),
         px_per_mm=2.0,
-        image_size=IMAGE_SIZE,
         dt=0.001,
         x_dir="right",
         y_dir="up",
@@ -54,7 +51,6 @@ def test_axis_toggles():
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=1.0,
-        image_size=IMAGE_SIZE,
         dt=1.0,
         y_dir="up",
     ).camera_model
@@ -62,7 +58,6 @@ def test_axis_toggles():
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=1.0,
-        image_size=IMAGE_SIZE,
         dt=1.0,
         y_dir="down",
     ).camera_model
@@ -74,7 +69,6 @@ def test_axis_toggles():
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=1.0,
-        image_size=IMAGE_SIZE,
         dt=1.0,
         x_dir="left",
     ).camera_model
@@ -84,7 +78,6 @@ def test_axis_toggles():
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=1.0,
-        image_size=IMAGE_SIZE,
         dt=1.0,
         x_dir="right",
         y_dir="down",
@@ -115,7 +108,6 @@ def test_origin_mm_maps_picked_pixel():
                     camera=1,
                     origin_px=picked,
                     px_per_mm=3.2,
-                    image_size=IMAGE_SIZE,
                     dt=1.0,
                     x_dir=x_dir,
                     y_dir=y_dir,
@@ -139,14 +131,12 @@ def test_origin_mm_displacement_invariant():
         camera=1,
         origin_px=(800.0, 600.0),
         px_per_mm=px_per_mm,
-        image_size=IMAGE_SIZE,
         dt=dt,
     ).camera_model
     offset = build_scale_factor_record(
         camera=1,
         origin_px=(800.0, 600.0),
         px_per_mm=px_per_mm,
-        image_size=IMAGE_SIZE,
         dt=dt,
         origin_mm=(1000.0, -42.0),
     ).camera_model
@@ -162,7 +152,6 @@ def test_origin_mm_roundtrip(tmp_path):
         camera=2,
         origin_px=(640.0, 512.0),
         px_per_mm=12.5,
-        image_size=(1280, 1024),
         dt=0.0005,
         y_dir="down",
         origin_mm=(3.0, 4.0),
@@ -200,7 +189,6 @@ def test_velocity_matches_v1():
         camera=1,
         origin_px=(800.0, 600.0),
         px_per_mm=px_per_mm,
-        image_size=IMAGE_SIZE,
         dt=dt,
         x_dir="right",
         y_dir="up",
@@ -225,7 +213,6 @@ def test_record_roundtrip(tmp_path):
         camera=3,
         origin_px=(640.0, 512.0),
         px_per_mm=12.5,
-        image_size=(1280, 1024),
         dt=0.0005,
         x_dir="left",
         y_dir="down",
@@ -244,7 +231,6 @@ def test_record_roundtrip(tmp_path):
         m0.row_sign,
         m0.swap_axes,
     )
-    assert m1.image_size == m0.image_size
     assert loaded.camera == 3
     assert float(loaded.board_meta["px_per_mm"]) == 12.5
     assert float(loaded.board_meta["dt"]) == 0.0005
@@ -256,7 +242,7 @@ def test_frame_idx_stamped_and_roundtrips(tmp_path):
     Omitted when not given (no spurious key), preserved through save/load when given.
     """
     rec_no = build_scale_factor_record(
-        camera=1, origin_px=(0.0, 0.0), px_per_mm=10.0, image_size=(100, 100), dt=1.0
+        camera=1, origin_px=(0.0, 0.0), px_per_mm=10.0, dt=1.0
     )
     assert "frame_idx" not in rec_no.board_meta
 
@@ -264,7 +250,6 @@ def test_frame_idx_stamped_and_roundtrips(tmp_path):
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=10.0,
-        image_size=(100, 100),
         dt=1.0,
         frame_idx=37,
     )
@@ -290,14 +275,12 @@ def test_global_shift_scale_factor():
         camera=1,
         origin_px=(0.0, 0.0),
         px_per_mm=1.0,
-        image_size=IMAGE_SIZE,
         dt=1.0,
     )
     r2 = build_scale_factor_record(
         camera=2,
         origin_px=(100.0, 50.0),
         px_per_mm=1.0,
-        image_size=IMAGE_SIZE,
         dt=1.0,
     )
     records = {1: r1, 2: r2}

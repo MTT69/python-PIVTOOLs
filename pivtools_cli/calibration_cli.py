@@ -1409,10 +1409,9 @@ def scale_factor_command(args):
     """Build a scale-factor mono model (uniform pixel->mm) from CLI params.
 
     No board, no detection — the user names the origin pixel, the axis directions,
-    px/mm and dt. One frame is loaded only to stamp the image size and draw the
-    proof figure; an explicit ``--image-size W H`` supplies the size instead, so the
-    model can be built with no images on disk at all (the proof figure is skipped —
-    it needs a frame to draw on).
+    px/mm and dt. One frame is loaded only to draw the proof figure; ``--no-image``
+    skips that load, so the model can be built with no images on disk at all (the
+    proof figure is skipped — it needs a frame to draw on).
     """
     config = get_config()
     cfg = _cfg2(config)
@@ -1431,14 +1430,11 @@ def scale_factor_command(args):
         else (0.0, 0.0)
     )
 
-    if getattr(args, "image_size", None) is not None:
+    if args.no_image:
         image = None
-        image_size = (int(args.image_size[0]), int(args.image_size[1]))
-        if image_size[0] <= 0 or image_size[1] <= 0:
-            raise ValueError(f"--image-size must be positive, got {image_size}")
     else:
         # image_format is only needed when a frame is actually loaded — the
-        # --image-size path builds the model with no images on disk at all.
+        # --no-image path builds the model with no images on disk at all.
         image_format = _image_format_cli(args, scfg, source)
         image = _load_one(
             _cam_dir(scfg, source, camera, config.camera_count),
@@ -1447,13 +1443,10 @@ def scale_factor_command(args):
             camera=camera,
             **_loader_kwargs(scfg, image_format, config.camera_count),
         )
-        h, w = np.asarray(image).shape[:2]
-        image_size = (int(w), int(h))
     record = build_scale_factor_record(
         camera=camera,
         origin_px=origin,
         px_per_mm=px_per_mm,
-        image_size=image_size,
         dt=dt,
         x_dir=args.x_dir,
         y_dir=args.y_dir,
@@ -1832,16 +1825,13 @@ def register_calibration_subparsers(subparsers):
     p.add_argument("--camera", type=int, default=None)
     p.add_argument("--image-format", default=None)
     p.add_argument(
-        "--frame", type=int, default=None, help="1-based frame for image size + figure"
+        "--frame", type=int, default=None, help="1-based frame for the proof figure"
     )
     p.add_argument(
-        "--image-size",
-        type=int,
-        nargs=2,
-        default=None,
-        metavar=("W", "H"),
-        help="image size in px; skips loading a frame entirely (no proof figure) — "
-        "for sources with no calibration images on disk",
+        "--no-image",
+        action="store_true",
+        help="skip loading a frame entirely (no proof figure) — for sources with "
+        "no calibration images on disk",
     )
     p.add_argument(
         "--px-per-mm", type=float, required=True, help="pixels per millimetre"

@@ -590,8 +590,6 @@ def _scale_factor_summary(
         "swap_axes": int(sf.swap_axes),
         "x_dir": "right" if sf.col_sign >= 0 else "left",
         "y_dir": "up" if sf.row_sign < 0 else "down",
-        "image_width": int(sf.image_size[0]),
-        "image_height": int(sf.image_size[1]),
     }
     if frame_idx is not None:
         out["frame_idx"] = int(frame_idx)
@@ -1507,10 +1505,9 @@ def scale_factor_generate():
     """Build + save a scale-factor mono model from picked origin/axes + px/mm + dt.
 
     No detection, no fit — a direct uniform pixel->mm map. One frame is loaded only to
-    stamp the image size and draw the proof figure. An explicit ``use_image: false``
-    (the GUI's "Use calibration images" toggle off) skips the frame entirely: the size
-    comes from the existing saved model and no figure is drawn — there is no silent
-    fallback; without an existing model the request fails.
+    draw the proof figure; the model itself needs no image. An explicit
+    ``use_image: false`` (the GUI's "Use calibration images" toggle off) skips the
+    frame entirely and no figure is drawn.
     """
     data = request.get_json() or {}
     source_idx = _source_idx(data.get)
@@ -1537,36 +1534,21 @@ def scale_factor_generate():
         dt = _generate_dt(data.get, source)
         model_dir = rec.mono_model_dir_for_source(source, camera, "scale_factor")
         use_image = bool(data.get("use_image", True))
-        if use_image:
-            image = _load_one(
+        image = (
+            _load_one(
                 camera,
                 frame_idx,
                 source_idx,
                 data.get("image_format"),
                 data.get("image_type"),
             )
-            h, w = np.asarray(image).shape[:2]
-            image_size = (int(w), int(h))
-        else:
-            image = None
-            try:
-                existing = rec.load_mono(model_dir, "scale_factor")
-            except FileNotFoundError:
-                raise ValueError(
-                    f"Cannot generate without calibration images: no existing "
-                    f"scale-factor model for Camera {camera} to take the image "
-                    f"size from. Enable 'Use calibration images' and generate "
-                    f"once with an image on disk first."
-                )
-            image_size = (
-                int(existing.camera_model.image_size[0]),
-                int(existing.camera_model.image_size[1]),
-            )
+            if use_image
+            else None
+        )
         record = build_scale_factor_record(
             camera=camera,
             origin_px=origin_px,
             px_per_mm=px_per_mm,
-            image_size=image_size,
             dt=dt,
             x_dir=x_dir,
             y_dir=y_dir,

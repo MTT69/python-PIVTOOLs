@@ -31,7 +31,6 @@ def _make_source(tmp_path, cams=(1, 2)):
             camera=cam,
             origin_px=(0.0, 0.0),
             px_per_mm=10.0,
-            image_size=(100, 100),
             dt=1.0,
         )
         REC.save_mono(recd, REC.mono_model_dir_for_source(source, cam, "scale_factor"))

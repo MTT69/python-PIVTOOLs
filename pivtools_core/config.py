@@ -1364,7 +1364,8 @@ class Config:
         Raises
         ------
         ValueError
-            If calibration_sources is not configured
+            If calibration_sources is not configured, or the entry at
+            source_path_idx is blank
         IndexError
             If source_path_idx is out of range
         """
@@ -1379,7 +1380,16 @@ class Config:
                 f"calibration_sources index {source_path_idx} out of range "
                 f"(have {len(sources)} sources)"
             )
-        return sources[source_path_idx]
+        source = sources[source_path_idx]
+        # A blank entry (the GUI saves a cleared source field as '') is Path('') ==
+        # Path('.'), the process cwd: a generate route would write its model there
+        # and report success.
+        if source == Path():
+            raise ValueError(
+                f"calibration.calibration_sources[{source_path_idx}] is empty. "
+                "Please specify the path to the calibration source."
+            )
+        return source
 
     @property
     def calibration(self):

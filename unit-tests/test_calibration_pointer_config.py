@@ -113,6 +113,22 @@ def test_calibration_source_path_is_stripped(tmp_path):
     assert cfg.get_calibration_source(0) == Path("/data/calib_a")
 
 
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_blank_calibration_source_is_rejected(tmp_path, blank):
+    """A blank entry must raise, never resolve to ``Path('')`` — the process cwd.
+
+    The GUI saves the source field as typed, so a cleared field reaches config as
+    ``['']``. Resolving that to ``.`` would let a generate route write its model
+    under the server's working directory and report success.
+    """
+    yaml_path = tmp_path / "config.yaml"
+    _write_yaml(yaml_path, {"calibration_sources": ["/data/calib_a", blank], "active": "charuco"})
+    cfg = Config(path=str(yaml_path))
+    assert cfg.get_calibration_source(0) == Path("/data/calib_a")
+    with pytest.raises(ValueError, match=r"calibration_sources\[1\] is empty"):
+        cfg.get_calibration_source(1)
+
+
 def test_config_save_without_calibration_block(tmp_path):
     """No calibration block: save must neither crash nor invent one."""
     yaml_path = tmp_path / "config.yaml"
@@ -292,7 +308,7 @@ def test_settings_post_persists_seed_before_partial(tmp_path):
     source.mkdir()
     record = build_scale_factor_record(
         camera=1, origin_px=(0.0, 0.0), px_per_mm=13.65,
-        image_size=(100, 100), dt=0.0057,
+        dt=0.0057,
     )
     REC.save_mono(record, REC.mono_model_dir_for_source(source, 1, "scale_factor"))
 

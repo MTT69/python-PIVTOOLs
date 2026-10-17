@@ -47,7 +47,6 @@ def test_isotropic_reduces_to_scalar():
         camera=1,
         origin_px=(0, 0),
         px_per_mm=p,
-        image_size=IMAGE_SIZE,
         dt=dt,
         x_dir="right",
         y_dir="down",
@@ -74,7 +73,6 @@ def test_mirror_flips_cross_term_only():
         camera=1,
         origin_px=(0, 0),
         px_per_mm=p,
-        image_size=IMAGE_SIZE,
         dt=dt,
         x_dir="right",
         y_dir="down",
@@ -83,7 +81,6 @@ def test_mirror_flips_cross_term_only():
         camera=1,
         origin_px=(0, 0),
         px_per_mm=p,
-        image_size=IMAGE_SIZE,
         dt=dt,
         x_dir="left",
         y_dir="down",
@@ -134,7 +131,6 @@ def test_runio_ensemble_roundtrip(tmp_path):
         camera=1,
         origin_px=(0, 0),
         px_per_mm=p,
-        image_size=IMAGE_SIZE,
         dt=dt,
         x_dir="right",
         y_dir="down",
@@ -185,7 +181,6 @@ def test_ensemble_shape_mismatch_raises(tmp_path):
         camera=1,
         origin_px=(0, 0),
         px_per_mm=10.0,
-        image_size=IMAGE_SIZE,
         dt=dt,
         x_dir="right",
         y_dir="down",
@@ -216,10 +211,10 @@ def test_resolve_dt_precedence_and_no_silent_default():
     assert runio.resolve_dt(None, 0.5) == 0.5  # model-stamped next
     # Two cameras with different stamped dt each resolve to THEIR OWN value (not cam1's).
     rec_a = build_scale_factor_record(
-        camera=1, origin_px=(0, 0), px_per_mm=10.0, image_size=IMAGE_SIZE, dt=0.5
+        camera=1, origin_px=(0, 0), px_per_mm=10.0, dt=0.5
     ).board_meta["dt"]
     rec_b = build_scale_factor_record(
-        camera=2, origin_px=(0, 0), px_per_mm=10.0, image_size=IMAGE_SIZE, dt=2.0
+        camera=2, origin_px=(0, 0), px_per_mm=10.0, dt=2.0
     ).board_meta["dt"]
     assert runio.resolve_dt(None, rec_a) == 0.5
     assert runio.resolve_dt(None, rec_b) == 2.0

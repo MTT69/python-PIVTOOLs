@@ -334,7 +334,6 @@ class ScaleFactorModel:
 
     origin_px: np.ndarray  # (2,) image-down pixel of world (0, 0)
     mm_per_pixel: float
-    image_size: Tuple[int, int]
     swap_axes: int = 0
     col_sign: int = 1
     row_sign: int = 1
@@ -343,7 +342,6 @@ class ScaleFactorModel:
     def __post_init__(self) -> None:
         self.origin_px = np.asarray(self.origin_px, dtype=np.float64).reshape(2)
         self.mm_per_pixel = float(self.mm_per_pixel)
-        self.image_size = (int(self.image_size[0]), int(self.image_size[1]))
         self.swap_axes = int(self.swap_axes)
         self.col_sign = int(self.col_sign)
         self.row_sign = int(self.row_sign)

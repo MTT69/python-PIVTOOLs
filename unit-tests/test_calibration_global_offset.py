@@ -15,15 +15,12 @@ from pivtools_gui.calibration import global_coords as GC
 from pivtools_gui.calibration import record as REC
 from pivtools_gui.calibration.pipeline import build_scale_factor_record
 
-IMAGE_SIZE = (1600, 1200)
-
 
 def _sf(camera, origin, px_per_mm=1.0, x="right", y="up"):
     return build_scale_factor_record(
         camera=camera,
         origin_px=origin,
         px_per_mm=px_per_mm,
-        image_size=IMAGE_SIZE,
         dt=1.0,
         x_dir=x,
         y_dir=y,

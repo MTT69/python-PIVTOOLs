@@ -257,7 +257,6 @@ def build_scale_factor_record(
     camera: int,
     origin_px: Tuple[float, float],
     px_per_mm: float,
-    image_size: Tuple[int, int],
     dt: float,
     x_dir: str = "right",
     y_dir: str = "up",
@@ -311,7 +310,6 @@ def build_scale_factor_record(
     model = ScaleFactorModel(
         origin_px=model_origin,
         mm_per_pixel=1.0 / float(px_per_mm),
-        image_size=(int(image_size[0]), int(image_size[1])),
         swap_axes=int(bool(swap_axes)),
         col_sign=col_sign,
         row_sign=row_sign,
