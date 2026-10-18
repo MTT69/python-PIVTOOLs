@@ -257,7 +257,12 @@ class Config:
     # The YAML calibration block is a pointer only. Everything else (image format,
     # board geometry, dt, global coordinates, ...) lives in the per-source
     # settings sidecar — see pivtools_core.calibration_settings.
-    _CALIBRATION_POINTER_KEYS = ("calibration_sources", "source", "source_idx", "active")
+    _CALIBRATION_POINTER_KEYS = (
+        "calibration_sources",
+        "source",
+        "source_idx",
+        "active",
+    )
 
     def _normalize_calibration_block(self):
         """Strip the calibration block to its pointer keys on save.
@@ -536,7 +541,9 @@ class Config:
     def is_stereo_setup(self) -> bool:
         """Return True if this is a stereo PIV setup.
 
-        Determined by calibration.active being 'stereo_dotboard' or 'stereo_charuco'.
+        Determined by calibration.active being one of the stereo methods the GUI's
+        "Set as Active" buttons write: 'stereo_dotboard', 'stereo_charuco' or
+        'stereo_stepped'.
 
         Returns
         -------
@@ -544,7 +551,7 @@ class Config:
             True if stereo calibration is active
         """
         active = self.active_calibration_method
-        return active in ("stereo_dotboard", "stereo_charuco")
+        return active in ("stereo_dotboard", "stereo_charuco", "stereo_stepped")
 
     @property
     def camera_folders(self):
@@ -1346,7 +1353,9 @@ class Config:
         sources = calib_block.get("calibration_sources", [])
         # str().strip(): a pasted path with a stray leading space reaches mkdir as
         # ' C:\...' and Windows rejects it (WinError 123, seen 2026-08-28).
-        return [Path(str(s).strip()) for s in sources if s is not None] if sources else []
+        return (
+            [Path(str(s).strip()) for s in sources if s is not None] if sources else []
+        )
 
     def get_calibration_source(self, source_path_idx: int = 0) -> Path:
         """Get calibration source path for the given index.

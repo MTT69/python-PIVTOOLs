@@ -795,13 +795,9 @@ calibration:
   source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
   source_idx: 0
   # Which saved model downstream code should use. Stored values are the GUI tab
-  # ids: charuco | dotboard | stepped | scale_factor | stereo_charuco |
-  # stereo_dotboard | stepped_stereo.
+  # ids: charuco | dotboard | scale_factor | stereo_charuco | stereo_dotboard |
+  # stereo_stepped. The three stereo_* values make Config.is_stereo_setup true.
   # NOT validated - a typo selects nothing rather than raising.
-  # Config.is_stereo_setup matches ONLY 'stereo_dotboard' and 'stereo_charuco'.
-  # 'stepped_stereo' is a valid value here but is not recognised as stereo by
-  # that property, so the GUI gates keyed on it (merge block, statistics and
-  # transform stereo detection) do not fire for a stepped-stereo setup.
   active: charuco
 filters: []
 preprocessing:
