@@ -609,6 +609,19 @@ def _apply_single_suggestion(
     )
 
 
+def cine_extension_mismatch(cine_file: Path) -> Optional[str]:
+    """The error for a CINE image type whose pattern names a non-``.cine`` file, else None.
+
+    Same guard as the ``.set`` branch of :func:`validate_images_generic`: the CINE
+    header reader on another format's bytes fails with an unrelated decode error
+    (a PNG gives "'utf-8' codec can't decode byte 0x89"), so name the mismatch.
+    """
+    if cine_file.suffix.lower() == ".cine":
+        return None
+    kind = f"a {cine_file.suffix}" if cine_file.suffix else "an extension-less"
+    return f"Image type is CINE but the pattern names {kind} file: {cine_file}"
+
+
 def _container_count_failure(
     result: Dict[str, Any], container: Path, exc: Exception
 ) -> Dict[str, Any]:
@@ -807,6 +820,11 @@ def validate_images_generic(
             if cine_files:
                 result["suggested_pattern"] = cine_files[0].name
                 result["sample_files"] = [f.name for f in cine_files[:5]]
+            return result
+
+        mismatch = cine_extension_mismatch(cine_file)
+        if mismatch is not None:
+            result["error"] = mismatch
             return result
 
         result["format_detected"] = "cine"

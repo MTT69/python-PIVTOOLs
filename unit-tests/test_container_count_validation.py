@@ -133,5 +133,30 @@ def test_cine_count_read_failure_is_a_visible_error(tmp_path, monkeypatch):
     )
 
 
+def test_cine_type_on_non_cine_file_names_the_mismatch(tmp_path):
+    """Image type CINE with a pattern naming a .png fails on the extension, not in the reader.
+
+    It used to hand the PNG to the CINE header reader, which surfaced
+    "'utf-8' codec can't decode byte 0x89" — the PNG signature — as the error.
+    """
+    png_file = tmp_path / "calib00001.png"
+    png_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
+
+    result = validate_images_generic(
+        camera_path=tmp_path,
+        camera=1,
+        image_format="calib00001.png",
+        image_type="cine",
+        expected_count=10,
+        zero_based_indexing=False,
+        read_frame_fn=_fake_frame,
+    )
+
+    assert result["valid"] is False
+    assert result["error"] == (
+        f"Image type is CINE but the pattern names a .png file: {png_file}"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

@@ -30,6 +30,7 @@ from ..config import Config
 from .load_images import read_single_frame
 from .path_utils import (
     build_calibration_camera_path,
+    cine_extension_mismatch,
     format_to_glob,
     infer_image_type,
     resolve_file_path,
@@ -729,6 +730,9 @@ def get_calibration_frame_count(
         cine_path = camera_path / (fmt % camera if "%" in fmt else fmt)
         if not cine_path.is_file():
             raise ValueError(f"cine file for camera {camera} not found: {cine_path}")
+        mismatch = cine_extension_mismatch(cine_path)
+        if mismatch is not None:
+            raise ValueError(mismatch)
         try:
             n = get_cine_frame_count(str(cine_path))
         except Exception as exc:

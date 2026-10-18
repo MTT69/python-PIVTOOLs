@@ -20,8 +20,6 @@ from flask_compress import Compress
 from flask_cors import CORS
 from loguru import logger
 
-# Note: transforms/app/transform_views.py exists for CLI batch usage via TransformProcessor
-# but is NOT registered as a Flask blueprint - the frontend uses the plotting transform API
 from pivtools_cli.preprocessing.preprocess import apply_filters_to_batch
 from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.fft_sizes import BUILT_FFT_SIZES, SINGLE_MODE_WINDOW_SIZES

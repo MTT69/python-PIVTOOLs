@@ -199,6 +199,19 @@ def test_cine_reader_error_raises_chained(tmp_path, monkeypatch):
     assert err.value.__cause__ is underlying
 
 
+def test_cine_type_on_png_names_the_mismatch(tmp_path):
+    """A CINE image type pointed at a PNG fails on the extension, not in the header reader."""
+    png = tmp_path / "calib00001.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
+    cfg = _source(tmp_path, image_format="calib00001.png", image_type="cine")
+
+    with pytest.raises(ValueError) as err:
+        get_calibration_frame_count(1, cfg, 0)
+    assert (
+        str(err.value) == f"Image type is CINE but the pattern names a .png file: {png}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # _frame_total / _pair_frame_total
 # ---------------------------------------------------------------------------
