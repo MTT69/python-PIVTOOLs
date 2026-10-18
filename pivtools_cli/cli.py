@@ -59,10 +59,7 @@ def get_active_paths_from_args(args, config):
 def transform_command(args):
     """Apply geometric transforms to PIV vector fields."""
     from pivtools_core.config import get_config
-    from pivtools_gui.transforms.transform_production import (
-        TransformProcessor,
-        stereo_transform_target,
-    )
+    from pivtools_gui.transforms.transform_production import TransformProcessor
 
     config = get_config()
 
@@ -95,9 +92,19 @@ def transform_command(args):
     if source_endpoint is None:
         source_endpoint = config.transforms_source_endpoint
 
-    # Determine use_merged and use_stereo from source_endpoint
+    # Stereo (3C) transforms are not offered: the operations are written for 2C fields and
+    # their effect on uz / the right-handed stereo frame is unverified. Refuse rather than
+    # transform the per-camera files. The viewer writes source_endpoint 'stereo' to the
+    # config while stereo data is shown, so this can arrive from config.yaml too.
+    if source_endpoint == "stereo":
+        print(
+            "Error: stereo transforms are not supported yet. transforms.source_endpoint is "
+            "'stereo' (the vector viewer sets it while stereo data is shown); pass "
+            "--source-endpoint regular or merged to transform 2C data."
+        )
+        sys.exit(1)
+
     use_merged = source_endpoint == "merged"
-    use_stereo = source_endpoint == "stereo"
 
     # Update config if CLI specified source_endpoint
     if args.source_endpoint or args.merged:
@@ -113,19 +120,6 @@ def transform_command(args):
     if not active_paths:
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
-
-    # Stereo vectors live in one Cam{a}_Cam{b} directory and take one op list; the rule
-    # refuses a missing pair or cameras with different ops rather than picking one.
-    stereo_camera_pair = None
-    if use_stereo:
-        try:
-            stereo_camera_pair, stereo_ops = stereo_transform_target(
-                config, camera_transforms
-            )
-        except ValueError as exc:
-            print(f"Error: {exc}")
-            sys.exit(1)
-        camera_transforms = {stereo_camera_pair[0]: stereo_ops}
 
     print("=" * 60)
     print("Vector Transform - Starting")
@@ -147,8 +141,6 @@ def transform_command(args):
                 camera_transforms=camera_transforms,
                 type_name=type_name,
                 use_merged=use_merged,
-                use_stereo=use_stereo,
-                stereo_camera_pair=stereo_camera_pair,
                 config=config,
             )
             result = processor.process_all_cameras()
@@ -157,12 +149,7 @@ def transform_command(args):
 
             if result.get("success"):
                 for cam, res in result.get("camera_results", {}).items():
-                    label = (
-                        f"Stereo Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
-                        if use_stereo
-                        else f"Camera {cam}"
-                    )
-                    print(f"  {label}: {res.get('transformed_files', 0)} files")
+                    print(f"  Camera {cam}: {res.get('transformed_files', 0)} files")
             else:
                 print("  FAILED")
         except Exception as e:
@@ -1022,8 +1009,8 @@ def main():
         "--source-endpoint",
         "-s",
         default=None,
-        choices=["regular", "merged", "stereo"],
-        help="Data source: regular (per-camera), merged, or stereo",
+        choices=["regular", "merged"],
+        help="Data source: regular (per-camera) or merged. Stereo transforms are not supported yet",
     )
     transform_parser.add_argument(
         "--active-paths",
