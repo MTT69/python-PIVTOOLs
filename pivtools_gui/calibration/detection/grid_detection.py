@@ -150,9 +150,12 @@ def _photometric_flat_field(
     if invert:
         work_img = work_img.max() - work_img
 
-    # Morphological close at ~2x dot diameter to estimate local background.
-    # Kernel sized to dot scale (~70px at 5MP), NOT image scale.
-    dot_diam_est = max(70, int(max(work_img.shape) * 0.013))
+    # Morphological close at ~2.5x dot diameter to estimate local background.
+    # Dot diameter estimated as 1.3% of the long side, capped at 70 px (the cap
+    # binds from ~5400 px up). A floor here instead of a cap forces a 175 px
+    # kernel on small images, which averages out steep illumination and lost
+    # ~30% of dots on uneven-lit synthetic boards (2026-10-18).
+    dot_diam_est = min(70, int(max(work_img.shape) * 0.013))
     k_size = int(dot_diam_est * 2.5) | 1
     scale = 0.25
     small_img = cv2.resize(
