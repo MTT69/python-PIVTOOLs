@@ -16,7 +16,7 @@ import logging
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -89,6 +89,45 @@ def get_data_dir(
         )
     else:
         return base_dir / "calibrated_piv" / num_str / f"Cam{camera}" / type_name
+
+
+def stereo_transform_target(
+    config: Config, camera_transforms: Dict[int, List[str]]
+) -> Tuple[Tuple[int, int], List[str]]:
+    """The camera pair and the single op list a stereo transform applies.
+
+    Stereo vectors live in one ``Cam{a}_Cam{b}`` directory, so one op list transforms them.
+    The pair is the rig's stereo pair (``config.stereo_pairs[0]``; PIVTOOLs offers one pair,
+    (1, 2)). The ops are the pending op list shared by every camera that has one; cameras
+    whose pending ops differ (after simplification) are ambiguous and raise rather than
+    picking one camera's list.
+
+    Raises
+    ------
+    ValueError
+        Fewer than two cameras, no pending ops, or cameras with different ops.
+    """
+    pairs = config.stereo_pairs
+    if not pairs:
+        raise ValueError(
+            f"stereo transform needs two cameras; camera_numbers is {config.camera_numbers}"
+        )
+    pending = {
+        int(cam): list(ops)
+        for cam, ops in camera_transforms.items()
+        if simplify_transformations(list(ops))
+    }
+    if not pending:
+        raise ValueError("no pending transforms to apply to the stereo data")
+    distinct = {tuple(simplify_transformations(ops)) for ops in pending.values()}
+    if len(distinct) > 1:
+        listed = "; ".join(f"Cam{c}: {ops}" for c, ops in sorted(pending.items()))
+        raise ValueError(
+            "stereo data takes one op list, but cameras have different pending "
+            f"transforms ({listed}). Clear one camera's transforms or make them match."
+        )
+    pair = pairs[0]
+    return (int(pair[0]), int(pair[1])), next(iter(pending.values()))
 
 
 # ===================== PROCESSOR CLASS =====================

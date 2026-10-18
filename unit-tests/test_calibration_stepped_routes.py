@@ -634,3 +634,58 @@ def test_inputs_save_concurrent_cameras_both_persist(
     assert results[1]["saved"] and results[2]["saved"], results
     coords = real_load(_stereo_model_dir(tmp_path)).coords
     assert sorted(coords["cameras"]) == ["1", "2"]
+
+
+def _start_detect(client, cameras):
+    """Start a detect job and return its final status payload (completed or failed)."""
+    r = client.post(
+        "/calibration/stepped/detect_sequence",
+        json={
+            "source_path_idx": 0,
+            "cameras": cameras,
+            "num_frames": len(FRAMES),
+            "start_frame_idx": 1,
+            "datum_frame_idx": 1,
+        },
+    )
+    body = r.get_json()
+    assert r.status_code == 200, body
+    return _wait(
+        client, f"/calibration/stepped/detect_sequence/status/{body['job_id']}"
+    )
+
+
+def test_detect_reports_persisted(client, scene):
+    _sid, done = _detect(client, [1, 2])
+    assert done["persisted"] is True and done["persist_skipped"] is None
+
+
+def test_detect_with_corrupt_sidecar_fails_with_its_message(client, scene, tmp_path):
+    """A corrupt inputs.mat must surface (InputsCorrupt), not be logged and skipped."""
+    from pivtools_gui.calibration.inputs_store import inputs_path
+
+    model_dir = _stereo_model_dir(tmp_path)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    garbage = b"not a MAT file" * 16
+    inputs_path(model_dir).write_bytes(garbage)
+
+    done = _start_detect(client, [1, 2])
+    assert done["status"] == "failed", done
+    assert "Delete it, then re-run detection" in done["error"]
+    assert inputs_path(model_dir).read_bytes() == garbage
+
+
+def test_detect_on_read_only_source_completes_with_persist_skipped(
+    client, scene, monkeypatch
+):
+    """A read-only source (OSError) completes and says why nothing was saved."""
+
+    def _read_only(source, entry):
+        raise PermissionError("read-only file system")
+
+    monkeypatch.setattr(sv, "_save_sequence_sidecar", _read_only)
+    done = _start_detect(client, [1, 2])
+    assert done["status"] == "completed", done
+    assert done["persisted"] is False
+    assert "read-only file system" in done["persist_skipped"]
+    assert done["detection_stamp"] is None

@@ -209,14 +209,29 @@ def _rehydrate_level(lv: Any) -> Optional[Dict[str, Any]]:
     return out
 
 
+def _loads_field(json_str: str, field: str) -> Any:
+    """Parse one stored JSON field; a blank field is the writer's encoding of "absent" (None).
+
+    Anything else that does not parse is damage, so it raises naming the field (wrapped as
+    ``InputsCorrupt`` by ``try_load_inputs``) instead of reading back as empty.
+    """
+    if not json_str:
+        return None
+    try:
+        return json.loads(json_str)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"field {field!r} is not valid JSON: {exc}") from exc
+
+
 def _level_data_from(json_str: str) -> Optional[Dict[str, Any]]:
     """Inverse of ``_dumps(level_data)`` — rehydrate the two per-level grids to ndarrays."""
-    try:
-        ld = json.loads(json_str or "null")
-    except (ValueError, TypeError):
+    ld = _loads_field(json_str, "level_data_json")
+    if ld is None:
         return None
     if not isinstance(ld, dict):
-        return None
+        raise ValueError(
+            f"field 'level_data_json' must be a JSON object, got {type(ld).__name__}"
+        )
     return {"a": _rehydrate_level(ld.get("a")), "b": _rehydrate_level(ld.get("b"))}
 
 
@@ -287,9 +302,10 @@ def _detection_from(obj) -> Tuple[int, int, DetectionResult]:
 
     sp = _scalar(getattr(obj, "spacing_mm", float("nan")))
     spacing = None if (sp is None or sp != sp) else float(sp)  # NaN -> None
-    try:
-        diag = json.loads(_str_field(getattr(obj, "diagnostics_json", "")) or "{}")
-    except (ValueError, TypeError):
+    diag = _loads_field(
+        _str_field(getattr(obj, "diagnostics_json", "")), "diagnostics_json"
+    )
+    if diag is None:
         diag = {}
     level_data = _level_data_from(_str_field(getattr(obj, "level_data_json", "")))
 
@@ -321,17 +337,10 @@ def load_inputs(model_dir) -> InputsRecord:
         raise FileNotFoundError(f"calibration inputs sidecar not found: {path}")
     mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
 
-    coords_json = _str_field(mat.get("coords_json")) or "null"
-    try:
-        coords = json.loads(coords_json)
-    except (ValueError, TypeError):
-        coords = None
-
-    board_params_json = _str_field(mat.get("board_params_json")) or "null"
-    try:
-        board_params = json.loads(board_params_json)
-    except (ValueError, TypeError):
-        board_params = None
+    coords = _loads_field(_str_field(mat.get("coords_json")), "coords_json")
+    board_params = _loads_field(
+        _str_field(mat.get("board_params_json")), "board_params_json"
+    )
 
     detections: Optional[Dict[int, List[DetectionResult]]] = None
     det_count = int(_scalar(mat.get("det_count", 0))) if "det_count" in mat else 0

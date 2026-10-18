@@ -95,6 +95,11 @@ def _cfg2(config) -> dict:
 
 
 # --board help for commands that fall back to the board of calibration.active.
+# Calibration frames are addressed by a 1-based logical index, exactly as the GUI reads them
+# (1..N). The sidecar's ``image.zero_based_indexing`` maps that index to the file number
+# (``path_utils``), so there is no separate start-index knob to drift from the GUI.
+FIRST_CALIBRATION_FRAME = 1
+
 _BOARD_HELP = "calibration board (default: the board of calibration.active, which must then be set)"
 
 
@@ -673,10 +678,6 @@ def detect_mono_command(args):
     camera = int(args.camera if args.camera is not None else scfg.get("camera") or 1)
     image_format = _image_format_cli(args, scfg, source)
     n_views = _n_views_cli(args, scfg, source)
-    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(
-        scfg.get("start_index") if scfg.get("start_index") is not None else 1
-    )
     datum_index = _resolve_datum_index(scfg)
     dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
     model_type = args.model_type or scfg.get(board, {}).get("model_type", "pinhole")
@@ -714,7 +715,7 @@ def detect_mono_command(args):
         _cam_dir(scfg, source, camera, config.camera_count),
         image_format,
         n_views,
-        start_index,
+        FIRST_CALIBRATION_FRAME,
         camera=camera,
         **_loader_kwargs(scfg, image_format, config.camera_count),
     )
@@ -795,10 +796,6 @@ def detect_stereo_command(args):
     cam1, cam2 = int(pair[0]), int(pair[1])
     image_format = _image_format_cli(args, scfg, source)
     n_views = _n_views_cli(args, scfg, source)
-    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(
-        scfg.get("start_index") if scfg.get("start_index") is not None else 1
-    )
     datum_index = _resolve_datum_index(scfg)
     dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
     fix_aspect = bool(scfg.get("fix_aspect_ratio", True))
@@ -845,7 +842,7 @@ def detect_stereo_command(args):
         _cam_dir(scfg, source, cam1, config.camera_count),
         image_format,
         n_views,
-        start_index,
+        FIRST_CALIBRATION_FRAME,
         camera=cam1,
         **_loader_kwargs(scfg, image_format, config.camera_count),
     )
@@ -853,7 +850,7 @@ def detect_stereo_command(args):
         _cam_dir(scfg, source, cam2, config.camera_count),
         image_format,
         n_views,
-        start_index,
+        FIRST_CALIBRATION_FRAME,
         camera=cam2,
         **_loader_kwargs(scfg, image_format, config.camera_count),
     )
@@ -1083,10 +1080,6 @@ def detect_joint_command(args) -> "Path | List[Path]":
     n_views = _n_views_cli(args, scfg, source)
     if n_views < 1:
         raise SystemExit("detect-joint: n_views must be >= 1")
-    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(
-        scfg.get("start_index") if scfg.get("start_index") is not None else 1
-    )
     image_format = _image_format_cli(args, scfg, source)
     # Distortion / fixed-aspect bind the pinhole bundle only; the polynomial map has no K/dist.
     dm = DistortionModel(args.distortion or scfg.get("distortion_model", "standard"))
@@ -1124,7 +1117,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
             _cam_dir(scfg, source, cam, config.camera_count),
             image_format,
             n_views,
-            start_index,
+            FIRST_CALIBRATION_FRAME,
             camera=cam,
             **_loader_kwargs(scfg, image_format, config.camera_count),
         )
@@ -1473,11 +1466,7 @@ def scale_factor_command(args):
     source = _source(cfg, args.source)
     scfg = _settings_cfg(source)
     camera = int(args.camera if args.camera is not None else scfg.get("camera") or 1)
-    # `is not None`, not `or`: start_index 0 is a legal value for zero-indexed sets
-    start_index = int(
-        scfg.get("start_index") if scfg.get("start_index") is not None else 1
-    )
-    frame = int(args.frame if args.frame is not None else start_index)
+    frame = int(args.frame if args.frame is not None else FIRST_CALIBRATION_FRAME)
     px_per_mm = float(args.px_per_mm)
     dt = _generate_dt_cli(args, source)
     origin = [float(args.origin[0]), float(args.origin[1])]

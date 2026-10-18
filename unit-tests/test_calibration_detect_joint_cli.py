@@ -137,7 +137,6 @@ def _write_settings(src, fit=None):
             "image": {
                 "image_format": "calib%05d.png",
                 "image_type": "standard",
-                "start_index": 1,
                 "n_views": 10,
                 "use_camera_subfolders": True,
                 "camera_subfolders": ["cam1", "cam2"],
@@ -226,5 +225,3 @@ def test_detect_joint_rejects_bad_board_release(tmp_path, monkeypatch):
         cli.detect_joint_command(
             _args(tmp_path, board="charuco", cameras="1,2", board_release="bogus")
         )
-
-

@@ -59,7 +59,10 @@ def get_active_paths_from_args(args, config):
 def transform_command(args):
     """Apply geometric transforms to PIV vector fields."""
     from pivtools_core.config import get_config
-    from pivtools_gui.transforms.transform_production import TransformProcessor
+    from pivtools_gui.transforms.transform_production import (
+        TransformProcessor,
+        stereo_transform_target,
+    )
 
     config = get_config()
 
@@ -111,6 +114,19 @@ def transform_command(args):
         print("Error: No active paths configured in config.yaml")
         sys.exit(1)
 
+    # Stereo vectors live in one Cam{a}_Cam{b} directory and take one op list; the rule
+    # refuses a missing pair or cameras with different ops rather than picking one.
+    stereo_camera_pair = None
+    if use_stereo:
+        try:
+            stereo_camera_pair, stereo_ops = stereo_transform_target(
+                config, camera_transforms
+            )
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            sys.exit(1)
+        camera_transforms = {stereo_camera_pair[0]: stereo_ops}
+
     print("=" * 60)
     print("Vector Transform - Starting")
     print("=" * 60)
@@ -131,6 +147,8 @@ def transform_command(args):
                 camera_transforms=camera_transforms,
                 type_name=type_name,
                 use_merged=use_merged,
+                use_stereo=use_stereo,
+                stereo_camera_pair=stereo_camera_pair,
                 config=config,
             )
             result = processor.process_all_cameras()
@@ -139,7 +157,12 @@ def transform_command(args):
 
             if result.get("success"):
                 for cam, res in result.get("camera_results", {}).items():
-                    print(f"  Camera {cam}: {res.get('transformed_files', 0)} files")
+                    label = (
+                        f"Stereo Cam{stereo_camera_pair[0]}_Cam{stereo_camera_pair[1]}"
+                        if use_stereo
+                        else f"Camera {cam}"
+                    )
+                    print(f"  {label}: {res.get('transformed_files', 0)} files")
             else:
                 print("  FAILED")
         except Exception as e:

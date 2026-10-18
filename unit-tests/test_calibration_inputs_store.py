@@ -251,6 +251,42 @@ def test_update_inputs_never_overwrites_corrupt_sidecar(tmp_path, kind):
     assert inputs_path(tmp_path).read_bytes() == data
 
 
+@pytest.mark.parametrize("field", ["coords_json", "board_params_json"])
+def test_unparseable_json_field_raises_naming_the_field(tmp_path, field):
+    """A damaged JSON field fails loudly instead of reading back as None."""
+    from scipy.io import loadmat, savemat
+
+    save_inputs(
+        tmp_path,
+        path_type="mono",
+        board_type="dotboard",
+        detections={1: [_good_detection(charuco=False)]},
+        coords={"a": 1},
+        board_params={"rows": 5},
+    )
+    path = inputs_path(tmp_path)
+    mat = {k: v for k, v in loadmat(str(path)).items() if not k.startswith("__")}
+    mat[field] = "{not json"
+    savemat(str(path), mat, oned_as="row")
+
+    with pytest.raises(InputsCorrupt) as info:
+        try_load_inputs(tmp_path)
+    assert field in str(info.value)
+
+
+def test_absent_coords_still_load_as_none(tmp_path):
+    """A blank/"null" field is the writer's encoding of absent, not damage."""
+    save_inputs(
+        tmp_path,
+        path_type="mono",
+        board_type="dotboard",
+        detections={1: [_good_detection(charuco=False)]},
+    )
+    rec = load_inputs(tmp_path)
+    assert rec.coords is None
+    assert rec.board_params is None
+
+
 # ---------------------------------------------------------------------------
 # Detection identity stamp
 # ---------------------------------------------------------------------------

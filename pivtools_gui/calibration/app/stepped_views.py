@@ -653,18 +653,20 @@ def detect_sequence():
                 _sequence_cache[sequence_id] = cache_entry
 
             # Persist to the model dir's inputs.mat so the model can be regenerated from
-            # disk (detections + clicks) without re-detecting. Best-effort: a failure is
-            # logged, never fatal — the in-memory cache still serves this session. With no
+            # disk (detections + clicks) without re-detecting. Same rule as detect_views: a
+            # read-only source (OSError) completes with persisted=False and the reason shown
+            # in the tab, since the in-memory cache still serves this session. With no
             # sidecar there is no detection_stamp (null), so inputs/save cannot persist
-            # clicks for this sequence and says so.
+            # clicks for this sequence. Anything else (a corrupt inputs.mat raising
+            # InputsCorrupt, an unresolvable source) fails the job with its message.
             detection_stamp: Optional[str] = None
+            persist_skipped: Optional[str] = None
+            src = get_config().get_calibration_source(int(source_idx))
             try:
-                src = get_config().get_calibration_source(int(source_idx))
                 detection_stamp = _save_sequence_sidecar(src, cache_entry)
-            except Exception as exc:
-                logger.warning(
-                    "stepped detect: sidecar save failed (non-fatal): %s", exc
-                )
+            except OSError as exc:
+                logger.warning("stepped detect: sidecar not written: %s", exc)
+                persist_skipped = f"sidecar not written: {exc}"
 
             # Per-camera, per-pose JSON-safe summary + the datum detection for the overlay.
             poses, datum_detection = _summarize_sequence(cache_entry, per_frame_status)
@@ -680,6 +682,8 @@ def detect_sequence():
                 image_size={str(c): list(image_size.get(c, (0, 0))) for c in cameras},
                 per_frame_status=per_frame_status,
                 detection_stamp=detection_stamp,
+                persisted=persist_skipped is None,
+                persist_skipped=persist_skipped,
             )
         except Exception as exc:
             logger.exception("stepped detect_sequence job %s failed", job_id)
@@ -1208,12 +1212,14 @@ def generate_model():
         coords.update(spec_coords)
         return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
 
+    # Same rule as detect_views: only a read-only source (OSError) is reported and carried
+    # on from; a corrupt inputs.mat (InputsCorrupt) propagates to the JSON error handler.
+    persist_skipped: Optional[str] = None
     try:
         update_inputs(model_dir, _merge_spec)
-    except Exception as exc:
-        logger.warning(
-            "stepped generate: sidecar coords save failed (non-fatal): %s", exc
-        )
+    except OSError as exc:
+        logger.warning("stepped generate: sidecar coords not written: %s", exc)
+        persist_skipped = f"sidecar not written: {exc}"
 
     # Figures need pixels. Both the sidecar restore AND restore_sequence cache image-free
     # entries (images=[None]*N); only a freshly-detected sequence carries them. Gate the
@@ -1305,7 +1311,12 @@ def generate_model():
                     # Compose has no joint reprojection RMS -> no stereo_rms_px reported.
                     done["intrinsics1"] = _intrinsics(record.model1)
                     done["intrinsics2"] = _intrinsics(record.model2)
-                job_manager.complete_job(job_id, **done)
+                job_manager.complete_job(
+                    job_id,
+                    **done,
+                    persisted=persist_skipped is None,
+                    persist_skipped=persist_skipped,
+                )
             else:
                 camera = use_cams[0]
                 fid, lvl, pl = specs[camera]
@@ -1349,7 +1360,12 @@ def generate_model():
                         cx=float(cm.K[0, 2]),
                         cy=float(cm.K[1, 2]),
                     )
-                job_manager.complete_job(job_id, **done)
+                job_manager.complete_job(
+                    job_id,
+                    **done,
+                    persisted=persist_skipped is None,
+                    persist_skipped=persist_skipped,
+                )
         except Exception as exc:
             logger.exception("stepped generate_model job %s failed", job_id)
             job_manager.fail_job(job_id, f"{type(exc).__name__}: {exc}")

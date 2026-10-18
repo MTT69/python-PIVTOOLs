@@ -22,7 +22,7 @@ Contract
   missing them is stale/unset and ``load_settings`` raises. Board geometry
   and ``rig.dt`` are required at *generate* time and enforced there.
 - Detector-tuning knobs (``k_neighbors``, ``marker_ratio``, ``min_corners``,
-  ``fix_k2``, ``interpolator``, ``start_index``, ...) have their defaults
+  ``fix_k2``, ``interpolator``, ``zero_based_indexing``, ...) have their defaults
   applied here and nowhere else — this file replaces the old three-layer
   (CLI template / Config property / frontend fallback) default system.
 - Writes are partial deep-merges: callers send only the block they own and
@@ -98,7 +98,6 @@ _DEFAULTS: Dict[str, Any] = {
         "image_format": None,  # REQUIRED — no default, missing => raise
         "image_type": None,  # REQUIRED — standard | cine | lavision_set | lavision_im7
         "n_views": None,  # optional; frame-count auto-detect is the fallback
-        "start_index": 1,
         "zero_based_indexing": False,
         "use_camera_subfolders": False,
         "camera_subfolders": [],
