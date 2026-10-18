@@ -83,12 +83,19 @@ def test_det_key_parity_infer_image_type():
     regardless of a request/config image_type that disagrees with the file extension."""
     fmt = "calib%05d.tif"
     params = CharucoParams()
-    cli = INP.joint_det_key("charuco", 10, fmt, infer_image_type(fmt), [1, 2], params)
-    gui = INP.joint_det_key("charuco", 10, fmt, infer_image_type(fmt), [1, 2], params)
+
+    def key(image_type, zero_based=False):
+        return INP.joint_det_key(
+            "charuco", 10, fmt, image_type, [1, 2], params, zero_based=zero_based
+        )
+
+    cli = key(infer_image_type(fmt))
+    gui = key(infer_image_type(fmt))
     assert cli == gui
     # A stale explicit image_type would have produced a different (non-matching) key.
-    stale = INP.joint_det_key("charuco", 10, fmt, "lavision_im7", [1, 2], params)
-    assert stale != cli
+    assert key("lavision_im7") != cli
+    # So does flipped 0/1 indexing: the same frame numbers name different files.
+    assert key(infer_image_type(fmt), zero_based=True) != cli
 
 
 # ---------------------------------------------------------------------------

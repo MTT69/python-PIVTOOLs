@@ -28,8 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pivtools_core.calibration_settings as cs
 import pivtools_gui.app as A
-from pivtools_core.config import Config
 from pivtools_cli.calibration_cli import _generate_dt_cli
+from pivtools_core.config import Config
 from pivtools_gui.calibration.app.views import _generate_dt
 from pivtools_gui.calibration.record import StereoRecord
 
@@ -107,7 +107,9 @@ def test_calibration_source_path_is_stripped(tmp_path):
     WinError 123 (a name starting with a space) on every settings autosave.
     """
     yaml_path = tmp_path / "config.yaml"
-    _write_yaml(yaml_path, {"calibration_sources": ["  /data/calib_a 	"], "active": "charuco"})
+    _write_yaml(
+        yaml_path, {"calibration_sources": ["  /data/calib_a 	"], "active": "charuco"}
+    )
     cfg = Config(path=str(yaml_path))
     assert cfg.calibration_sources == [Path("/data/calib_a")]
     assert cfg.get_calibration_source(0) == Path("/data/calib_a")
@@ -122,11 +124,53 @@ def test_blank_calibration_source_is_rejected(tmp_path, blank):
     under the server's working directory and report success.
     """
     yaml_path = tmp_path / "config.yaml"
-    _write_yaml(yaml_path, {"calibration_sources": ["/data/calib_a", blank], "active": "charuco"})
+    _write_yaml(
+        yaml_path,
+        {"calibration_sources": ["/data/calib_a", blank], "active": "charuco"},
+    )
     cfg = Config(path=str(yaml_path))
     assert cfg.get_calibration_source(0) == Path("/data/calib_a")
     with pytest.raises(ValueError, match=r"calibration_sources\[1\] is empty"):
         cfg.get_calibration_source(1)
+
+
+_SOURCE_PURPOSE = (
+    "It is the folder that holds the calibration images and where calibration "
+    "models are saved (a scale factor without images needs only the folder)."
+)
+
+
+def test_unset_calibration_source_explains_the_folder(tmp_path):
+    yaml_path = tmp_path / "config.yaml"
+    _write_yaml(yaml_path, {"active": "scale_factor"})
+    cfg = Config(path=str(yaml_path))
+    with pytest.raises(ValueError) as exc:
+        cfg.get_calibration_source(0)
+    assert str(exc.value) == (
+        f"calibration.calibration_sources is not set. {_SOURCE_PURPOSE}"
+    )
+
+
+def test_blank_calibration_source_explains_the_folder(tmp_path):
+    yaml_path = tmp_path / "config.yaml"
+    _write_yaml(yaml_path, {"calibration_sources": [""], "active": "scale_factor"})
+    cfg = Config(path=str(yaml_path))
+    with pytest.raises(ValueError) as exc:
+        cfg.get_calibration_source(0)
+    assert str(exc.value) == (
+        f"calibration.calibration_sources[0] is empty. {_SOURCE_PURPOSE}"
+    )
+
+
+def test_image_format_default_is_tif(tmp_path):
+    """The property default matches the CLI template (B%05d_A.tif), not .tiff."""
+    yaml_path = tmp_path / "config.yaml"
+    _write_yaml(yaml_path, {"active": "scale_factor"})
+    cfg = Config(path=str(yaml_path))
+    cfg.data["images"] = {"image_format": None}
+    assert all(f.endswith(".tif") for f in cfg.image_format)
+    cfg.data["images"] = {"image_format": []}
+    assert all(f.endswith(".tif") for f in cfg.image_format)
 
 
 def test_config_save_without_calibration_block(tmp_path):
@@ -307,13 +351,16 @@ def test_settings_post_persists_seed_before_partial(tmp_path):
     source = tmp_path / "calib"
     source.mkdir()
     record = build_scale_factor_record(
-        camera=1, origin_px=(0.0, 0.0), px_per_mm=13.65,
+        camera=1,
+        origin_px=(0.0, 0.0),
+        px_per_mm=13.65,
         dt=0.0057,
     )
     REC.save_mono(record, REC.mono_model_dir_for_source(source, 1, "scale_factor"))
 
     class _Cfg:
         calibration = {"source_idx": 0}
+        camera_count = 2  # the settings POST prunes camera_subfolders to it
 
         def get_calibration_source(self, idx):
             return source

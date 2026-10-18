@@ -25,6 +25,7 @@ import numpy as np
 import scipy.io
 import yaml
 
+from pivtools_core.config import CALIBRATION_ACTIVE_METHODS
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.utils.worker_pool import (
     get_max_workers,
@@ -149,6 +150,13 @@ def plan_apply_units(
     base_indices = (
         [int(i) for i in active_paths] if active_paths else list(range(len(base_paths)))
     )
+    # A negative index would wrap to the last dataset and calibrate the wrong run.
+    bad = [i for i in base_indices if not 0 <= i < len(base_paths)]
+    if bad:
+        raise ValueError(
+            f"active_paths {bad} out of range: {len(base_paths)} base path(s) configured "
+            f"(valid indices 0..{len(base_paths) - 1})"
+        )
 
     units = []
     if stereo:
@@ -262,6 +270,35 @@ def active_method_name(board: str, stereo: bool) -> str:
     if not stereo or board.startswith("stereo_"):
         return board
     return f"stereo_{board}"
+
+
+def parse_active_method(active: Optional[str]) -> Tuple[str, bool]:
+    """Split a ``calibration.active`` id into ``(board, stereo)``.
+
+    The inverse of ``active_method_name``: ``"stereo_charuco"`` -> ``("charuco", True)``,
+    ``"scale_factor"`` -> ``("scale_factor", False)``. Calibration routes and CLI commands
+    use it when the request / command line names no board, so an active id is never used
+    verbatim as a board name.
+
+    Raises
+    ------
+    ValueError
+        ``active`` is missing/blank, or not one of ``CALIBRATION_ACTIVE_METHODS``.
+    """
+    allowed = ", ".join(CALIBRATION_ACTIVE_METHODS)
+    if active is None or not str(active).strip():
+        raise ValueError(
+            f"calibration.active is required in config.yaml (one of {allowed}) when "
+            "no board is given. Set it with the calibration tab's 'Set as Active' "
+            "button, or pass the board explicitly."
+        )
+    if active not in CALIBRATION_ACTIVE_METHODS:
+        raise ValueError(
+            f"calibration.active {active!r} is not a calibration method (one of {allowed})"
+        )
+    if active.startswith("stereo_"):
+        return active[len("stereo_") :], True
+    return active, False
 
 
 def build_applied_pointer(source, board: str, stereo: bool) -> Dict[str, object]:

@@ -91,6 +91,23 @@ def test_generate_no_image_needs_no_existing_model(env, monkeypatch):
     assert m["dt"] == pytest.approx(0.5)
 
 
+def test_load_model_without_stamped_dt_reports_none(env):
+    """A record with no dt in board_meta shows dt None — never a fabricated 1.0."""
+    client, base = env
+    record = build_scale_factor_record(
+        camera=1, origin_px=(10.0, 20.0), px_per_mm=2.0, dt=1.0
+    )
+    del record.board_meta["dt"]
+    rec.save_mono(record, rec.mono_model_dir_for_source(base, 1, "scale_factor"))
+
+    m = client.get(
+        "/calibration/model",
+        query_string={"board": "scale_factor", "camera": 1, "source_path_idx": 0},
+    ).get_json()
+    assert m["exists"] is True and m["model_type"] == "scale_factor"
+    assert m["dt"] is None
+
+
 def test_generate_no_image_overwrites_existing_model(env, monkeypatch):
     client, base = env
     monkeypatch.setattr(V, "read_calibration_image", _never_read_image)

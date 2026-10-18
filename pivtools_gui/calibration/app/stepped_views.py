@@ -273,14 +273,28 @@ def _sidecar_model_dir(source, cameras: List[int]) -> Path:
 
 
 def _stepped_det_key(
-    cameras, frame_indices, datum_frame_idx, image_format, image_type, params
+    cameras,
+    frame_indices,
+    datum_frame_idx,
+    image_format,
+    image_type,
+    params,
+    *,
+    zero_based: bool,
 ) -> str:
     """det_key for a stepped sequence: folds the frame window + datum into the key so a
     different selection invalidates the cached detections (board geometry rides in
-    ``params`` via its repr)."""
+    ``params`` via its repr). ``zero_based`` is the source's 0/1 indexing the frames
+    were read with."""
     sig = (tuple(int(f) for f in frame_indices), int(datum_frame_idx), params)
     return joint_det_key(
-        "stepped", len(frame_indices), image_format, image_type, cameras, sig
+        "stepped",
+        len(frame_indices),
+        image_format,
+        image_type,
+        cameras,
+        sig,
+        zero_based=zero_based,
     )
 
 
@@ -327,6 +341,11 @@ def _save_sequence_sidecar(source, entry: dict) -> str:
         entry["image_format"],
         entry["image_type"],
         entry["params"],
+        zero_based=bool(
+            (cs.try_load_settings(source) or cs.default_settings())["image"][
+                "zero_based_indexing"
+            ]
+        ),
     )
     sequence = {
         "frame_indices": [int(f) for f in entry["frame_indices"]],
@@ -806,6 +825,27 @@ def restore_sequence():
     entry, _model_dir, side, err = _entry_from_sidecar(request.args, cameras)
     if err is not None:
         return jsonify({"exists": False})
+    # The saved det_key carries the 0/1 numbering the frames were read with; under the
+    # current numbering the same frame indices are different files.
+    expected_key = _stepped_det_key(
+        entry["cameras"],
+        entry["frame_indices"],
+        entry["datum_frame_idx"],
+        entry["image_format"],
+        entry["image_type"],
+        entry["params"],
+        zero_based=bool(_settings(request.args)["image"]["zero_based_indexing"]),
+    )
+    if side.det_key != expected_key:
+        return jsonify(
+            {
+                "exists": False,
+                "stale_reason": (
+                    "saved detections were made with different settings (first-frame "
+                    "numbering or board geometry) -- re-run Detect sequence"
+                ),
+            }
+        )
     sequence_id = uuid.uuid4().hex
     with _sequence_lock:
         _sequence_cache[sequence_id] = entry

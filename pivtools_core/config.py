@@ -32,6 +32,25 @@ TOOL_ALLOWED_TYPE_NAMES = {
 # Legacy alias for backward compatibility
 TOOL_ALLOWED_ENDPOINTS = TOOL_ALLOWED_SOURCE_ENDPOINTS
 
+# Every ``calibration.active`` id: the GUI calibration tab ids its "Set as Active" buttons
+# write (gui/src/components/setup/Calibration.tsx). ``runio.parse_active_method`` maps each
+# to its (board, stereo) pair.
+CALIBRATION_ACTIVE_METHODS = (
+    "charuco",
+    "dotboard",
+    "scale_factor",
+    "stereo_charuco",
+    "stereo_dotboard",
+    "stereo_stepped",
+)
+
+# Appended to the unset/blank calibration-source errors so the user knows what the
+# folder is for (and that an image-less scale factor still needs it).
+_CALIBRATION_SOURCE_PURPOSE = (
+    "It is the folder that holds the calibration images and where calibration "
+    "models are saved (a scale factor without images needs only the folder)."
+)
+
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
 
@@ -363,20 +382,20 @@ class Config:
         if raw is None:
             # Default
             if self.time_resolved:
-                return ("B%05d.tiff",)
+                return ("B%05d.tif",)
             else:
-                return ("B%05d_A.tiff", "B%05d_B.tiff")
+                return ("B%05d_A.tif", "B%05d_B.tif")
 
         if isinstance(raw, str):
-            return (raw,) if raw else ("B%05d_A.tiff", "B%05d_B.tiff")
+            return (raw,) if raw else ("B%05d_A.tif", "B%05d_B.tif")
         elif isinstance(raw, (list, tuple)):
             filtered = tuple(r for r in raw if r)
             if not filtered:
                 # Empty list/tuple — fall back to defaults
                 if self.time_resolved:
-                    return ("B%05d.tiff",)
+                    return ("B%05d.tif",)
                 else:
-                    return ("B%05d_A.tiff", "B%05d_B.tiff")
+                    return ("B%05d_A.tif", "B%05d_B.tif")
             return filtered
         else:
             raise ValueError(f"Invalid image_format type: {type(raw)}")
@@ -549,6 +568,11 @@ class Config:
         -------
         bool
             True if stereo calibration is active
+
+        Raises
+        ------
+        ValueError
+            When ``calibration.active`` is missing, blank or not a known method id.
         """
         active = self.active_calibration_method
         return active in ("stereo_dotboard", "stereo_charuco", "stereo_stepped")
@@ -1381,8 +1405,7 @@ class Config:
         sources = self.calibration_sources
         if not sources:
             raise ValueError(
-                "calibration.calibration_sources not configured in config.yaml. "
-                "Please specify direct paths to calibration images."
+                f"calibration.calibration_sources is not set. {_CALIBRATION_SOURCE_PURPOSE}"
             )
         if source_path_idx >= len(sources):
             raise IndexError(
@@ -1396,7 +1419,7 @@ class Config:
         if source == Path():
             raise ValueError(
                 f"calibration.calibration_sources[{source_path_idx}] is empty. "
-                "Please specify the path to the calibration source."
+                f"{_CALIBRATION_SOURCE_PURPOSE}"
             )
         return source
 
@@ -1406,10 +1429,28 @@ class Config:
         return self.data.get("calibration", {})
 
     @property
-    def active_calibration_method(self):
-        """Return the active calibration method name (e.g., 'dotboard', 'scale_factor')."""
-        cal = self.calibration
-        return cal.get("active", "scale_factor")
+    def active_calibration_method(self) -> str:
+        """Return ``calibration.active``, the applied calibration method's tab id.
+
+        Raises
+        ------
+        ValueError
+            When the key is missing, blank or not a known method id. It decides stereo vs mono for every
+            downstream tool, so no method is assumed (the CLI template always writes it).
+        """
+        active = (self.calibration or {}).get("active")
+        if active is None or not str(active).strip():
+            raise ValueError(
+                "calibration.active is required in config.yaml (one of "
+                f"{', '.join(CALIBRATION_ACTIVE_METHODS)}). Set it with the "
+                "calibration tab's 'Set as Active' button or edit the config."
+            )
+        if active not in CALIBRATION_ACTIVE_METHODS:
+            raise ValueError(
+                f"calibration.active {active!r} is not a calibration method (one of "
+                f"{', '.join(CALIBRATION_ACTIVE_METHODS)})."
+            )
+        return str(active)
 
     # --- Merging properties ---
     @property

@@ -1,5 +1,7 @@
 batches:
   batch_size: 1
+calibration:
+  active: scale_factor
 filters: []
 images:
   frame_stride: 0

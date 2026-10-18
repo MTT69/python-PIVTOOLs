@@ -170,6 +170,11 @@ _DEFAULTS: Dict[str, Any] = {
         },
         "scale_factor": {
             "px_per_mm": None,
+            # GUI "Use calibration images" toggle. False = image-less mode: the
+            # uniform pixel->mm map is typed in numerically (origin pixel, px/mm)
+            # and generate skips the proof figure. A form knob, never read by
+            # generate/apply (the request carries ``use_image`` explicitly).
+            "use_images": True,
         },
     },
 }

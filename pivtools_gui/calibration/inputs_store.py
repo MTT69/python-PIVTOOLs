@@ -58,6 +58,23 @@ _write_lock = threading.Lock()
 _UNSET = object()
 
 
+class InputsCorrupt(Exception):
+    """The ``inputs.mat`` sidecar exists but cannot be read.
+
+    Raised by ``try_load_inputs`` and propagated by ``save_inputs`` / ``update_inputs`` so a
+    damaged sidecar is never silently replaced. The file is left in place for the user to
+    inspect or delete.
+    """
+
+    def __init__(self, model_dir: Path, path: Path, error: BaseException) -> None:
+        self.model_dir = model_dir
+        self.path = path
+        self.error = error
+        super().__init__(
+            f"inputs.mat unreadable at {path}: {error}. Delete it, then re-run detection."
+        )
+
+
 @dataclass
 class InputsRecord:
     """The deserialised sidecar: clicked coords + detected points for one model dir."""
@@ -92,7 +109,9 @@ def inputs_path(model_dir) -> Path:
     return Path(model_dir) / INPUTS_FILENAME
 
 
-def joint_det_key(board, n_views, image_format, image_type, cameras, params) -> str:
+def joint_det_key(
+    board, n_views, image_format, image_type, cameras, params, *, zero_based: bool
+) -> str:
     """Stable id for the parameters that produced a joint detection set.
 
     SOURCE-INDEPENDENT on purpose: the sidecar already lives in the source's model dir, so the
@@ -101,6 +120,8 @@ def joint_det_key(board, n_views, image_format, image_type, cameras, params) -> 
     and the headless CLI, which compute it from the same fields, share one detection cache. A
     changed n_views / format / board param yields a new key and forces a re-detect, and so
     does a bump of ``DETECTOR_VERSION`` (the detector code changed what it returns).
+    ``zero_based`` (the sidecar's ``image.zero_based_indexing``) is part of the key because
+    flipping it maps every frame number to a different file.
     """
     sig = (
         int(DETECTOR_VERSION),
@@ -110,6 +131,7 @@ def joint_det_key(board, n_views, image_format, image_type, cameras, params) -> 
         str(image_type),
         tuple(sorted(int(c) for c in cameras)),
         repr(params),
+        bool(zero_based),
     )
     return hashlib.md5(repr(sig).encode()).hexdigest()[:16]
 
@@ -343,17 +365,21 @@ def load_inputs(model_dir) -> InputsRecord:
 
 
 def try_load_inputs(model_dir) -> Optional[InputsRecord]:
-    """``load_inputs`` or ``None`` if the sidecar is absent OR unreadable.
+    """``load_inputs``, or ``None`` when the sidecar does not exist.
 
-    A corrupt / truncated file (e.g. caught mid-write before the atomic replace landed, or a
-    stale incompatible schema) is treated as "no sidecar" rather than propagated — a missing
-    cache is always recoverable by re-detecting / re-clicking, and must never 500 the live
-    overlay. The strict ``load_inputs`` still raises so explicit callers can tell the difference.
+    Absence is the only "no sidecar" case. A file that exists but cannot be read raises
+    ``InputsCorrupt``. Writes are atomic (temp-then-replace), so a reader never sees a
+    half-written file and an unreadable one is genuinely damaged. Treating it as absent would
+    let ``save_inputs`` / ``update_inputs`` overwrite the user's detections and clicks with
+    defaults.
     """
+    path = inputs_path(model_dir)
+    if not path.is_file():
+        return None
     try:
         return load_inputs(model_dir)
-    except Exception:
-        return None
+    except Exception as exc:
+        raise InputsCorrupt(Path(model_dir), path, exc) from exc
 
 
 def save_inputs(
@@ -376,6 +402,8 @@ def save_inputs(
 
     The values passed here must not be derived from an earlier read of the same sidecar —
     that read-then-write would lose a concurrent update. Use ``update_inputs`` for that.
+
+    Raises ``InputsCorrupt`` (and writes nothing) when the existing file is unreadable.
     """
     model_dir = Path(model_dir)
     with _write_lock:
@@ -396,7 +424,8 @@ def save_inputs(
 def update_inputs(model_dir, mutate: InputsMutator) -> Optional[InputsRecord]:
     """Load the sidecar, apply ``mutate``, and write the result — all under one lock.
 
-    ``mutate(prev)`` receives the current ``InputsRecord`` (None when absent or unreadable)
+    ``mutate(prev)`` receives the current ``InputsRecord`` (None when absent; an unreadable
+    file raises ``InputsCorrupt`` before ``mutate`` runs)
     and returns the ``save_inputs`` keyword fields to write (``path_type`` and
     ``board_type`` required; omitted fields are preserved, exactly as in ``save_inputs``),
     or None to leave the file untouched. Because the read, the decision and the write sit

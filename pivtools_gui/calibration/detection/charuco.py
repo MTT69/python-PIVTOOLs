@@ -9,11 +9,21 @@ resolver can treat charuco exactly like a dot grid.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Dict
 
 import cv2
 import numpy as np
 
 from .base import DetectionResult
+
+# The dictionaries offered by the GUI's ChArUco form, smallest first within each
+# marker size. A failed detection is retried against each to name the dictionary
+# the board was actually printed with. Order matters on ties: a board found
+# equally by DICT_5X5_100 and DICT_5X5_1000 (supersets share markers) is reported
+# as the smallest dictionary that holds it.
+GUI_ARUCO_DICTS = tuple(
+    f"DICT_{bits}X{bits}_{size}" for bits in (4, 5, 6) for size in (50, 100, 250, 1000)
+)
 
 
 @dataclass
@@ -84,6 +94,68 @@ class CharucoBoardDetector:
     def _grid_index_for_id(self, cid: int) -> tuple:
         cols = self.params.interior_cols
         return (int(cid % cols), int(cid // cols))
+
+    @staticmethod
+    def _marker_ids(gray: np.ndarray, adict) -> np.ndarray:
+        """ArUco marker ids found in ``gray`` with dictionary ``adict`` (1-D, may be empty)."""
+        _corners, ids, _rejected = cv2.aruco.ArucoDetector(adict).detectMarkers(gray)
+        return np.empty(0, dtype=int) if ids is None else np.asarray(ids).reshape(-1)
+
+    def diagnose_failure(
+        self, image: np.ndarray, det: DetectionResult
+    ) -> Dict[str, Any]:
+        """Explain a failed detection of ``image``: dictionary, board size, or no markers.
+
+        Costs up to 13 marker detections, so it is for the single-frame failure
+        path (detect_datum / detect_frame), never the batch detect loop.
+
+        Returns ``det.diagnostics`` extended with ``n_markers`` (markers found with
+        the configured dictionary), ``marker_ids_max`` (their largest id, or None)
+        and ``hint`` (one human sentence naming the likely cause).
+        """
+        gray = _to_gray_u8(image)
+        p = self.params
+        diag: Dict[str, Any] = dict(det.diagnostics)
+        ids = self._marker_ids(gray, self.adict)
+        diag["n_markers"] = int(ids.size)
+        diag["marker_ids_max"] = int(ids.max()) if ids.size else None
+
+        if ids.size:
+            n_board_markers = len(self.board.getIds())
+            max_id = diag["marker_ids_max"]
+            if max_id >= n_board_markers:
+                diag["hint"] = (
+                    f"marker IDs up to {max_id} found but a {p.squares_h}x{p.squares_v} "
+                    f"board has only {n_board_markers} markers — check the squares count"
+                )
+            else:
+                diag["hint"] = (
+                    f"{ids.size} markers found (IDs up to {max_id}) but only "
+                    f"{diag.get('n_corners', 0)} chessboard corners were found "
+                    f"(need {p.min_corners})"
+                )
+            return diag
+
+        counts = {
+            name: int(
+                self._marker_ids(
+                    gray,
+                    cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, name)),
+                ).size
+            )
+            for name in GUI_ARUCO_DICTS
+        }
+        best = max(GUI_ARUCO_DICTS, key=lambda name: counts[name])
+        if counts[best] > 0:
+            diag["hint"] = (
+                f"no markers with {p.aruco_dict}; {counts[best]} found with {best} "
+                f"— check the dictionary"
+            )
+        else:
+            diag["hint"] = (
+                f"no ArUco markers found (tried {len(GUI_ARUCO_DICTS)} dictionaries)"
+            )
+        return diag
 
     def detect(self, image: np.ndarray) -> DetectionResult:
         gray = _to_gray_u8(image)

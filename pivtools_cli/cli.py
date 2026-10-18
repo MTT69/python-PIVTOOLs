@@ -797,7 +797,8 @@ calibration:
   # Which saved model downstream code should use. Stored values are the GUI tab
   # ids: charuco | dotboard | scale_factor | stereo_charuco | stereo_dotboard |
   # stereo_stepped. The three stereo_* values make Config.is_stereo_setup true.
-  # NOT validated - a typo selects nothing rather than raising.
+  # Required: a missing or blank value raises. Calibration routes/commands reject
+  # an unknown id, and so does Config.is_stereo_setup.
   active: charuco
 filters: []
 preprocessing:

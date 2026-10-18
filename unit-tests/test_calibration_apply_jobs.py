@@ -197,6 +197,31 @@ def test_job_records_every_output_dir(env):
     assert status["out_dirs"] == [str(base / "a"), str(base / "b")]
 
 
+def test_job_records_model_dt_per_unit(env):
+    """dt_used / dt_source are lists aligned with out_dirs; no request dt -> model."""
+    client, _base, run = env
+    run.gate.set()
+    job = _apply(client, ["a", "b"])
+    status = _wait(client, f"/calibration/apply/status/{job['job_id']}")
+    assert status["dt_used"] == [1e-4, 1e-4]
+    assert status["dt_source"] == ["model", "model"]
+
+
+def test_job_records_request_dt(env):
+    client, _base, run = env
+    run.gate.set()
+    body = {
+        "board": "scale_factor",
+        "interpolator": "linear",
+        "outs": ["a"],
+        "dt": 2e-4,
+    }
+    job = client.post("/calibration/apply", json=body).get_json()
+    status = _wait(client, f"/calibration/apply/status/{job['job_id']}")
+    assert status["dt_used"] == [2e-4]
+    assert status["dt_source"] == ["request"]
+
+
 # ---------------------------------------------------------------------------
 # Cancel
 # ---------------------------------------------------------------------------

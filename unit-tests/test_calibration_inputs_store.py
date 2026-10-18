@@ -21,6 +21,7 @@ import pytest
 from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration.detection.base import DetectionResult
 from pivtools_gui.calibration.inputs_store import (
+    InputsCorrupt,
     inputs_path,
     load_inputs,
     save_inputs,
@@ -190,6 +191,64 @@ def test_missing_sidecar_raises_and_try_load_is_none(tmp_path):
         load_inputs(tmp_path)
     assert try_load_inputs(tmp_path) is None
     assert not inputs_path(tmp_path).exists()
+
+
+# Byte patterns for an unreadable sidecar: a valid file cut short, and non-MAT bytes.
+_GARBAGE_BYTES = b"this is not a MAT file at all" * 8
+_TRUNCATE_TO_BYTES = 200
+
+
+def _corrupt_sidecar(model_dir, kind: str) -> bytes:
+    """Write an unreadable ``inputs.mat`` into ``model_dir`` and return its bytes."""
+    path = inputs_path(model_dir)
+    if kind == "truncated":
+        save_inputs(
+            model_dir,
+            path_type="mono",
+            board_type="dotboard",
+            detections={1: [_good_detection(charuco=False)]},
+            coords={"a": 1},
+        )
+        data = path.read_bytes()[:_TRUNCATE_TO_BYTES]
+    else:
+        data = _GARBAGE_BYTES
+    path.write_bytes(data)
+    return data
+
+
+@pytest.mark.parametrize("kind", ["truncated", "garbage"])
+def test_corrupt_sidecar_raises_inputs_corrupt(tmp_path, kind):
+    _corrupt_sidecar(tmp_path, kind)
+    with pytest.raises(InputsCorrupt) as info:
+        try_load_inputs(tmp_path)
+    msg = str(info.value)
+    assert str(inputs_path(tmp_path)) in msg
+    assert "Delete it, then re-run detection" in msg
+    assert info.value.__cause__ is not None
+    assert info.value.path == inputs_path(tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["truncated", "garbage"])
+def test_save_inputs_never_overwrites_corrupt_sidecar(tmp_path, kind):
+    data = _corrupt_sidecar(tmp_path, kind)
+    with pytest.raises(InputsCorrupt):
+        save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords={"b": 2})
+    assert inputs_path(tmp_path).read_bytes() == data
+
+
+@pytest.mark.parametrize("kind", ["truncated", "garbage"])
+def test_update_inputs_never_overwrites_corrupt_sidecar(tmp_path, kind):
+    data = _corrupt_sidecar(tmp_path, kind)
+    called: list = []
+
+    def mutate(prev):
+        called.append(prev)
+        return {"path_type": "mono", "board_type": "dotboard", "coords": {"b": 2}}
+
+    with pytest.raises(InputsCorrupt):
+        update_inputs(tmp_path, mutate)
+    assert called == []
+    assert inputs_path(tmp_path).read_bytes() == data
 
 
 # ---------------------------------------------------------------------------

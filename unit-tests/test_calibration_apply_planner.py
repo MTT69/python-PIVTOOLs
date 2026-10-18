@@ -76,6 +76,18 @@ def test_active_paths_subset(tmp_path):
     assert all("runB" in u["label"] for u in units)
 
 
+@pytest.mark.parametrize("bad", [[-1], [2], [0, 5]])
+def test_active_paths_out_of_range_raises(tmp_path, bad):
+    """A dataset index outside base_paths fails by name. A negative index must not
+    wrap to the last dataset (Python indexing) and calibrate the wrong run."""
+    source = _make_source(tmp_path)
+    cfg = _FakeCfg([tmp_path / "runA", tmp_path / "runB"], [1, 2], 10)
+    with pytest.raises(ValueError, match="active_paths"):
+        runio.plan_apply_units(
+            cfg, source, "scale_factor", False, "instantaneous", active_paths=bad
+        )
+
+
 def test_explicit_single_unit_override(tmp_path):
     source = _make_source(tmp_path)
     cfg = _FakeCfg([tmp_path / "runA", tmp_path / "runB"], [1, 2], 10)

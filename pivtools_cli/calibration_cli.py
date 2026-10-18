@@ -94,6 +94,20 @@ def _cfg2(config) -> dict:
     return config.calibration
 
 
+# --board help for commands that fall back to the board of calibration.active.
+_BOARD_HELP = "calibration board (default: the board of calibration.active, which must then be set)"
+
+
+def _cli_board(args, cfg: dict) -> str:
+    """The board for a command: ``--board`` wins, else the board of ``calibration.active``.
+
+    Stereo-ness comes from the subcommand itself (``detect-stereo`` vs ``detect-mono``), so
+    only the board is taken from the active id. ``parse_active_method`` raises when the
+    key is missing or unknown, so no board is ever assumed.
+    """
+    return args.board or runio.parse_active_method(cfg.get("active"))[0]
+
+
 def _settings_cfg(source: Path) -> dict:
     """Flat legacy-key view of the SOURCE's settings sidecar.
 
@@ -546,6 +560,15 @@ def _load_views(
     ]
 
 
+def _zero_based(cfg: dict) -> bool:
+    """The sidecar's ``image.zero_based_indexing`` from the flat settings view.
+
+    One reader for both the frame loader (``_loader_kwargs``) and the detection-cache
+    key (``joint_det_key``), so the files read and the key they are cached under agree.
+    """
+    return bool(cfg.get("zero_based_indexing", False))
+
+
 def _loader_kwargs(cfg: dict, image_format: str, num_cameras: int) -> dict:
     """The single source of the loader flags ``_load_views``/``_load_one`` need.
 
@@ -562,7 +585,7 @@ def _loader_kwargs(cfg: dict, image_format: str, num_cameras: int) -> dict:
     return {
         "image_type": infer_image_type(image_format),
         "use_camera_subfolders": bool(cfg.get("use_camera_subfolders", False)),
-        "zero_based": bool(cfg.get("zero_based_indexing", False)),
+        "zero_based": _zero_based(cfg),
         "num_cameras": int(num_cameras),
     }
 
@@ -644,7 +667,7 @@ def _stereo_model_type(args, cfg: Dict[str, Any], board: str) -> Optional[str]:
 def detect_mono_command(args):
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "charuco")
+    board = _cli_board(args, cfg)
     source = _source(cfg, args.source)
     scfg = _settings_cfg(source)
     camera = int(args.camera if args.camera is not None else scfg.get("camera") or 1)
@@ -700,7 +723,13 @@ def detect_mono_command(args):
     # else detect fresh and persist — so a sidecar written here is reused by the GUI and
     # vice-versa, and a re-run skips re-detection.
     det_key = joint_det_key(
-        board, n_views, image_format, infer_image_type(image_format), [camera], params
+        board,
+        n_views,
+        image_format,
+        infer_image_type(image_format),
+        [camera],
+        params,
+        zero_based=_zero_based(scfg),
     )
     side = None if getattr(args, "force", False) else try_load_inputs(model_dir)
     cached = (side.detections or {}).get(camera) if side else None
@@ -757,7 +786,7 @@ def detect_mono_command(args):
 def detect_stereo_command(args):
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "charuco")
+    board = _cli_board(args, cfg)
     source = _source(cfg, args.source)
     scfg = _settings_cfg(source)
     pair = args.camera_pair or scfg.get("camera_pair") or [1, 2]
@@ -838,6 +867,7 @@ def detect_stereo_command(args):
         infer_image_type(image_format),
         [cam1, cam2],
         params,
+        zero_based=_zero_based(scfg),
     )
     side = None if getattr(args, "force", False) else try_load_inputs(model_dir)
     cache_hit = (
@@ -1009,7 +1039,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
     """
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "dotboard")
+    board = _cli_board(args, cfg)
     if board not in ("dotboard", "charuco"):
         raise SystemExit(f"detect-joint: board must be dotboard|charuco, got {board!r}")
     source = _source(cfg, args.source)
@@ -1148,6 +1178,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
                 infer_image_type(image_format),
                 cameras,
                 params,
+                zero_based=_zero_based(scfg),
             ),
             board_params=rec.geometry_meta(board, params),
         )
@@ -1220,7 +1251,7 @@ def detect_joint_command(args) -> "Path | List[Path]":
 def apply_calibration_command(args):
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "charuco")
+    board = _cli_board(args, cfg)
     source = _source(cfg, args.source)
     # Light-sheet plane for a mono apply: flags > 0.0. Zero is the calibration-board
     # plane — a geometric identity, not a guessed default. No config source.
@@ -1279,7 +1310,7 @@ def apply_calibration_command(args):
 def apply_stereo_command(args):
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "charuco")
+    board = _cli_board(args, cfg)
     source = _source(cfg, args.source)
     scfg = _settings_cfg(source)
     pair = args.camera_pair or scfg.get("camera_pair") or [1, 2]
@@ -1360,7 +1391,7 @@ def apply_stereo_command(args):
 def self_calibrate_command(args):
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "charuco")
+    board = _cli_board(args, cfg)
     source = _source(cfg, args.source)
     scfg = _settings_cfg(source)
     pair = args.camera_pair or scfg.get("camera_pair") or [1, 2]
@@ -1528,7 +1559,7 @@ def global_frame_command(args):
     """
     config = get_config()
     cfg = _cfg2(config)
-    board = args.board or cfg.get("active", "charuco")
+    board = _cli_board(args, cfg)
     source = _source(cfg, args.source)
     scfg = _settings_cfg(source)
     settings = cs.try_load_settings(source) or cs.default_settings()
@@ -1730,6 +1761,7 @@ def register_calibration_subparsers(subparsers):
         "--board",
         default=None,
         choices=["charuco", "dotboard", "stepped", "scale_factor"],
+        help=_BOARD_HELP,
     )
     p.add_argument("--camera", type=int, default=None)
     p.add_argument("--dt", type=float, default=None)
@@ -1765,7 +1797,12 @@ def register_calibration_subparsers(subparsers):
         "apply-stereo", help="calibration: 3C stereo reconstruction"
     )
     p.add_argument("--source", default=None)
-    p.add_argument("--board", default=None, choices=["charuco", "dotboard", "stepped"])
+    p.add_argument(
+        "--board",
+        default=None,
+        choices=["charuco", "dotboard", "stepped"],
+        help=_BOARD_HELP,
+    )
     p.add_argument("--camera-pair", default=None, help="'1,2'")
     p.add_argument("--dt", type=float, default=None)
     p.add_argument(
@@ -1818,7 +1855,9 @@ def register_calibration_subparsers(subparsers):
     p.add_argument(
         "--source", default=None, help="calibration source dir (stereo model location)"
     )
-    p.add_argument("--board", default=None, choices=["charuco", "dotboard"])
+    p.add_argument(
+        "--board", default=None, choices=["charuco", "dotboard"], help=_BOARD_HELP
+    )
     p.add_argument("--camera-pair", default=None, help="'1,2'")
     p.add_argument(
         "--base-path-idx",
@@ -1905,7 +1944,10 @@ def register_calibration_subparsers(subparsers):
         "--source", default=None, help="calibration source dir (models live here)"
     )
     p.add_argument(
-        "--board", default=None, choices=["charuco", "dotboard", "scale_factor"]
+        "--board",
+        default=None,
+        choices=["charuco", "dotboard", "scale_factor"],
+        help=_BOARD_HELP,
     )
     p.add_argument(
         "--model-type",

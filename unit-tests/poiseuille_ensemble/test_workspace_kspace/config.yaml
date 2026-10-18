@@ -1,5 +1,7 @@
 batches:
   batch_size: 10
+calibration:
+  active: scale_factor
 ensemble_infilling:
   final_pass:
     method: biharmonic

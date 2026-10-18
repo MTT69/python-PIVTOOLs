@@ -949,8 +949,6 @@ def validate_files():
     - status: "ok", "warning", or "error"
     - color_detected: True if images are color (will be converted)
     """
-    import re as re_module
-
     data = request.get_json() or {}
     source_path_idx = data.get("source_path_idx", 0)
 
@@ -964,6 +962,7 @@ def validate_files():
     # Import per-pattern validator
     from pivtools_core.image_handling.path_utils import (
         detect_flat_source_files,
+        start_index_hint_message,
         validate_single_pattern,
     )
 
@@ -1107,25 +1106,16 @@ def validate_files():
                         f"Last frame check failed for camera {camera_num}: {e}"
                     )
 
-            # PIV-specific: Check for indexing mismatch (only for standard formats)
+            # Start-index check: validate_images_generic parses the first frame
+            # index from the FULL matching listing with the pattern itself. Reported
+            # on success and failure alike, since a wrong 0/1 start index is often
+            # the reason the first/last frame is missing.
             indexing_warning = None
-            if image_type == "standard" and validation["sample_files"]:
-                try:
-                    indices = []
-                    for fname in validation["sample_files"]:
-                        match = re_module.search(r"(\d+)", fname)
-                        if match:
-                            indices.append(int(match.group(1)))
-                    if indices:
-                        min_idx = min(indices)
-                        expected_min = cfg.start_index
-                        if min_idx != expected_min:
-                            indexing_warning = (
-                                f"File indexing mismatch: found files starting at {min_idx}, "
-                                f"but start_index is {expected_min}"
-                            )
-                except Exception as e:
-                    logger.debug(f"Indexing check failed: {e}")
+            detected_start = validation.get("detected_start_index")
+            if detected_start is not None and detected_start != cfg.start_index:
+                indexing_warning = start_index_hint_message(
+                    detected_start, cfg.start_index
+                )
 
             # Multi-loop validation: check all loop sources exist
             loop_errors = []
@@ -1139,13 +1129,12 @@ def validate_files():
                         )
 
             # Determine status based on both generic validation and pair checks.
-            # `found_count` is an int for standard/im7/.set/.cine when the count is
-            # known, or the "container" sentinel when it genuinely couldn't be read.
-            # Do NOT substitute num_images for the sentinel: echoing the user's own
-            # input back as the detected count makes every entry "match" (false green
-            # tick) and hides an over-count. A non-int actual_count -> detected_count
-            # = None downstream (honest "unknown"), and the last-entry read above is
-            # the real guard.
+            # `found_count` is the real int count for standard/im7/.set/.cine; a
+            # container whose count cannot be read fails validation with the
+            # reader's reason (read_error) instead of reporting an unknown count.
+            # Never substitute num_images for it: echoing the user's own input back
+            # as the detected count makes every entry "match" (false green tick)
+            # and hides an over-count.
             actual_count = validation["found_count"]
 
             error_msg = validation.get("error")
@@ -1202,6 +1191,8 @@ def validate_files():
                     error_msg = (
                         f"First frame not found. Looking for: {format_str % start_idx}"
                     )
+                    if indexing_warning:
+                        error_msg += f". {indexing_warning}"
                 # Append folder contents hint from generic validator (only when the
                 # file is genuinely missing — for a decode failure the reason already
                 # names the file, and "Found files" would just repeat the contradiction)
@@ -1212,6 +1203,9 @@ def validate_files():
                         error_msg += (
                             f". Did you mean: {validation['suggested_pattern']}"
                         )
+                    elif validation.get("suggestion_error"):
+                        # No suggestion, so say why (e.g. the frame number is ambiguous).
+                        error_msg += f". {validation['suggestion_error']}"
 
             elif last_frame_status == "missing":
                 status = "error"
@@ -1233,6 +1227,8 @@ def validate_files():
                     error_msg = (
                         f"Last frame not found. Expected: {format_str % end_idx}"
                     )
+                    if indexing_warning:
+                        error_msg += f". {indexing_warning}"
 
             elif isinstance(actual_count, int) and actual_count > num_images:
                 # More files than expected - user processing subset (this is fine!)
@@ -1291,6 +1287,9 @@ def validate_files():
                 "camera_path": str(camera_path),
                 "color_detected": color_detected,
                 "indexing_warning": indexing_warning,
+                # True/False when a wrong 0/1 start index left the first or last
+                # expected file missing (switch to 0-/1-based); None otherwise.
+                "suggested_zero_based": validation.get("suggested_zero_based"),
                 "error": error_msg,
                 "first_image_preview": validation.get("first_image_preview"),
                 "image_size": validation.get("image_size"),
@@ -2102,9 +2101,7 @@ def _scan_dataset_progress(
                 type_name,
                 use_uncalibrated=True,
             )
-            found_here += count_vector_files_by_name(
-                paths["data_dir"], expected_names
-            )
+            found_here += count_vector_files_by_name(paths["data_dir"], expected_names)
 
         total_found += found_here
         if found_here >= per_dataset_expected:

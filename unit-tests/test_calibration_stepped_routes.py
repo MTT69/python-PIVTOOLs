@@ -445,6 +445,21 @@ def test_generate_after_reload_from_sidecar(client, scene):
     assert done2["num_pairs_used"] == len(FRAMES)
 
 
+def test_restore_sequence_stale_after_first_frame_flip(client, scene, tmp_path):
+    """Detections read with 1-based numbering came from different files than a 0-based
+    read would: after the flip the saved sequence is reported stale, never restored."""
+    _detect(client, [1, 2])
+    sv._sequence_cache.clear()
+    cs.save_settings(tmp_path, {"image": {"zero_based_indexing": True}})
+
+    body = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    ).get_json()
+    assert body["exists"] is False
+    assert "first-frame numbering" in body["stale_reason"]
+
+
 def test_restore_sequence_absent_returns_exists_false(client):
     """No sidecar for this source -> the normal first-use state, not an error."""
     r = client.get(

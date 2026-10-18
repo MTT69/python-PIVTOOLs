@@ -260,3 +260,21 @@ def test_seed_shared_rig_keys_come_from_newest_record(tmp_path):
 
     seeded = seed_settings(src)
     assert seeded["rig"]["dt"] == pytest.approx(0.001)
+
+
+def test_scale_factor_use_images_default_and_round_trip(tmp_path):
+    """The Scale Factor tab's "Use calibration images" toggle persists per source:
+    templated True, and an explicit False survives a save of another block."""
+    src = _source(tmp_path)
+    cs.save_settings(
+        src, {"image": {"image_format": "a%03d.tif", "image_type": "standard"}}
+    )
+    assert cs.load_settings(src)["methods"]["scale_factor"]["use_images"] is True
+    cs.save_settings(src, {"methods": {"scale_factor": {"use_images": False}}})
+    cs.save_settings(src, {"methods": {"scale_factor": {"px_per_mm": 12.0}}})
+    sf = cs.load_settings(src)["methods"]["scale_factor"]
+    assert sf["use_images"] is False
+    assert sf["px_per_mm"] == 12.0
+    fresh = tmp_path / "fresh_src"
+    fresh.mkdir()
+    assert seed_settings(fresh)["methods"]["scale_factor"]["use_images"] is True

@@ -44,3 +44,27 @@ def test_cli_template_names_gui_active_values(tmp_path):
     assert "stepped_stereo" not in text
     for method in STEREO_METHODS + MONO_METHODS:
         assert method in text
+
+
+@pytest.mark.parametrize("calibration", [{}, {"active": ""}, {"active": "  "}, None])
+def test_missing_active_raises(tmp_path, calibration):
+    """``calibration.active`` is required: no default method is guessed for downstream
+    stereo/mono branching (the CLI template always writes it)."""
+    path = tmp_path / "config.yaml"
+    body = {} if calibration is None else {"calibration": calibration}
+    path.write_text(yaml.safe_dump(body), encoding="utf-8")
+    cfg = Config(path=str(path))
+    with pytest.raises(ValueError, match=r"calibration\.active"):
+        cfg.active_calibration_method
+    with pytest.raises(ValueError, match="stereo_stepped"):
+        cfg.is_stereo_setup
+
+
+@pytest.mark.parametrize("active", ["stereo_charcuo", "stepped_stereo", "stepped"])
+def test_unknown_active_raises(tmp_path, active):
+    """A misspelt or retired id is not silently read as mono by downstream tools."""
+    cfg = _config_with_active(tmp_path, active)
+    with pytest.raises(ValueError, match="is not a calibration method"):
+        cfg.active_calibration_method
+    with pytest.raises(ValueError, match="is not a calibration method"):
+        cfg.is_stereo_setup

@@ -156,6 +156,8 @@ def load_particle_pairs(
     )
     from pivtools_core.image_handling.path_utils import build_piv_camera_path
 
+    if n_images <= 0:
+        raise ValueError(f"n_images must be a positive integer (got {n_images!r})")
     total = int(config.num_frame_pairs)
     if n_images >= total:
         indices = list(range(1, total + 1))

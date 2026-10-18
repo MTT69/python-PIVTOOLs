@@ -26,6 +26,7 @@ from test_calibration_sidecar_resolve import (  # noqa: E402  (sibling-test reus
 )
 
 import pivtools_gui.calibration.app.views as V
+from pivtools_core.image_handling.calibration_loader import FrameCount
 from pivtools_core.image_handling.path_utils import infer_image_type
 from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration import record as rec
@@ -95,7 +96,11 @@ def env(tmp_path, monkeypatch):
             detector.detect(i) for i in imgs
         ],
     )
-    monkeypatch.setattr(V, "get_calibration_frame_count", lambda cam, cfg, src: N_VIEWS)
+    monkeypatch.setattr(
+        V,
+        "get_calibration_frame_count",
+        lambda cam, cfg, src: FrameCount(N_VIEWS, "files"),
+    )
     app = Flask(__name__)
     app.register_blueprint(V.calibration_bp)
     return app.test_client(), tmp_path, params
@@ -114,7 +119,13 @@ def _post_views(client, **extra):
 
 def _mono_key(params, n_views=N_VIEWS, cameras=(1,)):
     return INP.joint_det_key(
-        "dotboard", n_views, FMT, infer_image_type(FMT), list(cameras), params
+        "dotboard",
+        n_views,
+        FMT,
+        infer_image_type(FMT),
+        list(cameras),
+        params,
+        zero_based=False,
     )
 
 
@@ -308,6 +319,7 @@ def test_generate_stereo_force_redetect_keeps_stored_clicks(env):
 
     assert data["success"] is True, data
     assert data["detections_cached"] is False
+    assert data["frame_total"] == N_VIEWS and data["frame_total_source"] == "request"
     side = INP.load_inputs(sdir)
     assert (
         side.coords is not None
@@ -360,12 +372,18 @@ def test_detect_views_null_frame_total_uses_settings_n_views(env, monkeypatch):
     """The GUI sends ``frame_total: null`` when n_views is left blank; the route must
     then take the settings ``image.n_views`` rather than defaulting to one view."""
     client, base, _params = env
-    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": 2}})
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": 2, "zero_based_indexing": False}},
+    )
 
     data = _post_views(client, camera=1, frame_total=None)
 
     assert data["success"] is True
     assert data["by_camera"]["1"]["n_detected"] == 2
+    assert data["frame_total"] == 2
+    assert data["frame_total_source"] == "n_views setting"
     side = INP.load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard"))
     assert len(side.detections[1]) == 2
 
@@ -373,12 +391,17 @@ def test_detect_views_null_frame_total_uses_settings_n_views(env, monkeypatch):
 def test_detect_views_null_frame_total_auto_detects_count(env, monkeypatch):
     """No request value and no settings n_views: the directory auto-count decides."""
     client, base, params = env
-    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
 
     data = _post_views(client, camera=1, frame_total=None)
 
     assert data["success"] is True
     assert data["by_camera"]["1"]["n_detected"] == N_VIEWS
+    assert data["frame_total"] == N_VIEWS and data["frame_total_source"] == "files"
     side = INP.load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard"))
     assert side.det_key == _mono_key(params)
 
@@ -387,7 +410,11 @@ def test_detect_views_auto_detect_failure_is_visible(env, monkeypatch):
     """A failing auto-count must surface as success:false naming the camera, never as
     a silent zero-view detection."""
     client, _base, _params = env
-    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
 
     def _boom(cam, cfg, src):
         raise OSError("disk unplugged")
@@ -400,13 +427,65 @@ def test_detect_views_auto_detect_failure_is_visible(env, monkeypatch):
     assert "camera 1" in data["error"] and "disk unplugged" in data["error"]
 
 
-def test_detect_views_auto_detect_zero_is_visible(env, monkeypatch):
-    """An auto-count of zero (camera directory missing or empty) is a failure too."""
-    client, _base, _params = env
-    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
-    monkeypatch.setattr(V, "get_calibration_frame_count", lambda cam, cfg, src: 0)
+def _uneven_counts(cam, cfg, src):
+    """Camera 2 is one view short of camera 1."""
+    return FrameCount(N_VIEWS if int(cam) == 1 else N_VIEWS - 1, "files")
 
-    data = _post_views(client, camera=1, frame_total=None)
+
+def test_detect_views_stereo_count_mismatch_is_visible(env, monkeypatch):
+    """Stereo pairs views by index: auto-counts that differ between the two cameras
+    must fail naming both counts, not silently detect camera 2 with camera 1's count."""
+    client, base, _params = env
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
+    monkeypatch.setattr(V, "get_calibration_frame_count", _uneven_counts)
+
+    data = _post_views(client, stereo=True, camera_pair=[1, 2], frame_total=None)
 
     assert data["success"] is False
-    assert "camera 1" in data["error"]
+    assert f"Camera 1 has {N_VIEWS} views" in data["error"]
+    assert f"camera 2 has {N_VIEWS - 1}" in data["error"]
+    assert not (rec.stereo_model_dir_for_source(base, 1, 2, "dotboard")).exists()
+
+
+def test_detect_views_stereo_explicit_count_not_compared(env, monkeypatch):
+    """An explicit frame_total applies to both cameras; the auto-counts are not consulted."""
+    client, _base, _params = env
+    monkeypatch.setattr(V, "get_calibration_frame_count", _uneven_counts)
+
+    data = _post_views(client, stereo=True, camera_pair=[1, 2])
+
+    assert data["success"] is True
+    assert data["frame_total"] == N_VIEWS and data["frame_total_source"] == "request"
+
+
+def test_generate_stereo_count_mismatch_fails(env, monkeypatch):
+    """generate_model's stereo branch resolves the count for both cameras too."""
+    client, _base, _params = env
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
+    monkeypatch.setattr(V, "get_calibration_frame_count", _uneven_counts)
+
+    data = client.post(
+        "/calibration/generate_model",
+        json={
+            "source_path_idx": 0,
+            "board": "dotboard",
+            "stereo": True,
+            "camera_pair": [1, 2],
+            "image_format": FMT,
+            "frame_total": None,
+            "datum_frame": 1,
+            "dt": 1.0,
+            "no_figures": True,
+        },
+    ).get_json()
+
+    assert data["success"] is False
+    assert f"camera 2 has {N_VIEWS - 1}" in data["error"]

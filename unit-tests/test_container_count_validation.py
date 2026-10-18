@@ -31,7 +31,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from pivtools_core.image_handling import path_utils
 from pivtools_core.image_handling.path_utils import validate_images_generic
 from pivtools_core.image_handling.readers import set_reader
 
@@ -73,8 +72,12 @@ def test_set_validation_surfaces_real_count(tmp_path, monkeypatch):
     assert result["found_count"] == 750
 
 
-def test_set_validation_falls_back_only_on_genuine_read_failure(tmp_path, monkeypatch):
-    """When the count truly can't be read, fall back to the sentinel (not a fabricated number)."""
+def test_set_count_read_failure_is_a_visible_error(tmp_path, monkeypatch):
+    """A .set whose entry count cannot be read fails validation, naming file and reason.
+
+    It used to degrade to the "container" sentinel with valid=True, so a corrupt
+    index passed validation and the count was silently unknown.
+    """
     set_file = tmp_path / "data.set"
     set_file.write_bytes(b"stub")
 
@@ -93,9 +96,41 @@ def test_set_validation_falls_back_only_on_genuine_read_failure(tmp_path, monkey
         read_frame_fn=_fake_frame,
     )
 
-    # Honest "unknown" — a non-int sentinel, so downstream detected_count is None
-    # rather than an echo of the user's input.
-    assert result["found_count"] == "container"
+    assert result["valid"] is False
+    assert result["found_count"] == 0
+    assert result["error"] == (
+        f"Could not read the image count of {set_file}: corrupt index"
+    )
+    assert result["read_error"] == result["error"]
+
+
+def test_cine_count_read_failure_is_a_visible_error(tmp_path, monkeypatch):
+    """Same contract for .cine: a header read failure is an error, not a sentinel."""
+    from pivtools_core.image_handling.readers import cine_reader
+
+    cine_file = tmp_path / "cam1.cine"
+    cine_file.write_bytes(b"stub")
+
+    def _boom(_p):
+        raise ValueError("bad header")
+
+    monkeypatch.setattr(cine_reader, "get_cine_frame_count", _boom)
+
+    result = validate_images_generic(
+        camera_path=tmp_path,
+        camera=1,
+        image_format="cam%d.cine",
+        image_type="cine",
+        expected_count=10,
+        zero_based_indexing=False,
+        read_frame_fn=_fake_frame,
+    )
+
+    assert result["valid"] is False
+    assert result["found_count"] == 0
+    assert result["error"] == (
+        f"Could not read the image count of {cine_file}: bad header"
+    )
 
 
 if __name__ == "__main__":
