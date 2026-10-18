@@ -11,15 +11,21 @@ clobbering each other.
 
 from __future__ import annotations
 
+import re
+import threading
+import time
+
 import numpy as np
 import pytest
 
+from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration.detection.base import DetectionResult
 from pivtools_gui.calibration.inputs_store import (
     inputs_path,
     load_inputs,
     save_inputs,
     try_load_inputs,
+    update_inputs,
 )
 
 
@@ -184,3 +190,102 @@ def test_missing_sidecar_raises_and_try_load_is_none(tmp_path):
         load_inputs(tmp_path)
     assert try_load_inputs(tmp_path) is None
     assert not inputs_path(tmp_path).exists()
+
+
+# ---------------------------------------------------------------------------
+# Detection identity stamp
+# ---------------------------------------------------------------------------
+
+_STAMP_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def test_detection_write_stamps_a_fresh_identity(tmp_path):
+    """Every detections write gets a new stamp; a coords-only write keeps it."""
+    dets = {1: [_good_detection(charuco=False)]}
+    save_inputs(tmp_path, path_type="stepped", board_type="stepped", detections=dets)
+    first = load_inputs(tmp_path).detection_stamp
+    assert _STAMP_RE.match(first)
+
+    save_inputs(tmp_path, path_type="stepped", board_type="stepped", coords={"a": 1})
+    assert load_inputs(tmp_path).detection_stamp == first
+
+    save_inputs(tmp_path, path_type="stepped", board_type="stepped", detections=dets)
+    assert load_inputs(tmp_path).detection_stamp not in ("", first)
+
+
+def test_coords_only_sidecar_has_no_stamp(tmp_path):
+    save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords={"a": 1})
+    assert load_inputs(tmp_path).detection_stamp == ""
+
+
+# ---------------------------------------------------------------------------
+# update_inputs: load + mutate + save under one lock
+# ---------------------------------------------------------------------------
+
+# Long enough that, without the lock, both mutates read the same previous file.
+_SLOW_MUTATE_S = 0.2
+
+
+def test_update_inputs_concurrent_writers_both_persist(tmp_path):
+    """Two cameras committing clicks at once: neither update may be lost."""
+    save_inputs(
+        tmp_path,
+        path_type="stepped",
+        board_type="stepped",
+        detections={1: [_good_detection(charuco=False)]},
+        coords={"cameras": {}},
+    )
+    start = threading.Barrier(2)
+    errors: list = []
+
+    def _commit(cam: int) -> None:
+        def mutate(prev):
+            coords = dict(prev.coords)
+            cams = dict(coords["cameras"])
+            time.sleep(_SLOW_MUTATE_S)
+            cams[str(cam)] = {"clicked_level": "peak"}
+            coords["cameras"] = cams
+            return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
+
+        try:
+            start.wait()
+            update_inputs(tmp_path, mutate)
+        except Exception as exc:  # surfaced below; a thread cannot fail the test itself
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_commit, args=(c,)) for c in (1, 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    assert sorted(load_inputs(tmp_path).coords["cameras"]) == ["1", "2"]
+
+
+def test_update_inputs_returning_none_writes_nothing(tmp_path):
+    save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords={"a": 1})
+    before = inputs_path(tmp_path).stat().st_mtime_ns
+
+    assert update_inputs(tmp_path, lambda prev: None) is None
+
+    assert inputs_path(tmp_path).stat().st_mtime_ns == before
+    assert load_inputs(tmp_path).coords == {"a": 1}
+
+
+def test_update_inputs_sees_none_without_sidecar_and_returns_written(tmp_path):
+    seen: list = []
+
+    def mutate(prev):
+        seen.append(prev)
+        return {
+            "path_type": "stepped",
+            "board_type": "stepped",
+            "detections": {1: [_good_detection(charuco=False)]},
+        }
+
+    written = update_inputs(tmp_path, mutate)
+
+    assert seen == [None]
+    assert isinstance(written, INP.InputsRecord)
+    assert written.detection_stamp == load_inputs(tmp_path).detection_stamp

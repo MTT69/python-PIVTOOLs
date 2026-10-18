@@ -135,6 +135,15 @@ _datum_lock = threading.Lock()
 _joint_detect_cache: dict = {}
 _joint_detect_lock = threading.Lock()
 
+# Apply jobs: cooperative cancel events keyed by job id (the video_maker pattern), and the
+# lock that makes "no running apply overlaps my output dirs" + create_job + registering
+# the event one atomic step, so two near-simultaneous Apply clicks cannot both pass the
+# overlap check before either job exists.
+_apply_cancel_events: dict[str, threading.Event] = {}
+_apply_lock = threading.Lock()
+# Job statuses during which an apply job may still write calibrated frames.
+_APPLY_ACTIVE_STATUSES = ("starting", "running")
+
 
 def _joint_inputs_dir(source_idx: int, board: str) -> Optional[Path]:
     """Model dir holding this rig's sidecar ``inputs.mat``, or None if the source is unknown.
@@ -356,7 +365,12 @@ def _load_views(
 
 
 def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int:
-    """Resolve frame total: request value, else settings ``image.n_views``, else auto-detect."""
+    """Resolve frame total: request value, else settings ``image.n_views``, else auto-detect.
+
+    Raises ``ValueError`` naming the camera and source when the auto-detect fails or
+    finds no calibration images: a zero or guessed view count would silently detect,
+    persist or solve the wrong set.
+    """
     v = get("frame_total")
     if v not in (None, ""):
         return int(v)
@@ -364,15 +378,18 @@ def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int
     if n > 0:
         return n
     try:
-        return get_calibration_frame_count(int(camera), get_config(), int(source_idx))
+        count = get_calibration_frame_count(int(camera), get_config(), int(source_idx))
     except Exception as exc:
-        logger.warning(
-            "frame-count auto-detect failed for cam %s source %s: %s",
-            camera,
-            source_idx,
-            exc,
+        raise ValueError(
+            f"could not auto-detect the number of calibration views for camera "
+            f"{camera}, source {source_idx}: {exc} -- set n_views explicitly"
+        ) from exc
+    if count <= 0:
+        raise ValueError(
+            f"auto-detect found no calibration images for camera {camera}, "
+            f"source {source_idx} -- check the image path/format or set n_views"
         )
-        return 0
+    return int(count)
 
 
 def _datum_frame(get: Callable[[str], Any]) -> int:
@@ -926,7 +943,6 @@ def detect_views():
         logger.warning("calibration detect_views: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 200
     source_idx = _source_idx(data.get)
-    frame_total = int(data.get("frame_total", 1))
     image_format = data.get("image_format")
     image_type = data.get("image_type")
     stereo = bool(data.get("stereo", False))
@@ -935,6 +951,11 @@ def detect_views():
         cameras = [int(pair[0]), int(pair[1])]
     else:
         cameras = [int(data.get("camera") or _rig(data.get).get("camera") or 1)]
+    try:
+        frame_total = _frame_total(data.get, cameras[0], source_idx)
+    except ValueError as exc:
+        logger.warning("calibration detect_views: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 200
 
     by_camera: dict[str, dict] = {}
     detections: dict[int, list] = {}
@@ -1071,7 +1092,6 @@ def restore_detections():
         return jsonify({"exists": False}), 200
 
     source_idx = _source_idx(data.get)
-    frame_total = int(data.get("frame_total", 1))
     image_format = data.get("image_format")
     stereo = bool(data.get("stereo", False))
     if stereo:
@@ -1079,6 +1099,13 @@ def restore_detections():
         cameras = [int(pair[0]), int(pair[1])]
     else:
         cameras = [int(data.get("camera") or _rig(data.get).get("camera") or 1)]
+    try:
+        frame_total = _frame_total(data.get, cameras[0], source_idx)
+    except ValueError as exc:
+        # Without a view count there is no det_key to compare: nothing to restore,
+        # but the reason is returned so the GUI can say why.
+        logger.warning("calibration restore_detections: %s", exc)
+        return jsonify({"exists": False, "error": str(exc)}), 200
 
     try:
         source = _source_path(source_idx)
@@ -1390,11 +1417,22 @@ def generate_model():
             force_redetect = bool(data.get("force_redetect", False))
             side = try_load_inputs(model_dir)
             cached = (side.detections or {}).get(camera) if side else None
-            # View count from the request/config, falling back to the sidecar's cached count so a
-            # re-solve still resolves when the images (and thus the auto-count) are gone.
-            frame_total = _frame_total(data.get, camera, source_idx) or (
-                len(cached) if cached else 0
-            )
+            # View count from the request/config/auto-count. When the auto-count fails and the
+            # sidecar holds a cached set, the cached count is used so a re-solve still runs after
+            # the images are gone: the sidecar stores every view (failed ones in place), so its
+            # length IS the view count it was detected with, and the det_key gate below still
+            # rejects it unless every other detection parameter matches. Logged, not silent.
+            try:
+                frame_total = _frame_total(data.get, camera, source_idx)
+            except ValueError as exc:
+                if not cached:
+                    raise
+                frame_total = len(cached)
+                logger.warning(
+                    "generate_model: %s; using the %d views cached in the sidecar",
+                    exc,
+                    frame_total,
+                )
             if not (0 <= datum_index < frame_total):
                 return (
                     jsonify(
@@ -2052,6 +2090,36 @@ def calibration_set_datum():
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
+def _dirs_overlap(a: Path, b: Path) -> bool:
+    """True when two output directories are the same or one contains the other."""
+    return a == b or a in b.parents or b in a.parents
+
+
+def _overlapping_apply_job(out_dirs: List[str]) -> Optional[tuple[str, str]]:
+    """First active apply job writing into any of ``out_dirs``: ``(job_id, its dir)``.
+
+    Paths are compared resolved, so a symlinked or relative spelling of the same
+    directory is still caught. Call with ``_apply_lock`` held.
+    """
+    mine = [Path(d).resolve() for d in out_dirs]
+    for job_id, job in job_manager.list_jobs(job_type="calibration_apply").items():
+        if job.get("status") not in _APPLY_ACTIVE_STATUSES:
+            continue
+        for other in job["out_dirs"]:
+            other_path = Path(other).resolve()
+            if any(_dirs_overlap(m, other_path) for m in mine):
+                return job_id, other
+    return None
+
+
+def _apply_cancelled_message(frames_written: int, out_dirs: List[str]) -> str:
+    """Cancel outcome for the job status: what stopped and what stays on disk."""
+    return (
+        f"cancelled by user after {frames_written} frame(s) written; frames already "
+        f"written remain on disk in {'; '.join(out_dirs)}"
+    )
+
+
 @calibration_bp.route("/calibration/apply", methods=["POST"])
 def apply_model():
     """Start applying a saved model to PIV output (mono apply / stereo 3C) as a job.
@@ -2167,17 +2235,47 @@ def apply_model():
 
     n_units = len(units)
     out_dirs = [str(u["out"]) for u in units]
-    job_id = job_manager.create_job(
-        "calibration_apply", stereo=stereo, out_dir=out_dirs[0]
-    )
+    with _apply_lock:
+        clash = _overlapping_apply_job(out_dirs)
+        if clash is not None:
+            running_id, running_dir = clash
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": (
+                            f"apply job {running_id} is already writing to "
+                            f"{running_dir} -- wait for it to finish or cancel it"
+                        ),
+                    }
+                ),
+                200,
+            )
+        job_id = job_manager.create_job(
+            "calibration_apply",
+            stereo=stereo,
+            out_dir=out_dirs[0],
+            out_dirs=out_dirs,
+        )
+        cancel_event = threading.Event()
+        _apply_cancel_events[job_id] = cancel_event
 
     def _run():
+        total_written = 0
         try:
             job_manager.update_job(
                 job_id, status="running", progress=0, processed=0, total=n_units
             )
-            total_written = 0
             for i, u in enumerate(units):
+                # Between units: a cancel stops before the next dataset starts, leaving
+                # the previous unit's frame counts in the status.
+                if cancel_event.is_set():
+                    job_manager.cancel_job(
+                        job_id,
+                        _apply_cancelled_message(total_written, out_dirs),
+                        n_frames=total_written,
+                    )
+                    return
                 # Which dataset is running, published before the first frame ticks so the
                 # label is never a unit behind. Frame counts reset to 0 ("not yet reported")
                 # rather than carrying the previous unit's totals into this one.
@@ -2212,6 +2310,7 @@ def apply_model():
                         progress_cb=cb,
                         vector_glob=vector_glob,
                         interpolator=interpolator,
+                        cancel_event=cancel_event,
                     )
                 else:
                     written = c2runio.calibrate_mono_run(
@@ -2224,6 +2323,7 @@ def apply_model():
                         ty,
                         progress_cb=cb,
                         vector_glob=vector_glob,
+                        cancel_event=cancel_event,
                     )
                 total_written += len(written)
                 # Record what actually calibrated these vectors in the run's archived
@@ -2234,11 +2334,26 @@ def apply_model():
             job_manager.complete_job(
                 job_id, n_frames=total_written, out_dir="; ".join(out_dirs)
             )
+        except c2runio.ApplyCancelled as exc:
+            # Mid-unit cancel: the partial unit is not stamped (its run config would
+            # claim a calibration it only half received). Its exact frame counts come
+            # from the exception, which includes frames that were in flight.
+            frames_written = total_written + len(exc.written)
+            job_manager.cancel_job(
+                job_id,
+                _apply_cancelled_message(frames_written, out_dirs),
+                n_frames=frames_written,
+                frame_done=exc.done,
+                frame_total=exc.total,
+            )
         except (
             Exception
         ) as exc:  # surface in the job status (full traceback to the server log)
             logger.exception("apply job %s failed", job_id)
             job_manager.fail_job(job_id, str(exc))
+        finally:
+            with _apply_lock:
+                _apply_cancel_events.pop(job_id, None)
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"success": True, "job_id": job_id})
@@ -2248,6 +2363,34 @@ def apply_model():
 def apply_status(job_id):
     """Poll an apply job's status (same shape as the v1 vector-job status)."""
     return _job_status_response(job_id)
+
+
+@calibration_bp.route("/calibration/apply/cancel/<job_id>", methods=["POST"])
+def apply_cancel(job_id):
+    """Request a cooperative cancel of a running apply job.
+
+    The worker stops between units, and within a unit as frames complete; frames
+    not yet started are dropped, frames already written stay on disk. The job then
+    reports ``status: cancelled`` with its frame counts. 404 for an unknown job id;
+    ``success: false`` (HTTP 200) when the job exists but has already finished.
+    """
+    with _apply_lock:
+        cancel_event = _apply_cancel_events.get(job_id)
+    if cancel_event is None:
+        job = job_manager.get_job(job_id)
+        if job is None or job.get("job_type") != "calibration_apply":
+            return jsonify({"success": False, "error": "job not found"}), 404
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"apply job {job_id} is not running (status: {job['status']})",
+                }
+            ),
+            200,
+        )
+    cancel_event.set()
+    return jsonify({"success": True, "job_id": job_id, "status": "cancelling"})
 
 
 # ---------------------------------------------------------------------------

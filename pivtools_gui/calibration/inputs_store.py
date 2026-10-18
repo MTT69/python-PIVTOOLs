@@ -15,6 +15,7 @@ Layout (one file per model dir, ``<model_dir>/inputs.mat``):
     det_count          number of (camera, view) detections stored (0 -> field absent)
     detections         flat struct array, one element per (camera, view)
     image_size_by_cam  (M, 3) int rows [camera, width, height]
+    detection_stamp    uuid4 hex, regenerated on every detections write ('' if none)
 
 The clicked inputs are stored as ONE JSON string rather than a MATLAB struct: they are
 already plain nested dicts (the same shape the config block used), JSON round-trips the
@@ -29,9 +30,10 @@ import hashlib
 import json
 import os
 import threading
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.io import loadmat, savemat
@@ -43,9 +45,11 @@ from .record import _empty_if_none, _scalar
 SCHEMA_VERSION = 1
 INPUTS_FILENAME = "inputs.mat"
 
-# Serialises the read-merge-write in save_inputs across the Flask worker threads: the detection
-# save and each click-commit both merge into the same file, so without this two writers could
-# interleave and lose an update. Reads are made safe from a half-written file by the atomic
+# Serialises the read-merge-write in save_inputs / update_inputs across the Flask worker
+# threads: the detection save and each click-commit both merge into the same file, so without
+# this two writers could interleave and lose an update. A caller that derives the new fields
+# from the previous file must do so through update_inputs (inside this lock), never from a
+# read of its own. Reads are made safe from a half-written file by the atomic
 # temp-then-replace below, not by this lock.
 _write_lock = threading.Lock()
 
@@ -71,6 +75,16 @@ class InputsRecord:
     # detections, so a caller can tell whether they still match the current request before
     # reusing them instead of re-detecting. Empty when detections were not param-keyed.
     det_key: str = ""
+    # Identity of the stored detection set: a fresh uuid4 hex every time detections are
+    # written, preserved by writes that leave detections untouched. A client holding clicks
+    # made against one detection set proves, by echoing this, that the set has not been
+    # replaced (re-detected) since. Empty when no detections were ever written with it.
+    detection_stamp: str = ""
+
+
+# Mutator for update_inputs: receives the current sidecar (None when absent or unreadable)
+# and returns the save_inputs keyword fields to write, or None to write nothing.
+InputsMutator = Callable[[Optional["InputsRecord"]], Optional[Dict[str, Any]]]
 
 
 def inputs_path(model_dir) -> Path:
@@ -324,6 +338,7 @@ def load_inputs(model_dir) -> InputsRecord:
         image_size_by_cam=image_size,
         det_key=_str_field(mat.get("det_key")),
         board_params=board_params,
+        detection_stamp=_str_field(mat.get("detection_stamp")),
     )
 
 
@@ -357,12 +372,16 @@ def save_inputs(
     Fields left at ``_UNSET`` are preserved from the existing file — detection runs and click
     commits update the sidecar independently without clobbering each other. The merge is done
     by reloading into python objects and rewriting the whole file, so no loaded mat-struct is
-    ever re-serialised.
+    ever re-serialised. Writing ``detections`` regenerates ``detection_stamp``.
+
+    The values passed here must not be derived from an earlier read of the same sidecar —
+    that read-then-write would lose a concurrent update. Use ``update_inputs`` for that.
     """
     model_dir = Path(model_dir)
     with _write_lock:
-        return _save_inputs_locked(
+        path, _ = _write_merged(
             model_dir,
+            try_load_inputs(model_dir),
             path_type=path_type,
             board_type=board_type,
             coords=coords,
@@ -371,21 +390,44 @@ def save_inputs(
             det_key=det_key,
             board_params=board_params,
         )
+    return path
 
 
-def _save_inputs_locked(
+def update_inputs(model_dir, mutate: InputsMutator) -> Optional[InputsRecord]:
+    """Load the sidecar, apply ``mutate``, and write the result — all under one lock.
+
+    ``mutate(prev)`` receives the current ``InputsRecord`` (None when absent or unreadable)
+    and returns the ``save_inputs`` keyword fields to write (``path_type`` and
+    ``board_type`` required; omitted fields are preserved, exactly as in ``save_inputs``),
+    or None to leave the file untouched. Because the read, the decision and the write sit
+    inside ``_write_lock``, a concurrent writer can neither be overwritten with stale data
+    nor change the file between ``mutate``'s check and the write.
+
+    Returns the record as written, or None when ``mutate`` declined to write.
+    """
+    model_dir = Path(model_dir)
+    with _write_lock:
+        prev = try_load_inputs(model_dir)
+        fields = mutate(prev)
+        if fields is None:
+            return None
+        _, written = _write_merged(model_dir, prev, **fields)
+    return written
+
+
+def _write_merged(
     model_dir: Path,
+    prev: Optional[InputsRecord],
     *,
     path_type: str,
     board_type: str,
-    coords: Any,
-    detections: Any,
-    image_size_by_cam: Any,
-    det_key: Any,
-    board_params: Any,
-) -> Path:
-    prev = try_load_inputs(model_dir)
-
+    coords: Any = _UNSET,
+    detections: Any = _UNSET,
+    image_size_by_cam: Any = _UNSET,
+    det_key: Any = _UNSET,
+    board_params: Any = _UNSET,
+) -> Tuple[Path, InputsRecord]:
+    """Merge the given fields over ``prev`` and write atomically. Caller holds ``_write_lock``."""
     fin_coords = coords if coords is not _UNSET else (prev.coords if prev else None)
     fin_dets = (
         detections if detections is not _UNSET else (prev.detections if prev else None)
@@ -400,6 +442,12 @@ def _save_inputs_locked(
         if board_params is not _UNSET
         else (prev.board_params if prev else None)
     )
+    # A detections write is a new detection set, whatever its contents: anything holding
+    # the old stamp (clicks made on the previous set) must be refused, not merged.
+    if detections is not _UNSET:
+        fin_stamp = uuid.uuid4().hex
+    else:
+        fin_stamp = prev.detection_stamp if prev else ""
 
     data: Dict[str, Any] = {
         "schema_version": int(SCHEMA_VERSION),
@@ -408,6 +456,7 @@ def _save_inputs_locked(
         "coords_json": _dumps(fin_coords),  # None -> "null"
         "board_params_json": _dumps(fin_params),  # None -> "null"
         "det_key": str(fin_key or ""),
+        "detection_stamp": str(fin_stamp),
     }
 
     items: List[Dict[str, Any]] = []
@@ -435,4 +484,14 @@ def _save_inputs_locked(
     tmp = path.with_name(path.name + ".tmp")
     savemat(str(tmp), data, oned_as="row")
     os.replace(tmp, path)
-    return path
+    written = InputsRecord(
+        path_type=str(path_type),
+        board_type=str(board_type),
+        coords=fin_coords,
+        detections=fin_dets,
+        image_size_by_cam=dict(fin_sizes or {}),
+        board_params=fin_params,
+        det_key=str(fin_key or ""),
+        detection_stamp=str(fin_stamp),
+    )
+    return path, written

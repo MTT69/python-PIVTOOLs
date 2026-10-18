@@ -18,6 +18,7 @@ What is asserted:
 
 from __future__ import annotations
 
+import threading
 import time
 
 import cv2
@@ -249,7 +250,12 @@ def test_mono_generate_end_to_end(client, scene, tmp_path):
     sid, _ = _detect(client, [1])
     r = client.post(
         "/calibration/stepped/generate_model",
-        json={"sequence_id": sid, "dt": 1.0, "stereo": False, "cameras": {"1": _spec(scene, 1)}},
+        json={
+            "sequence_id": sid,
+            "dt": 1.0,
+            "stereo": False,
+            "cameras": {"1": _spec(scene, 1)},
+        },
     )
     body = r.get_json()
     assert r.status_code == 200, body
@@ -452,13 +458,14 @@ def test_inputs_save_persists_clicks_without_generate(client, scene):
     """Clicks persist to the sidecar via inputs/save as they are picked (no generate, no
     config) — restore then brings them back. This is the per-pick persistence that replaces
     the old config write."""
-    _detect(client, [1, 2])
+    _sid, done = _detect(client, [1, 2])
     r = client.post(
         "/calibration/stepped/inputs/save",
         json={
             "camera_pair": "1,2",
             "source_path_idx": 0,
             "stereo_config": "auto",
+            "detection_stamp": done["detection_stamp"],
             "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
         },
     )
@@ -484,7 +491,131 @@ def test_inputs_save_noop_without_detection(client, scene):
         json={
             "camera_pair": "1,2",
             "source_path_idx": 0,
+            "detection_stamp": "0" * 32,
             "cameras": {"1": _spec(scene, 1)},
         },
     )
     assert r.status_code == 200 and r.get_json() == {"saved": False}
+
+
+# ---------------------------------------------------------------------------
+# 6. Detection identity: clicks are only saved against the detections they were made on
+# ---------------------------------------------------------------------------
+
+
+def _stereo_model_dir(tmp_path):
+    from pivtools_gui.calibration import record as rec
+
+    return rec.stereo_model_dir_for_source(tmp_path, 1, 2, "stepped")
+
+
+def _save_clicks(client, scene, stamp, cams=(1, 2)):
+    return client.post(
+        "/calibration/stepped/inputs/save",
+        json={
+            "camera_pair": "1,2",
+            "source_path_idx": 0,
+            "detection_stamp": stamp,
+            "cameras": {str(c): _spec(scene, c) for c in cams},
+        },
+    )
+
+
+def test_detect_completion_and_restore_return_the_sidecar_stamp(
+    client, scene, tmp_path
+):
+    from pivtools_gui.calibration.inputs_store import load_inputs
+
+    _sid, done = _detect(client, [1, 2])
+    stamp = load_inputs(_stereo_model_dir(tmp_path)).detection_stamp
+    assert stamp and done["detection_stamp"] == stamp
+
+    sv._sequence_cache.clear()
+    body = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    ).get_json()
+    assert body["exists"] and body["detection_stamp"] == stamp
+
+
+def test_inputs_save_refuses_stale_stamp_after_redetect(client, scene, tmp_path):
+    """Clicks made on an earlier detection must not be written over a re-detected set."""
+    from pivtools_gui.calibration.inputs_store import load_inputs
+
+    _sid, first = _detect(client, [1, 2])
+    _sid2, second = _detect(client, [1, 2])
+    assert second["detection_stamp"] != first["detection_stamp"]
+
+    r = _save_clicks(client, scene, first["detection_stamp"])
+
+    body = r.get_json()
+    assert r.status_code == 200
+    assert body["saved"] is False and body["stale"] is True and body["error"]
+    assert "cameras" not in (load_inputs(_stereo_model_dir(tmp_path)).coords or {})
+
+
+def test_inputs_save_refuses_missing_request_stamp(client, scene, tmp_path):
+    _detect(client, [1, 2])
+
+    r = _save_clicks(client, scene, None)
+
+    body = r.get_json()
+    assert body["saved"] is False and body["stale"] is True
+
+
+def test_inputs_save_refuses_sidecar_without_stamp(client, scene, tmp_path):
+    """Forward-only: a sidecar written before stamping existed is not defaulted — the
+    save is refused and the error says to re-run detection."""
+    import scipy.io
+
+    from pivtools_gui.calibration.inputs_store import inputs_path
+
+    _detect(client, [1, 2])
+    path = inputs_path(_stereo_model_dir(tmp_path))
+    mat = scipy.io.loadmat(str(path))
+    del mat["detection_stamp"]
+    scipy.io.savemat(
+        str(path), {k: v for k, v in mat.items() if not k.startswith("__")}
+    )
+
+    r = _save_clicks(client, scene, "0" * 32)
+
+    body = r.get_json()
+    assert body["saved"] is False and body["stale"] is True
+    assert "re-run detection" in body["error"]
+
+
+def test_inputs_save_concurrent_cameras_both_persist(
+    client, scene, tmp_path, monkeypatch
+):
+    """Two per-camera click commits racing: the slow sidecar read makes both requests
+    load the same previous file unless load + merge + write is one locked step."""
+    from pivtools_gui.calibration import inputs_store as INP
+
+    _sid, done = _detect(client, [1, 2])
+    stamp = done["detection_stamp"]
+    real_load = INP.try_load_inputs
+
+    def _slow_load(model_dir):
+        side = real_load(model_dir)
+        time.sleep(0.2)
+        return side
+
+    monkeypatch.setattr(INP, "try_load_inputs", _slow_load)
+    monkeypatch.setattr(sv, "try_load_inputs", _slow_load)
+    start = threading.Barrier(2)
+    results: dict = {}
+
+    def _commit(cam):
+        start.wait()
+        results[cam] = _save_clicks(client, scene, stamp, cams=(cam,)).get_json()
+
+    threads = [threading.Thread(target=_commit, args=(c,)) for c in (1, 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert results[1]["saved"] and results[2]["saved"], results
+    coords = real_load(_stereo_model_dir(tmp_path)).coords
+    assert sorted(coords["cameras"]) == ["1", "2"]

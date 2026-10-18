@@ -32,7 +32,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from flask import Blueprint, jsonify, request
@@ -46,9 +46,10 @@ from pivtools_gui.calibration import world_frame as WF
 from pivtools_gui.calibration.camera_model import DistortionModel
 from pivtools_gui.calibration.detection.base import DetectionResult
 from pivtools_gui.calibration.inputs_store import (
+    InputsRecord,
     joint_det_key,
-    save_inputs,
     try_load_inputs,
+    update_inputs,
 )
 from pivtools_gui.calibration.stepped_calibrate import (
     calibrate_stepped_mono,
@@ -310,9 +311,13 @@ def _dets_from_sidecar(side_dets: dict) -> Dict[int, list]:
     }
 
 
-def _save_sequence_sidecar(source, entry: dict) -> None:
+def _save_sequence_sidecar(source, entry: dict) -> str:
     """Persist a detected sequence's detections + descriptor + det_key + geometry,
-    merging into any existing ``coords`` so a prior generate's clicks are preserved."""
+    merging into any existing ``coords`` so a prior generate's clicks are preserved.
+
+    The merge reads the previous coords inside ``update_inputs``' lock, so a click commit
+    landing at the same moment is not lost. Returns the new ``detection_stamp``.
+    """
     cameras = entry["cameras"]
     model_dir = _sidecar_model_dir(source, cameras)
     det_key = _stepped_det_key(
@@ -323,9 +328,7 @@ def _save_sequence_sidecar(source, entry: dict) -> None:
         entry["image_type"],
         entry["params"],
     )
-    prev = try_load_inputs(model_dir)
-    coords = dict(prev.coords) if (prev and prev.coords) else {}
-    coords["sequence"] = {
+    sequence = {
         "frame_indices": [int(f) for f in entry["frame_indices"]],
         "datum_frame_idx": int(entry["datum_frame_idx"]),
         "cameras": [int(c) for c in cameras],
@@ -333,18 +336,24 @@ def _save_sequence_sidecar(source, entry: dict) -> None:
         "image_format": entry["image_format"],
         "image_type": entry["image_type"],
     }
-    save_inputs(
-        model_dir,
-        path_type="stepped",
-        board_type="stepped",
-        detections=_dets_for_sidecar(entry["detections"]),
-        image_size_by_cam={
-            int(c): tuple(entry["image_size"].get(c, (0, 0))) for c in cameras
-        },
-        det_key=det_key,
-        board_params=rec.geometry_meta("stepped", entry["params"]),
-        coords=coords,
-    )
+
+    def _mutate(prev: Optional[InputsRecord]) -> dict:
+        coords = dict(prev.coords) if (prev and prev.coords) else {}
+        coords["sequence"] = sequence
+        return {
+            "path_type": "stepped",
+            "board_type": "stepped",
+            "detections": _dets_for_sidecar(entry["detections"]),
+            "image_size_by_cam": {
+                int(c): tuple(entry["image_size"].get(c, (0, 0))) for c in cameras
+            },
+            "det_key": det_key,
+            "board_params": rec.geometry_meta("stepped", entry["params"]),
+            "coords": coords,
+        }
+
+    written = update_inputs(model_dir, _mutate)
+    return written.detection_stamp
 
 
 def _entry_from_sidecar(data: dict, cameras: List[int]):
@@ -626,10 +635,13 @@ def detect_sequence():
 
             # Persist to the model dir's inputs.mat so the model can be regenerated from
             # disk (detections + clicks) without re-detecting. Best-effort: a failure is
-            # logged, never fatal — the in-memory cache still serves this session.
+            # logged, never fatal — the in-memory cache still serves this session. With no
+            # sidecar there is no detection_stamp (null), so inputs/save cannot persist
+            # clicks for this sequence and says so.
+            detection_stamp: Optional[str] = None
             try:
                 src = get_config().get_calibration_source(int(source_idx))
-                _save_sequence_sidecar(src, cache_entry)
+                detection_stamp = _save_sequence_sidecar(src, cache_entry)
             except Exception as exc:
                 logger.warning(
                     "stepped detect: sidecar save failed (non-fatal): %s", exc
@@ -648,6 +660,7 @@ def detect_sequence():
                 datum_detection=datum_detection,
                 image_size={str(c): list(image_size.get(c, (0, 0))) for c in cameras},
                 per_frame_status=per_frame_status,
+                detection_stamp=detection_stamp,
             )
         except Exception as exc:
             logger.exception("stepped detect_sequence job %s failed", job_id)
@@ -705,11 +718,19 @@ def stepped_inputs_save():
     """Persist the operator's clicks (fiducials / clicked_level / pose_levels) to the model
     dir's ``inputs.mat`` as they are picked — so reopening restores them without a full
     regenerate (config no longer holds clicks). Merges into the existing sidecar via
-    ``save_inputs`` (detections + sequence descriptor preserved). No-op until a sequence is
-    detected (clicks are made against the datum pose, so a sidecar normally already exists).
+    ``update_inputs`` (detections + sequence descriptor preserved; load, merge and write are
+    one locked step, so per-camera commits racing each other cannot drop one another).
+    No-op until a sequence is detected (clicks are made against the datum pose, so a
+    sidecar normally already exists).
 
-    Body: ``source_path_idx``, ``camera_pair`` (stereo) or ``camera`` (mono), and
-    ``cameras`` = ``{"<cam>": {fiducials, clicked_level, pose_levels}}`` plus ``stereo_config``.
+    The clicks are only valid for the detection set they were made on, so the request must
+    echo that set's ``detection_stamp`` (from the detect_sequence result or
+    restore_sequence). A mismatch — the sequence was re-detected meanwhile — or a sidecar
+    carrying no stamp returns ``{saved: false, stale: true, error}`` and writes nothing.
+
+    Body: ``source_path_idx``, ``camera_pair`` (stereo) or ``camera`` (mono),
+    ``detection_stamp``, and ``cameras`` = ``{"<cam>": {fiducials, clicked_level,
+    pose_levels}}`` plus ``stereo_config``.
     """
     data = request.get_json() or {}
     pair = data.get("camera_pair")
@@ -722,24 +743,46 @@ def stepped_inputs_save():
     except (ValueError, IndexError):
         return jsonify({"saved": False})
     model_dir = _sidecar_model_dir(source, cameras)
-    side = try_load_inputs(model_dir)
-    if side is None or not side.detections:
-        return jsonify(
-            {"saved": False}
-        )  # nothing detected yet — no sidecar to attach to
-    coords = dict(side.coords or {})
+    request_stamp = data.get("detection_stamp")
     cams_in = data.get("cameras") or {}
-    cams_out = dict(coords.get("cameras") or {})
-    for cam in cameras:
-        c = cams_in.get(str(cam))
-        if isinstance(c, dict):
-            cams_out[str(cam)] = (
-                c  # stored verbatim; restore handles partial/null picks
+    stereo_config = data.get("stereo_config")
+    # Why the mutate declined to write; read after update_inputs returns.
+    outcome: Dict[str, Any] = {"saved": False}
+
+    def _mutate(side: Optional[InputsRecord]) -> Optional[dict]:
+        if side is None or not side.detections:
+            return None  # nothing detected yet — no sidecar to attach to
+        if not side.detection_stamp:
+            outcome.update(
+                stale=True,
+                error=(
+                    "the saved detections carry no detection stamp (written before "
+                    "detection stamping existed) -- re-run detection"
+                ),
             )
-    coords["cameras"] = cams_out
-    if data.get("stereo_config"):
-        coords["stereo_config"] = str(data["stereo_config"])
-    save_inputs(model_dir, path_type="stepped", board_type="stepped", coords=coords)
+            return None
+        if request_stamp != side.detection_stamp:
+            outcome.update(
+                stale=True,
+                error=(
+                    "the detections changed since these clicks were made (the sequence "
+                    "was re-detected) -- reload the detected sequence and re-pick"
+                ),
+            )
+            return None
+        coords = dict(side.coords or {})
+        cams_out = dict(coords.get("cameras") or {})
+        for cam in cameras:
+            c = cams_in.get(str(cam))
+            if isinstance(c, dict):
+                cams_out[str(cam)] = c  # stored verbatim; restore handles partial picks
+        coords["cameras"] = cams_out
+        if stereo_config:
+            coords["stereo_config"] = str(stereo_config)
+        return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
+
+    if update_inputs(model_dir, _mutate) is None:
+        return jsonify(outcome)
     return jsonify({"saved": True})
 
 
@@ -779,6 +822,9 @@ def restore_sequence():
             "datum_detection": datum_detection,
             "clicks": coords.get("cameras") or {},
             "stereo_config": coords.get("stereo_config"),
+            # Echoed by inputs/save to prove the clicks belong to this detection set;
+            # null for a sidecar written before stamping (inputs/save then refuses).
+            "detection_stamp": side.detection_stamp or None,
         }
     )
 
@@ -1113,10 +1159,17 @@ def generate_model():
         specs[camera] = parsed
 
     # Persist the clicks + descriptor so a later session regenerates from the file alone.
+    # Merged over the coords read inside update_inputs' lock (not ``sidecar_coords``, read
+    # earlier) so a concurrent click commit or re-detect write is not overwritten.
+    spec_coords = _spec_to_coords(specs, use_cams, stereo, data)
+
+    def _merge_spec(prev: Optional[InputsRecord]) -> dict:
+        coords = dict(prev.coords) if (prev and prev.coords) else {}
+        coords.update(spec_coords)
+        return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
+
     try:
-        coords = dict(sidecar_coords) if sidecar_coords else {}
-        coords.update(_spec_to_coords(specs, use_cams, stereo, data))
-        save_inputs(model_dir, path_type="stepped", board_type="stepped", coords=coords)
+        update_inputs(model_dir, _merge_spec)
     except Exception as exc:
         logger.warning(
             "stepped generate: sidecar coords save failed (non-fatal): %s", exc

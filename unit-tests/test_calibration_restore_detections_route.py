@@ -292,3 +292,39 @@ def test_generate_after_restore_reuses_the_same_cached_detections(env):
     ).get_json()
 
     assert generated.get("detections_cached") is True, generated
+
+
+# ---------------------------------------------------------------------------
+# View count resolution
+# ---------------------------------------------------------------------------
+
+
+def test_restore_null_frame_total_auto_detects_count(env, monkeypatch):
+    """Blank n_views (``frame_total: null``) resolves exactly as detect_views does,
+    so the det_key matches and the stored set is restored."""
+    client, _base, _params = env
+    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+    drawn = _post_views(client, camera=1, frame_total=None)
+    assert drawn["persisted"] is True
+
+    restored = _restore(client, camera=1, frame_total=None)
+
+    assert restored["exists"] is True and restored["fresh"] is True
+    assert restored["by_camera"] == drawn["by_camera"]
+
+
+def test_restore_auto_detect_failure_reports_error(env, monkeypatch):
+    """No det_key can be built without a view count: nothing is restored and the
+    reason is returned, not swallowed."""
+    client, _base, _params = env
+    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+
+    def _boom(cam, cfg, src):
+        raise OSError("disk unplugged")
+
+    monkeypatch.setattr(V, "get_calibration_frame_count", _boom)
+
+    data = _restore(client, camera=1, frame_total=None)
+
+    assert data["exists"] is False
+    assert "disk unplugged" in data["error"]

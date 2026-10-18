@@ -349,3 +349,64 @@ def test_joint_detect_memory_cache_follows_source_path(tmp_path, monkeypatch):
 
     assert runs["n"] == 2, "the second source was served the first source's detections"
     assert not np.allclose(first[1][0].image_points, second[1][0].image_points)
+
+
+# ---------------------------------------------------------------------------
+# View count resolution: blank n_views reaches settings, then auto-detect
+# ---------------------------------------------------------------------------
+
+
+def test_detect_views_null_frame_total_uses_settings_n_views(env, monkeypatch):
+    """The GUI sends ``frame_total: null`` when n_views is left blank; the route must
+    then take the settings ``image.n_views`` rather than defaulting to one view."""
+    client, base, _params = env
+    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": 2}})
+
+    data = _post_views(client, camera=1, frame_total=None)
+
+    assert data["success"] is True
+    assert data["by_camera"]["1"]["n_detected"] == 2
+    side = INP.load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard"))
+    assert len(side.detections[1]) == 2
+
+
+def test_detect_views_null_frame_total_auto_detects_count(env, monkeypatch):
+    """No request value and no settings n_views: the directory auto-count decides."""
+    client, base, params = env
+    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+
+    data = _post_views(client, camera=1, frame_total=None)
+
+    assert data["success"] is True
+    assert data["by_camera"]["1"]["n_detected"] == N_VIEWS
+    side = INP.load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard"))
+    assert side.det_key == _mono_key(params)
+
+
+def test_detect_views_auto_detect_failure_is_visible(env, monkeypatch):
+    """A failing auto-count must surface as success:false naming the camera, never as
+    a silent zero-view detection."""
+    client, _base, _params = env
+    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+
+    def _boom(cam, cfg, src):
+        raise OSError("disk unplugged")
+
+    monkeypatch.setattr(V, "get_calibration_frame_count", _boom)
+
+    data = _post_views(client, camera=1, frame_total=None)
+
+    assert data["success"] is False
+    assert "camera 1" in data["error"] and "disk unplugged" in data["error"]
+
+
+def test_detect_views_auto_detect_zero_is_visible(env, monkeypatch):
+    """An auto-count of zero (camera directory missing or empty) is a failure too."""
+    client, _base, _params = env
+    monkeypatch.setattr(V, "_settings_idx", lambda idx: {"image": {"n_views": None}})
+    monkeypatch.setattr(V, "get_calibration_frame_count", lambda cam, cfg, src: 0)
+
+    data = _post_views(client, camera=1, frame_total=None)
+
+    assert data["success"] is False
+    assert "camera 1" in data["error"]

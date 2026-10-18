@@ -15,8 +15,9 @@ import logging
 import math
 import os
 import pickle
+import threading
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -45,6 +46,20 @@ logger = logging.getLogger(__name__)
 
 # Ensemble PIV stores its result under this name + struct (vs per-frame "piv_result").
 ENSEMBLE_FILE = "ensemble_result.mat"
+
+
+class ApplyCancelled(Exception):
+    """An apply run stopped by its cancel event before every frame was written.
+
+    ``written`` lists the output files that WERE written (they stay on disk), ``done``
+    counts the frames that finished, ``total`` the frames the run had planned.
+    """
+
+    def __init__(self, written: List[str], done: int, total: int) -> None:
+        super().__init__(f"apply cancelled after {done}/{total} frames")
+        self.written = written
+        self.done = done
+        self.total = total
 
 
 def require_positive_dt(dt, where: str) -> float:
@@ -651,6 +666,7 @@ def _run_frame_tasks(
     tasks: List[tuple],
     ctx: dict,
     progress_cb: Optional[Callable[[int, int], None]],
+    cancel_event: Optional[threading.Event] = None,
 ) -> List[str]:
     """Fan per-frame apply tasks out over a process pool sized by the worker knob.
 
@@ -658,6 +674,11 @@ def _run_frame_tasks(
     spin-up cost, and the parent keeps ``ctx`` explicit rather than mutating module
     state (which two concurrent apply jobs would race on). Skipped frames (task
     returns None) still advance progress. Output paths return in name order.
+
+    ``cancel_event`` is checked before each inline frame and as each pooled frame
+    completes. Once set, frames not yet started are cancelled, frames already running
+    in the pool are waited for (so nothing is written after this returns), and
+    ``ApplyCancelled`` is raised carrying the frames that did complete.
     """
     total = len(tasks)
     written: List[str] = []
@@ -667,6 +688,8 @@ def _run_frame_tasks(
     max_workers = get_max_workers(total)
     if max_workers == 1:
         for t in tasks:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ApplyCancelled(sorted(written), done, total)
             out = task_fn(*t, ctx=ctx)
             if out is not None:
                 written.append(out)
@@ -680,13 +703,29 @@ def _run_frame_tasks(
         initargs=(pickle.dumps(ctx),),
     ) as executor:
         futures = [executor.submit(task_fn, *t) for t in tasks]
+        collected: set[Future] = set()
         for future in as_completed(futures):
             out = future.result()
+            collected.add(future)
             if out is not None:
                 written.append(out)
             done += 1
             if progress_cb:
                 progress_cb(done, total)
+            if cancel_event is not None and cancel_event.is_set():
+                executor.shutdown(wait=True, cancel_futures=True)
+                # Frames already running when the cancel landed have now finished and
+                # written their output; count them. A failure among them still raises.
+                for f in futures:
+                    if f in collected or f.cancelled():
+                        continue
+                    out = f.result()
+                    if out is not None:
+                        written.append(out)
+                    done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+                raise ApplyCancelled(sorted(written), done, total)
     return sorted(written)
 
 
@@ -700,6 +739,7 @@ def calibrate_mono_run(
     tilt_y: float = 0.0,
     progress_cb: Optional[Callable[[int, int], None]] = None,
     vector_glob: str = "B*.mat",
+    cancel_event: Optional[threading.Event] = None,
 ) -> List[str]:
     """Apply a mono model to a whole run: coordinates.mat + every vector .mat.
 
@@ -707,6 +747,7 @@ def calibrate_mono_run(
     calibrated world-mm coordinates and m/s velocities to ``<out_dir>``. ``vector_glob``
     matches the per-frame vector files (default ``B*.mat``; PIV's ``vector_fmt`` may
     differ, e.g. ``[0-9]*.mat``). ``progress_cb(done, total)`` runs after each frame.
+    A set ``cancel_event`` stops the run between frames (see ``_run_frame_tasks``).
     """
     uncal_dir = Path(uncal_dir)
     out_dir = Path(out_dir)
@@ -745,7 +786,7 @@ def calibrate_mono_run(
         "tilt_y": tilt_y,
     }
     tasks = [(str(b), str(out_dir / b.name)) for b in bmats]
-    return _run_frame_tasks(_mono_frame_task, tasks, ctx, progress_cb)
+    return _run_frame_tasks(_mono_frame_task, tasks, ctx, progress_cb, cancel_event)
 
 
 def reconstruct_stereo_run(
@@ -761,13 +802,16 @@ def reconstruct_stereo_run(
     progress_cb: Optional[Callable[[int, int], None]] = None,
     vector_glob: str = "B*.mat",
     interpolator: str = "lanczos",
+    cancel_event: Optional[threading.Event] = None,
 ) -> List[str]:
     """3C reconstruction over a run: cam1 + cam2 uncalibrated -> stereo (U,V,W) m/s.
 
     Writes world coordinates (x,y mm) and 3C velocities (ux,uy,uz m/s) on a REGULAR
     world-mm grid spanning the two cameras' overlap (spacing = median world-space
     vector pitch — see ``regular_world_grid``) into ``out_dir``. Uses the final
-    populated pass unless ``pass_index`` set.
+    populated pass unless ``pass_index`` set. A set ``cancel_event`` stops the run
+    between frames (see ``_run_frame_tasks``); the frames already written keep their
+    ``coordinates.mat``.
     """
     from .stereo_model import regular_world_grid
 
@@ -815,10 +859,8 @@ def reconstruct_stereo_run(
     tasks = [
         (str(bmats1[name]), str(bmats2[name]), str(out_dir / name)) for name in common
     ]
-    written = _run_frame_tasks(_stereo_frame_task, tasks, ctx, progress_cb)
-    # The regular world grid is frame-invariant — write coordinates once, and only if
-    # at least one frame actually reconstructed (no frames -> no output).
-    if written:
+
+    def _write_coords() -> None:
         cs = _coords_struct({p: (gX, gY)}, p + 1)
         scipy.io.savemat(
             str(out_dir / "coordinates.mat"),
@@ -826,4 +868,19 @@ def reconstruct_stereo_run(
             oned_as="row",
             do_compression=True,
         )
+
+    # The regular world grid is frame-invariant — write coordinates once, and only if
+    # at least one frame actually reconstructed (no frames -> no output). A cancelled
+    # run still gets them for the frames it left on disk, so that partial output is
+    # readable rather than orphaned vectors with no grid.
+    try:
+        written = _run_frame_tasks(
+            _stereo_frame_task, tasks, ctx, progress_cb, cancel_event
+        )
+    except ApplyCancelled as exc:
+        if exc.written:
+            _write_coords()
+        raise
+    if written:
+        _write_coords()
     return written

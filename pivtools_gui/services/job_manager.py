@@ -139,6 +139,23 @@ class JobManager:
         """
         return self.update_job(job_id, status="failed", error=error)
 
+    def cancel_job(self, job_id: str, error: str, **final_data) -> bool:
+        """
+        Mark job as cancelled by the user.
+
+        Progress fields are left as last reported, so the status still says how
+        far the job got before it stopped.
+
+        Args:
+            job_id: Job ID to cancel
+            error: Message stating what the cancel left behind
+            **final_data: Final data to store with the job
+
+        Returns:
+            True if job exists and was marked cancelled, False otherwise
+        """
+        return self.update_job(job_id, status="cancelled", error=error, **final_data)
+
     def job_exists(self, job_id: str) -> bool:
         """Check if a job exists."""
         with self._lock:
@@ -165,7 +182,7 @@ class JobManager:
 
     def cleanup_old_jobs(self, max_age_seconds: float = 3600) -> int:
         """
-        Remove jobs older than max_age_seconds that are completed or failed.
+        Remove jobs older than max_age_seconds that are completed, failed or cancelled.
 
         Args:
             max_age_seconds: Maximum age in seconds (default 1 hour)
@@ -179,7 +196,7 @@ class JobManager:
         with self._lock:
             to_remove = []
             for job_id, job_data in self._jobs.items():
-                if job_data.get("status") in ("completed", "failed"):
+                if job_data.get("status") in ("completed", "failed", "cancelled"):
                     start_time = job_data.get("start_time", current_time)
                     if current_time - start_time > max_age_seconds:
                         to_remove.append(job_id)
