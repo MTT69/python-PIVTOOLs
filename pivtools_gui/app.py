@@ -25,6 +25,7 @@ from pivtools_core.config import Config, get_config, reload_config
 from pivtools_core.fft_sizes import BUILT_FFT_SIZES, SINGLE_MODE_WINDOW_SIZES
 from pivtools_core.image_handling.load_images import (
     create_piv_frame_reader,
+    is_colour_pair,
     load_mask_for_camera,
     read_pair,
 )
@@ -1088,7 +1089,7 @@ def validate_files():
                 try:
                     first_pair = read_pair(1, camera_path, camera_num, cfg)
                     first_frame_status = "exists"
-                    if first_pair.ndim > 2 and first_pair.shape[-1] > 1:
+                    if is_colour_pair(first_pair):
                         color_detected = True
                 except Exception as e:
                     first_frame_error = e

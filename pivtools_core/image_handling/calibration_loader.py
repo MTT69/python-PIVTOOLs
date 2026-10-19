@@ -643,10 +643,14 @@ def validate_calibration_images(
     )
     if image.get("n_views"):
         expected_count = int(image["n_views"])
-    elif cal_image_type in ("standard", "lavision_im7") and camera_path.is_dir():
+    elif cal_image_type in ("standard", "lavision_im7"):
         # Blank n_views: detection reads start..start+count-1 using the file count
         # (get_calibration_frame_count), so validate that same range. Checking only
         # the first file would pass files numbered from 0 with a 1-based start.
+        # A missing camera directory globs to nothing and gets expected 1; the
+        # generic validator then reports "Camera path does not exist" with the
+        # subfolder suggestion, which is the message the user needs (not an
+        # "expected_count is required" internal).
         expected_count = max(len(_glob_images(camera_path, format_to_glob(fmt))), 1)
     else:
         # Containers with blank n_views: the generic validator reads the real entry
