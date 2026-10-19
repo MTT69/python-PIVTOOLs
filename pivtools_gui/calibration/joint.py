@@ -75,7 +75,9 @@ _MIN_COMMON_CORE = 6  # dots a camera must see in ALL its views to use calibrate
 _MIN_VIEW_DOTS = 4  # dots a view must have to contribute a pose
 _MIN_RELEASE_RAYS = 2  # a dot is triangulable (released) only if seen by >= 2 rays
 _MAX_ALT_ITERS = 25
-_CONV_TOL_MM = 1e-4
+# Alternation stop: |d rms| between rounds below this many PIXELS (the test is on the
+# reprojection RMS, so the unit is px, not mm).
+_CONV_TOL_RMS_PX = 1e-4
 _CRIT = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 300, 1e-11)
 
 
@@ -84,9 +86,13 @@ class JointResult:
     """Output of the joint solve, in one shared world frame."""
 
     cameras: List[int]
-    models: Dict[int, CameraModel]  # per-camera K, dist, rig pose (world = datum board plane)
+    models: Dict[
+        int, CameraModel
+    ]  # per-camera K, dist, rig pose (world = datum board plane)
     board: Dict[Tuple[int, int], np.ndarray]  # global index -> released (x,y,z) mm
-    view_poses: Dict[ViewKey, Tuple[np.ndarray, np.ndarray]]  # (cam,view) -> rig_c o board_v
+    view_poses: Dict[
+        ViewKey, Tuple[np.ndarray, np.ndarray]
+    ]  # (cam,view) -> rig_c o board_v
     world_frame: WorldFrame
     spacing_mm: float
     board_release: str
@@ -175,7 +181,9 @@ def _gauge_anchor_rows(nominal: np.ndarray, candidate_rows: np.ndarray) -> List[
 # Rigid rig: pose(c, v) = rig_c o board_v
 # ---------------------------------------------------------------------------
 
-Pose = Tuple[np.ndarray, np.ndarray]  # (R (3,3), t (3,1)) world -> camera, X_cam = R X + t
+Pose = Tuple[
+    np.ndarray, np.ndarray
+]  # (R (3,3), t (3,1)) world -> camera, X_cam = R X + t
 
 
 def _compose(a: Pose, b: Pose) -> Pose:
@@ -197,7 +205,9 @@ def _mean_rotation(Rs: Sequence[np.ndarray]) -> np.ndarray:
     return U @ np.diag([1.0, 1.0, d]) @ Vt
 
 
-def _camera_components(view_keys: Sequence[ViewKey], cams: Sequence[int]) -> List[List[int]]:
+def _camera_components(
+    view_keys: Sequence[ViewKey], cams: Sequence[int]
+) -> List[List[int]]:
     """Connected components of the camera graph whose edges are shared views."""
     by_view: Dict[int, set] = {}
     for c, v in view_keys:
@@ -288,13 +298,17 @@ def _factorise_rig_seed(
         ts = []
         for p, v in best_shared:
             board_v = _compose(_invert(rig[p]), pose_by_view[(p, v)])
-            t_cv = np.asarray(pose_by_view[(best_c, v)][1], dtype=np.float64).reshape(3, 1)
+            t_cv = np.asarray(pose_by_view[(best_c, v)][1], dtype=np.float64).reshape(
+                3, 1
+            )
             ts.append(t_cv - R_c @ board_v[1])
         rig[best_c] = (R_c, np.mean(ts, axis=0))
 
     board_pose: Dict[int, Pose] = {}
     for v, members in cams_of.items():
-        samples = [_compose(_invert(rig[c]), pose_by_view[(c, v)]) for c in sorted(members)]
+        samples = [
+            _compose(_invert(rig[c]), pose_by_view[(c, v)]) for c in sorted(members)
+        ]
         R_v = _mean_rotation([s[0] for s in samples])
         board_pose[v] = (R_v, np.mean([s[1] for s in samples], axis=0))
 
@@ -427,8 +441,8 @@ class _JointBA:
         """
         rc, tc = self._rig(x, k[0])
         rv, tv = self._board_pose(x, k[1])
-        r3, t3, dr3dr1, dr3dt1, dr3dr2, dr3dt2, dt3dr1, dt3dt1, dt3dr2, dt3dt2 = cv2.composeRT(
-            rv, tv, rc, tc
+        r3, t3, dr3dr1, dr3dt1, dr3dr2, dr3dt2, dt3dr1, dt3dt1, dt3dr2, dt3dt2 = (
+            cv2.composeRT(rv, tv, rc, tc)
         )
         J_board = np.block([[dr3dr1, dr3dt1], [dt3dr1, dt3dt1]])
         J_rig = np.block([[dr3dr2, dr3dt2], [dt3dr2, dt3dt2]])
@@ -688,11 +702,19 @@ def _bootstrap_camera(
 # the synthetic above. They are detectors for the unambiguous corner, not a grade: absence of a
 # flag is not a certificate, and no GOOD verdict is ever printed.
 _TILT_FLOOR_DEG = 1.0  # a view tilted less than this has no usable azimuth
-_DEGENERATE_TILT_MEDIAN_DEG = 5.0  # median tilt below this: fx is not separable from standoff
-_DEGENERATE_AZIMUTH_SPREAD_DEG = 30.0  # tilt directions within this arc: one-axis tilting
+_DEGENERATE_TILT_MEDIAN_DEG = (
+    5.0  # median tilt below this: fx is not separable from standoff
+)
+_DEGENERATE_AZIMUTH_SPREAD_DEG = (
+    30.0  # tilt directions within this arc: one-axis tilting
+)
 _DEGENERATE_ANISOTROPY = 0.10  # sqrt(lam_min/lam_max) of the tilt-vector second moment
-_DEGENERATE_STANDOFF_FRACTION = 0.02  # (max-min)/median standoff below this: fixed distance
-_DEGENERATE_DEPTH_RATIO = 0.02  # in-view depth extent / standoff below this: no perspective
+_DEGENERATE_STANDOFF_FRACTION = (
+    0.02  # (max-min)/median standoff below this: fixed distance
+)
+_DEGENERATE_DEPTH_RATIO = (
+    0.02  # in-view depth extent / standoff below this: no perspective
+)
 # A view whose rms exceeds this multiple of its camera's median view rms is flagged. On the
 # reference set the settled views fit at 0.5-0.8 px and three views shot before the rig
 # settled fit at 1.1-1.6 px (validation/pre_change/README.md, 2026-08-26).
@@ -809,13 +831,17 @@ def pose_diversity(
             raise ValueError(f"pose_diversity: non-finite pose for view {k}")
         n_cam = R @ normal
         if n_cam[2] > 0:
-            n_cam = -n_cam  # face the camera: the optical axis is +z, a facing normal has z<0
+            n_cam = (
+                -n_cam
+            )  # face the camera: the optical axis is +z, a facing normal has z<0
         tilt[k[0]].append(float(np.degrees(np.arccos(np.clip(-n_cam[2], -1.0, 1.0)))))
         azim[k[0]].append(float(np.degrees(np.arctan2(n_cam[1], n_cam[0]))))
         z = (P[rows] @ R.T + t)[:, 2]
         z_med = float(np.median(z))
         if z_med <= 0:
-            raise ValueError(f"pose_diversity: view {k} places the board behind the camera")
+            raise ValueError(
+                f"pose_diversity: view {k} places the board behind the camera"
+            )
         standoff[k[0]].append(z_med)
         depth_ratio[k[0]].append(float((z.max() - z.min()) / z_med))
 
@@ -881,10 +907,13 @@ def pose_diversity(
             out[name][c] = v
 
     rms_med = {
-        c: float(np.median([r for k, r in view_rms_px.items() if k[0] == c])) for c in cams
+        c: float(np.median([r for k, r in view_rms_px.items() if k[0] == c]))
+        for c in cams
     }
     flagged = sorted(
-        k for k, r in view_rms_px.items() if r > _VIEW_RMS_OUTLIER_FACTOR * rms_med[k[0]]
+        k
+        for k, r in view_rms_px.items()
+        if r > _VIEW_RMS_OUTLIER_FACTOR * rms_med[k[0]]
     )
     return PoseDiversity(
         cameras=cams,
@@ -1035,15 +1064,22 @@ def format_pose_diversity(pd: PoseDiversity) -> str:
             )
         for name, text in (
             ("flag_low_tilt", "LOW TILT: fx is not separable from standoff"),
-            ("flag_single_azimuth", "single tilt axis: re-shoot with tilts in more directions"),
-            ("flag_constant_standoff", "constant standoff: the board never moved in depth"),
+            (
+                "flag_single_azimuth",
+                "single tilt axis: re-shoot with tilts in more directions",
+            ),
+            (
+                "flag_constant_standoff",
+                "constant standoff: the board never moved in depth",
+            ),
         ):
             if getattr(pd, name)[c]:
                 lines.append(f"        {name}: {text}")
         lines.append(f"        per-view rms median {pd.view_rms_median_px[c]:.3f} px")
     if pd.flagged_views:
         worst = ", ".join(
-            f"cam{c} view {v} ({pd.view_rms_px[(c, v)]:.2f} px)" for c, v in pd.flagged_views
+            f"cam{c} view {v} ({pd.view_rms_px[(c, v)]:.2f} px)"
+            for c, v in pd.flagged_views
         )
         lines.append(
             f"  WARNING views above {_VIEW_RMS_OUTLIER_FACTOR:g}x their camera's median rms: "
@@ -1079,7 +1115,6 @@ def run_joint(
     fix_aspect_ratio: bool = True,
     fix_k3: bool = True,
     max_iters: int = _MAX_ALT_ITERS,
-    tol_mm: float = _CONV_TOL_MM,
     run_bundle: bool = True,
 ) -> JointResult:
     """Solve the joint multi-camera shared-board calibration. See module docstring.
@@ -1282,7 +1317,7 @@ def run_joint(
 
             # gauge-invariant convergence: stop when reprojection RMS stops improving
             rms_now = _overall_rms(K_by_cam, dist_by_cam, pose_by_view, board)
-            if abs(prev_rms - rms_now) < 1e-4:
+            if abs(prev_rms - rms_now) < _CONV_TOL_RMS_PX:
                 converged = True
                 prev_rms = rms_now
                 break
@@ -1322,7 +1357,9 @@ def run_joint(
     info["effective_board_release"] = ba_mode
     ba = _JointBA(board, observations, cams, view_keys, free_rows, ba_mode, datum_view)
     x_seed = ba.pack(K_by_cam, dist_by_cam, rig_by_cam, board_pose_by_view, board)
-    rms_rigid_seed = ba.rms(x_seed)  # rigid, so >= rms_alt in general (lossy factorisation)
+    rms_rigid_seed = ba.rms(
+        x_seed
+    )  # rigid, so >= rms_alt in general (lossy factorisation)
     info["rms_rigid_seed"] = rms_rigid_seed
     x_out = x_seed
     rms_final = rms_rigid_seed

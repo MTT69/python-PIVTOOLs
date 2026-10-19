@@ -138,6 +138,11 @@ def _stereo_correspondence(
     ``MIN_SHARED_POINTS`` features are dropped. The object points are expressed in cam1's
     world frame — the single 3D frame ``cv2.stereoCalibrate`` needs.
     """
+    if len(det1) != len(det2):
+        raise ValueError(
+            f"stereo correspondence pairs views by index, but camera 1 has {len(det1)} "
+            f"views and camera 2 has {len(det2)} -- the two view lists must match"
+        )
     obj_out: list = []
     img1_out: list = []
     img2_out: list = []
@@ -256,7 +261,9 @@ class StereoCalibrator:
         gold-standard joint estimate), and camera 2's world pose is composed onto camera
         1's anchor. ``clicks2`` (dotboard) / inheritance (ChArUco global corner ids) only
         LABELS camera 2's features so correspondence can match the same physical dot — it
-        no longer fits camera 2's pose. Raises if the pair shares no board features (not
+        no longer fits camera 2's pose. A dotboard pair REQUIRES camera 2's frame
+        (``clicks2`` or ``frame_grid2``) and raises without it, because dotboard grid
+        indices are re-zeroed per view. Raises if the pair shares no board features (not
         same-side; transmission/opposite-face rigs belong to the stepped-board path).
         """
         mono = self._mono()
@@ -340,6 +347,16 @@ class StereoCalibrator:
         elif clicks2 is not None:
             wf2 = resolve_world_frame(datum2.grid_indices, datum2.image_points, clicks2)
             wf2.origin_mm = wf.origin_mm
+        elif self.board_type == "dotboard":
+            # Dotboard grid indices are re-zeroed per view from whatever dots each camera
+            # sees, so cam1's frame applied to cam2's indices labels a different physical
+            # dot whenever the two cameras see different extents of the board. Refuse
+            # rather than correspond the wrong dots.
+            raise ValueError(
+                f"stereo dotboard needs world-frame picks on camera {cam2}: dotboard grid "
+                f"indices are re-zeroed per view, so camera {cam2}'s origin/+X/+Y must mark "
+                f"the same physical dots as camera {cam1}'s"
+            )
         else:
             wf2 = wf  # ChArUco: globally-consistent corner ids share cam1's frame
 

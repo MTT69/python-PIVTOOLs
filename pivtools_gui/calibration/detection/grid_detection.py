@@ -780,7 +780,9 @@ _OUTLIER_FIT_MIN_DOTS = 20
 # from an older detector are re-detected instead of silently reused by the next solve.
 #   1 -- 2026-09-01: outlier gate measures against a homography + radial distortion fit
 #        (was a RANSAC homography, which amputated the periphery of distorted views).
-DETECTOR_VERSION = 1
+#   2 -- 2026-10-18 (5425572): the flat-field dot-diameter estimate is capped, not floored,
+#        which changes the blob kernel and therefore the points on large/defocused dots.
+DETECTOR_VERSION = 2
 
 
 def _grid_model_points(params: np.ndarray, src: np.ndarray, scale: float) -> np.ndarray:

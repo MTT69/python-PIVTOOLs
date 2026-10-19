@@ -29,6 +29,7 @@ from ..calibration_settings import default_settings, try_load_settings
 from ..config import Config
 from .load_images import read_single_frame
 from .path_utils import (
+    _glob_images,
     build_calibration_camera_path,
     cine_extension_mismatch,
     format_to_glob,
@@ -95,6 +96,9 @@ from .readers.set_reader import get_set_entry_count
 # ---------------------------------------------------------------------------
 
 _FRAME_CACHE_MAX_ENTRIES = 64
+
+# Single-file containers: entries are numbered by the reader, never by filename.
+_CONTAINER_TYPES = ("lavision_set", "cine")
 
 
 def _frame_cache_budget_bytes() -> int:
@@ -443,7 +447,22 @@ def read_calibration_frame_at(
     would only retain dead arrays after that list is dropped.
 
     A cached array is shared between callers. Copy it before writing.
+
+    Raises
+    ------
+    ValueError
+        ``zero_based_indexing`` is True for a container (``.set`` / ``.cine``).
+        Container entries are numbered by the reader (``.set`` from 1, ``.cine``
+        through its ``FirstImageNo``), not by filenames, so the flag has nothing
+        to shift; refusing it keeps a 0/1 setting from being silently ignored.
     """
+    if zero_based_indexing and image_type in _CONTAINER_TYPES:
+        raise ValueError(
+            f"image.zero_based_indexing is set, but {image_type} calibration "
+            "sources are containers whose entries the reader numbers itself "
+            "(there are no numbered files to shift). Set the First Frame "
+            "Number back to 1 (image.zero_based_indexing: false) for this source."
+        )
     # Pure path arithmetic (no I/O), so building the cache key below is free.
     file_path = resolve_file_path(
         camera_path=camera_path,
@@ -628,10 +647,11 @@ def validate_calibration_images(
         # Blank n_views: detection reads start..start+count-1 using the file count
         # (get_calibration_frame_count), so validate that same range. Checking only
         # the first file would pass files numbered from 0 with a 1-based start.
-        expected_count = max(len(list(camera_path.glob(format_to_glob(fmt)))), 1)
+        expected_count = max(len(_glob_images(camera_path, format_to_glob(fmt))), 1)
     else:
-        # Containers: the generic validator reads the real entry count itself.
-        expected_count = 1
+        # Containers with blank n_views: the generic validator reads the real entry
+        # count itself and has no user count to hold it to.
+        expected_count = None
 
     # Create a frame reader function for preview generation
     def read_frame(idx: int) -> np.ndarray:
@@ -745,7 +765,7 @@ def get_calibration_frame_count(
     else:
         # Standard formats and IM7 both count matching files.
         pattern = format_to_glob(fmt)
-        found = FrameCount(len(list(camera_path.glob(pattern))), "files")
+        found = FrameCount(len(_glob_images(camera_path, pattern)), "files")
         where = f"'{pattern}' in {camera_path}"
 
     if found.n <= 0:

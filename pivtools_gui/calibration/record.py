@@ -198,8 +198,8 @@ class JointRecord:
     # Pose-diversity diagnostic as the flat parallel-array dict from
     # ``joint.pose_diversity_to_meta`` (inflate with ``joint.pose_diversity_from_meta``).
     # A solve output, so a typed field rather than ``board_meta`` (which leaks into every
-    # per-camera MonoRecord). ``{}`` means the record predates the diagnostic; never
-    # default a missing field inside a present block.
+    # per-camera MonoRecord). Always written; a record without the variable is stale and
+    # ``load_joint`` raises. Never default a missing field inside a present block.
     pose_diversity: Dict[str, Any] = field(default_factory=dict)
     model_type: str = "pinhole"
     contract_version: int = CONTRACT_VERSION
@@ -268,22 +268,28 @@ def _world_frame_to_dict(wf: WorldFrame) -> Dict[str, Any]:
     }
 
 
-def _world_frame_from(obj) -> WorldFrame:
+def _world_frame_from(obj, path: Path) -> WorldFrame:
+    """Inverse of ``_world_frame_to_dict``. Every field is always written, so a missing one
+    raises (stale file); an empty array field is the writer's encoding of None."""
+
     def arr_or_none(v):
         a = np.asarray(v, dtype=np.float64).reshape(-1)
         return None if a.size == 0 else a
 
+    def req(name):
+        return _require_attr(obj, name, path, "world_frame")
+
     return WorldFrame(
-        mode=str(_scalar(getattr(obj, "mode", "default"))),
-        origin_px=arr_or_none(getattr(obj, "origin_px", [])),
-        x_axis_px=arr_or_none(getattr(obj, "x_axis_px", [])),
-        y_axis_px=arr_or_none(getattr(obj, "y_axis_px", [])),
-        swap_axes=bool(int(_scalar(getattr(obj, "swap_axes", 0)))),
-        col_sign=int(_scalar(getattr(obj, "col_sign", 1))),
-        row_sign=int(_scalar(getattr(obj, "row_sign", 1))),
-        origin_grid=arr_or_none(getattr(obj, "origin_grid", [])),
-        origin_mm=arr_or_none(getattr(obj, "origin_mm", [])),
-        world_offset_mm=arr_or_none(getattr(obj, "world_offset_mm", [])),
+        mode=str(_scalar(req("mode"))),
+        origin_px=arr_or_none(req("origin_px")),
+        x_axis_px=arr_or_none(req("x_axis_px")),
+        y_axis_px=arr_or_none(req("y_axis_px")),
+        swap_axes=bool(int(_scalar(req("swap_axes")))),
+        col_sign=int(_scalar(req("col_sign"))),
+        row_sign=int(_scalar(req("row_sign"))),
+        origin_grid=arr_or_none(req("origin_grid")),
+        origin_mm=arr_or_none(req("origin_mm")),
+        world_offset_mm=arr_or_none(req("world_offset_mm")),
     )
 
 
@@ -425,6 +431,32 @@ def _scalar(v):
     return v
 
 
+def _missing_field(path: Path, key: str) -> ValueError:
+    """The error every forward-only reader raises for an always-written field that is absent."""
+    return ValueError(
+        f"{path}: missing field {key!r} — written by an older build; regenerate it"
+    )
+
+
+def _require(mat: Dict[str, Any], key: str, path: Path) -> Any:
+    """``mat[key]`` for a top-level variable every current writer emits.
+
+    A missing variable means the file predates the field: raise naming the file and the
+    field instead of reading a default (forward-only, no silent fallback).
+    """
+    if key not in mat:
+        raise _missing_field(path, key)
+    return mat[key]
+
+
+def _require_attr(obj: Any, name: str, path: Path, block: str) -> Any:
+    """``obj.name`` for a struct field every current writer emits; ``block`` names the
+    enclosing variable so the error reads ``'world_frame.origin_px'``."""
+    if name not in getattr(obj, "_fieldnames", ()):
+        raise _missing_field(path, f"{block}.{name}")
+    return getattr(obj, name)
+
+
 def _meta_to_dict(meta: Dict[str, Any]) -> Dict[str, Any]:
     """Mat-safe meta: strings pass through, dicts nest as structs, rest -> ndarray."""
     out: Dict[str, Any] = {}
@@ -443,8 +475,6 @@ def _meta_from(obj) -> Dict[str, Any]:
     recurses to a nested dict; every other field is coerced by ``_scalar``. Note
     ``squeeze_me`` collapses size-1 arrays to scalars, so single-view diagnostics
     return as scalars — callers must ``np.asarray(...).reshape(-1)`` before indexing."""
-    if obj is None:
-        return {}
     out: Dict[str, Any] = {}
     for name in getattr(obj, "_fieldnames", []):
         if name == "_empty":
@@ -661,11 +691,11 @@ def load_mono(path: Path, model_type: Optional[str] = None) -> MonoRecord:
         camera=int(_scalar(mat["camera"])),
         board_type=str(_scalar(mat["board_type"])),
         camera_model=model,
-        world_frame=_world_frame_from(mat["world_frame"]),
+        world_frame=_world_frame_from(_require(mat, "world_frame", path), path),
         per_view_rms=list(
             np.asarray(mat["per_view_rms"], dtype=np.float64).reshape(-1)
         ),
-        board_meta=_meta_from(mat.get("board_meta")),
+        board_meta=_meta_from(_require(mat, "board_meta", path)),
         contract_version=_check_contract(mat, path),
     )
 
@@ -746,10 +776,26 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
             f"unknown stereo model_type tag {model_type!r} "
             f"(known for stereo: {', '.join(STEREO_MODEL_TYPES)})"
         )
-    R_raw = np.asarray(mat["R_stereo"], dtype=np.float64).reshape(-1)
-    T_raw = np.asarray(mat["T_stereo"], dtype=np.float64).reshape(-1)
-    R_stereo = R_raw.reshape(3, 3) if R_raw.size == 9 else None
-    T_stereo = T_raw.reshape(3, 1) if T_raw.size == 3 else None
+    R_raw = np.asarray(_require(mat, "R_stereo", path), dtype=np.float64).reshape(-1)
+    T_raw = np.asarray(_require(mat, "T_stereo", path), dtype=np.float64).reshape(-1)
+    if model_type == "polynomial3d":
+        # A polynomial pair has no extrinsic pose; the writer stores empty R/T.
+        for name, raw in (("R_stereo", R_raw), ("T_stereo", T_raw)):
+            if raw.size:
+                raise ValueError(
+                    f"{path}: {name} has size {raw.size} but a polynomial3d pair stores "
+                    "no pose (size 0) — not a record this build wrote; regenerate it"
+                )
+        R_stereo = T_stereo = None
+    else:
+        for name, raw, want in (("R_stereo", R_raw, 9), ("T_stereo", T_raw, 3)):
+            if raw.size != want:
+                raise ValueError(
+                    f"{path}: pinhole {name} has size {raw.size}, expected {want} — "
+                    "stale or damaged record; regenerate it"
+                )
+        R_stereo = R_raw.reshape(3, 3)
+        T_stereo = T_raw.reshape(3, 1)
     return StereoRecord(
         cam1=int(_scalar(mat["cam1"])),
         cam2=int(_scalar(mat["cam2"])),
@@ -758,15 +804,16 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
         model2=model2,
         R_stereo=R_stereo,
         T_stereo=T_stereo,
-        world_frame=_world_frame_from(mat["world_frame"]),
+        world_frame=_world_frame_from(_require(mat, "world_frame", path), path),
         per_view_rms1=list(
             np.asarray(mat["per_view_rms1"], dtype=np.float64).reshape(-1)
         ),
         per_view_rms2=list(
             np.asarray(mat["per_view_rms2"], dtype=np.float64).reshape(-1)
         ),
-        board_meta=_meta_from(mat.get("board_meta")),
-        self_cal=_meta_from(mat.get("self_cal")),
+        board_meta=_meta_from(_require(mat, "board_meta", path)),
+        # Always written; an empty block means no self-calibration was run.
+        self_cal=_meta_from(_require(mat, "self_cal", path)),
         contract_version=_check_contract(mat, path),
     )
 
@@ -851,7 +898,9 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
     for obj in cm_list:
         c = int(_scalar(obj.camera))
         models[c] = _camera_from(obj)
-        per_cam_rms[c] = float(_scalar(getattr(obj, "cam_rms", models[c].rms)))
+        per_cam_rms[c] = float(
+            _scalar(_require_attr(obj, "cam_rms", path, "camera_models"))
+        )
     idx = np.asarray(mat["board_index"], dtype=np.int64).reshape(-1, 2)
     xyz = np.asarray(mat["board_xyz"], dtype=np.float64).reshape(-1, 3)
     board = {(int(i[0]), int(i[1])): xyz[n] for n, i in enumerate(idx)}
@@ -860,13 +909,13 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
         board_type=str(_scalar(mat["board_type"])),
         models=models,
         board=board,
-        world_frame=_world_frame_from(mat["world_frame"]),
+        world_frame=_world_frame_from(_require(mat, "world_frame", path), path),
         spacing_mm=float(_scalar(mat["spacing_mm"])),
         board_release=str(_scalar(mat["board_release"])),
         per_camera_rms=per_cam_rms,
         rms_px=float(_scalar(mat["rms_px"])),
-        board_meta=_meta_from(mat.get("board_meta")),
-        pose_diversity=_meta_from(mat.get("pose_diversity")),
+        board_meta=_meta_from(_require(mat, "board_meta", path)),
+        pose_diversity=_meta_from(_require(mat, "pose_diversity", path)),
         model_type=tag,
         contract_version=_check_contract(mat, path),
     )
@@ -938,7 +987,7 @@ def mono_record_for_camera(
                 board_type=jr.board_type,
                 camera_model=jr.models[camera],
                 world_frame=jr.world_frame,
-                per_view_rms=[jr.per_camera_rms.get(camera, jr.models[camera].rms)],
+                per_view_rms=[jr.per_camera_rms[camera]],
                 board_meta={**jr.board_meta, "spacing_mm": jr.spacing_mm, "joint": 1},
             )
     return load_mono(model_dir, model_type)

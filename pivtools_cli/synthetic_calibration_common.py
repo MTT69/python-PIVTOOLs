@@ -1,8 +1,11 @@
 """
 Shared utilities for synthetic calibration board generation.
 
-Used by generate_synthetic_charuco.py and generate_synthetic_stereo.py.
+Used by the ChArUco, stereo, dotboard and stepped generators and by the stepped
+unit tests.
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -113,3 +116,296 @@ def save_ground_truth(
         tvecs=tvecs,
         **extra_arrays,
     )
+
+
+# ---------------------------------------------------------------------------
+# Anti-aliased dot rendering (shared by the dotboard and stepped generators
+# and by the stepped unit tests)
+# ---------------------------------------------------------------------------
+
+DOT_OVERSAMPLE = 4  # hi-res render factor before INTER_AREA downsampling
+DOT_SHIFT_BITS = 4  # cv2.circle fractional bits (1/16 hi-res pixel)
+STRIP_HEIGHT_PX = 256  # output rows rendered per strip (bounds peak memory)
+
+
+def adaptive_dot_radii(
+    points_px: np.ndarray, fraction: float = 0.22, min_radius_px: float = 1.5
+) -> np.ndarray:
+    """Per-dot radius proportional to the local nearest-neighbour distance.
+
+    Keeps dots from merging under perspective (neighbours get closer, radius
+    shrinks with them).  Radii are floats -- never rounded -- so the rendered
+    disc area follows the geometry continuously.
+    """
+    from scipy.spatial import cKDTree
+
+    nn = cKDTree(points_px).query(points_px, k=2)[0][:, 1]
+    return np.maximum(fraction * nn, min_radius_px)
+
+
+def render_dots(
+    points_px: np.ndarray,
+    radii_px: np.ndarray,
+    size: tuple,
+    foreground: int = 255,
+    background: int = 0,
+    oversample: int = DOT_OVERSAMPLE,
+) -> np.ndarray:
+    """Render anti-aliased filled discs at exact sub-pixel centres.
+
+    Discs are drawn at ``oversample`` x resolution with ``cv2.circle(shift=)``
+    fixed-point centres and radii (no integer rounding of either), then reduced
+    with ``INTER_AREA``.  Pixel-centre convention matches ``cv2.projectPoints``
+    (pixel ``i`` is centred on coordinate ``i``), so a disc centred on
+    ``points_px[k]`` has its image centroid at ``points_px[k]``.
+
+    The frame is rendered in horizontal strips so a 25 MP image never needs the
+    400 MP hi-res buffer.
+
+    Args:
+        points_px: (N, 2) centres, x then y, in output pixels.
+        radii_px: (N,) radii in output pixels.
+        size: (width, height) of the output.
+        foreground: grey level inside the discs (0-255).
+        background: grey level elsewhere (0-255).
+        oversample: hi-res factor.
+
+    Returns:
+        (height, width) uint8 image.
+    """
+    W, H = int(size[0]), int(size[1])
+    pts = np.asarray(points_px, dtype=np.float64).reshape(-1, 2)
+    rad = np.asarray(radii_px, dtype=np.float64).reshape(-1)
+    if pts.shape[0] != rad.shape[0]:
+        raise ValueError(f"{pts.shape[0]} centres but {rad.shape[0]} radii")
+    scale = 1 << DOT_SHIFT_BITS
+    img = np.empty((H, W), np.uint8)
+    for y0 in range(0, H, STRIP_HEIGHT_PX):
+        y1 = min(y0 + STRIP_HEIGHT_PX, H)
+        strip = np.full(((y1 - y0) * oversample, W * oversample), 0, np.uint8)
+        # discs whose vertical extent touches [y0 - 0.5, y1 - 0.5]
+        sel = np.nonzero((pts[:, 1] + rad >= y0 - 0.5) & (pts[:, 1] - rad <= y1 - 0.5))[
+            0
+        ]
+        for k in sel:
+            cx = (pts[k, 0] + 0.5) * oversample - 0.5
+            cy = (pts[k, 1] - y0 + 0.5) * oversample - 0.5
+            cv2.circle(
+                strip,
+                (int(round(cx * scale)), int(round(cy * scale))),
+                int(round(rad[k] * oversample * scale)),
+                255,
+                -1,
+                cv2.LINE_8,
+                DOT_SHIFT_BITS,
+            )
+        cover = cv2.resize(strip, (W, y1 - y0), interpolation=cv2.INTER_AREA)
+        img[y0:y1] = np.round(
+            background + (foreground - background) * (cover.astype(np.float64) / 255.0)
+        ).astype(np.uint8)
+    return img
+
+
+def make_centred_poses(
+    n_views: int,
+    board_centre_3d: np.ndarray,
+    fx: float,
+    fit_px: float,
+    board_width_3d: float,
+    fill: float = 0.70,
+    max_tilt: float = 0.15,
+    seed: int = 42,
+) -> list:
+    """Poses with the board centroid on the optical axis at a common depth.
+
+    View 0 is frontal.  Every view shares one depth ``Z`` (board width fills
+    ``fill * fit_px`` pixels when frontal) so a rig built from these poses has
+    a pose-independent ``T_stereo``.  Unlike ``make_poses`` the translation is
+    ``[0, 0, Z] - R @ centre`` so a tilted board stays centred.
+
+    Returns a list of ``(rvec, tvec)`` (float64, shape (3,)).
+    """
+    rng = np.random.default_rng(seed)
+    Z = fx * board_width_3d / (fill * fit_px)
+    poses = []
+    for i in range(n_views):
+        if i == 0:
+            rvec = np.zeros(3)
+        else:
+            rvec = np.array(
+                [
+                    rng.uniform(-max_tilt, max_tilt),
+                    rng.uniform(-max_tilt, max_tilt),
+                    rng.uniform(-0.10, 0.10),
+                ]
+            )
+        R, _ = cv2.Rodrigues(rvec)
+        tvec = np.array([0.0, 0.0, Z]) - R @ np.asarray(board_centre_3d, np.float64)
+        poses.append((rvec, tvec))
+    return poses
+
+
+def rig_from_centroid_rotation(R_stereo: np.ndarray, depth: float) -> np.ndarray:
+    """T_stereo for a camera 2 obtained by rotating cam 1 about the board centroid.
+
+    The centroid sits at ``[0, 0, depth]`` in the cam-1 frame, so
+    ``T = (I - R) @ [0, 0, depth]`` keeps it on cam 2's optical axis too.
+    """
+    return (np.eye(3) - R_stereo) @ np.array([0.0, 0.0, depth])
+
+
+def compose_second_camera(poses_cam1: list, R_stereo: np.ndarray, T_stereo) -> list:
+    """Cam-2 poses for a rigid rig: R2 = R_stereo R1, t2 = R_stereo t1 + T_stereo."""
+    T = np.asarray(T_stereo, np.float64).reshape(3)
+    out = []
+    for rvec1, tvec1 in poses_cam1:
+        R1, _ = cv2.Rodrigues(np.asarray(rvec1, np.float64))
+        rvec2, _ = cv2.Rodrigues(R_stereo @ R1)
+        out.append((rvec2.reshape(3), R_stereo @ np.asarray(tvec1).reshape(3) + T))
+    return out
+
+
+def project_points(
+    obj_pts: np.ndarray, rvec: np.ndarray, tvec: np.ndarray, K: np.ndarray
+) -> np.ndarray:
+    """Distortion-free projection of (N, 3) points; returns (N, 2) pixels."""
+    return cv2.projectPoints(
+        np.asarray(obj_pts, np.float64),
+        np.asarray(rvec, np.float64),
+        np.asarray(tvec, np.float64),
+        K,
+        np.zeros(5),
+    )[0].reshape(-1, 2)
+
+
+def fully_inside(
+    points_px: np.ndarray, radii_px: np.ndarray, size: tuple, margin_px: float = 1.0
+) -> np.ndarray:
+    """True where a disc lies wholly inside the frame by at least ``margin_px``.
+
+    The detector drops any blob touching the frame edge, so these are the dots
+    it is entitled to find.
+    """
+    W, H = size
+    return (
+        (points_px[:, 0] - radii_px >= margin_px)
+        & (points_px[:, 0] + radii_px <= W - 1 - margin_px)
+        & (points_px[:, 1] - radii_px >= margin_px)
+        & (points_px[:, 1] + radii_px <= H - 1 - margin_px)
+    )
+
+
+def save_overview_figure(
+    image: np.ndarray,
+    gt_points_px: np.ndarray,
+    out_path: Path,
+    title: str,
+    detected_px: np.ndarray | None = None,
+) -> None:
+    """Datum-view overview: image with ground-truth dots (and detections) overlaid."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.imshow(image, cmap="gray", vmin=0, vmax=255)
+    ax.plot(
+        gt_points_px[:, 0],
+        gt_points_px[:, 1],
+        "o",
+        mfc="none",
+        mec="tab:red",
+        ms=7,
+        mew=0.8,
+        label=f"ground truth ({len(gt_points_px)})",
+    )
+    if detected_px is not None:
+        ax.plot(
+            detected_px[:, 0],
+            detected_px[:, 1],
+            "+",
+            color="tab:cyan",
+            ms=6,
+            label=f"detected ({len(detected_px)})",
+        )
+    ax.set_xlabel("x (px)")
+    ax.set_ylabel("y (px)")
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# LaVision 309-15-3 stepped plate
+# ---------------------------------------------------------------------------
+
+STEPPED_SPACING_MM = 15.0
+STEPPED_STEP_MM = 3.0
+STEPPED_DOT_DIAMETER_MM = 3.0
+STEPPED_PEAK_SHAPE = (21, 21)  # (cols, rows) of the z = 0 level
+STEPPED_TROUGH_SHAPE = (20, 20)  # (cols, rows) of the z = -step level
+
+
+def stepped_board_points_mm(
+    peak_shape: tuple = STEPPED_PEAK_SHAPE,
+    trough_shape: tuple = STEPPED_TROUGH_SHAPE,
+    spacing_mm: float = STEPPED_SPACING_MM,
+    step_mm: float = STEPPED_STEP_MM,
+) -> tuple:
+    """Two-level stepped plate dot centres in mm (board frame, row-major).
+
+    Peak dots sit on the integer grid at z = 0; trough dots on the
+    half-spacing-offset grid at z = -step (LaVision 309-15-3 layout: 21 x 21
+    over 20 x 20, 15 mm pitch, 3 mm step).  Peak (col 0, row 0) is the origin.
+
+    Returns (peak (Np, 3), trough (Nt, 3)).
+    """
+    off = spacing_mm / 2.0
+    peak = [
+        [c * spacing_mm, r * spacing_mm, 0.0]
+        for r in range(peak_shape[1])
+        for c in range(peak_shape[0])
+    ]
+    trough = [
+        [c * spacing_mm + off, r * spacing_mm + off, -step_mm]
+        for r in range(trough_shape[1])
+        for c in range(trough_shape[0])
+    ]
+    return np.array(peak, np.float64), np.array(trough, np.float64)
+
+
+def render_stepped_view(
+    peak_mm: np.ndarray,
+    trough_mm: np.ndarray,
+    rvec: np.ndarray,
+    tvec: np.ndarray,
+    K: np.ndarray,
+    size: tuple,
+    dot_diameter_mm: float = STEPPED_DOT_DIAMETER_MM,
+    radius_fraction: float | None = None,
+) -> tuple:
+    """Project both levels through one pose and render anti-aliased white dots.
+
+    Dot radius is either physical (``dot_diameter_mm`` / 2 scaled by each dot's
+    own depth, ``radius_fraction=None``) or ``radius_fraction`` x the local
+    nearest-neighbour pixel distance (the fraction the legacy test renderers
+    used, kept so their detection margins are unchanged).
+
+    Returns (image uint8 (H, W), points_px (Np + Nt, 2) peak first, radii_px (Np + Nt,)).
+    """
+    allpts = np.vstack([peak_mm, trough_mm])
+    R, _ = cv2.Rodrigues(np.asarray(rvec, np.float64))
+    px = project_points(allpts, rvec, tvec, K)
+    if radius_fraction is None:
+        depth = np.einsum("j,nj->n", R[2], allpts) + float(
+            np.asarray(tvec).reshape(3)[2]
+        )
+        radii = 0.5 * dot_diameter_mm * float(K[0, 0]) / depth
+    else:
+        radii = adaptive_dot_radii(px, radius_fraction, min_radius_px=2.0)
+    return render_dots(px, radii, size), px, radii

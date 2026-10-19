@@ -67,9 +67,11 @@ def test_set_validation_surfaces_real_count(tmp_path, monkeypatch):
         read_frame_fn=_fake_frame,
     )
 
-    assert result["valid"] is True
-    # The real, honest count — never the sentinel, never the user's 2100.
+    # The real, honest count — never the sentinel, never the user's 2100. Holding
+    # fewer entries than requested fails validation (Calibration P4 brief 1c item 3).
     assert result["found_count"] == 750
+    assert result["valid"] is False
+    assert result["error"] == "found 750 entries, expected 2100"
 
 
 def test_set_count_read_failure_is_a_visible_error(tmp_path, monkeypatch):

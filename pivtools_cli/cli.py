@@ -605,7 +605,7 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   image_type: standard
-  use_camera_subfolders: false
+  use_camera_subfolders: false   # IM7 only: one single-camera .im7 per Cam{N} folder
 batches:
   size: 10
 logging:
@@ -802,8 +802,7 @@ calibration:
   # <source>/calibration/settings.yaml — seed one with
   # `pivtools-cli init-settings` or via the GUI calibration tab.
   calibration_sources: []
-  source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
-  source_idx: 0
+  source_idx: 0              # which calibration_sources entry the calibration commands use
   # Which saved model downstream code should use. Stored values are the GUI tab
   # ids: charuco | dotboard | scale_factor | stereo_charuco | stereo_dotboard |
   # stereo_stepped. The three stereo_* values make Config.is_stereo_setup true.
@@ -914,6 +913,10 @@ def ensemble_command(args):
         sys.exit(1)
 
 
+# Environment switch equivalent to ``--debug``: keep the traceback on a reported error.
+DEBUG_ENV_VAR = "PIVTOOLS_DEBUG"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="PIVTOOLs - Particle Image Velocimetry Tools", prog="pivtools-cli"
@@ -921,6 +924,11 @@ def main():
     import logging
 
     logging.info("Starting PIVTOOLs CLI")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=f"show the full traceback on error (also {DEBUG_ENV_VAR}=1)",
+    )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # init command
@@ -1173,7 +1181,17 @@ def main():
         parser.print_help()
         return
 
-    args.func(args)
+    from pivtools_gui.calibration.inputs_store import InputsCorrupt, InputsReadError
+
+    try:
+        args.func(args)
+    except (ValueError, FileNotFoundError, InputsCorrupt, InputsReadError) as exc:
+        # Expected user-facing failures (a missing key, a missing file, a damaged
+        # sidecar) carry their own actionable message; a traceback only buries it.
+        if args.debug or os.environ.get(DEBUG_ENV_VAR) == "1":
+            raise
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ Every source owns its root exclusively: several containers in one folder never
 share settings, model records or ``inputs.mat``.
 
 The persisted YAML config keeps only the pointer (``calibration_sources``,
-``source``, ``source_idx``, ``active``); everything else about a calibration
+``source_idx``, ``active``); everything else about a calibration
 lives with the calibration data so it can never point at the wrong source.
 
 Contract
@@ -98,7 +98,12 @@ _DEFAULTS: Dict[str, Any] = {
         "image_format": None,  # REQUIRED — no default, missing => raise
         "image_type": None,  # REQUIRED — standard | cine | lavision_set | lavision_im7
         "n_views": None,  # optional; frame-count auto-detect is the fallback
+        # Refused for container types (.set/.cine): the reader numbers entries.
         "zero_based_indexing": False,
+        # IM7 ONLY: True = one single-camera .im7 per Cam{N} folder. Standard
+        # formats always use Cam{N} (or camera_subfolders) at camera_count > 1
+        # and containers never use a subfolder — the PIV rule,
+        # path_utils.camera_subfolder_name.
         "use_camera_subfolders": False,
         "camera_subfolders": [],
     },
@@ -110,9 +115,9 @@ _DEFAULTS: Dict[str, Any] = {
         "interpolator": "lanczos",
         "piv_type": "instantaneous",
     },
-    # use_release_object is deliberately NOT templated: its default is
-    # context-dependent (stereo True, mono False) and a stored value would
-    # override both. It is honoured when a user sets it explicitly.
+    # use_release_object is deliberately NOT templated: an absent key reads
+    # False for mono and stereo alike (fit_knobs below, shared by the GUI
+    # routes and the CLI). It is honoured when a user sets it explicitly.
     "fit": {
         "distortion_model": "standard",
         "fix_aspect_ratio": True,
@@ -182,6 +187,30 @@ _DEFAULTS: Dict[str, Any] = {
 def default_settings() -> Dict[str, Any]:
     """A fresh deep copy of the defaults template."""
     return copy.deepcopy(_DEFAULTS)
+
+
+def fit_knobs(settings: Dict[str, Any], board: str) -> Dict[str, Any]:
+    """The calibrator fit knobs for ``board``, read from a settings dict.
+
+    The single reader shared by the GUI generate routes and the calibration CLI,
+    so a sidecar calibrates identically through either. ``distortion_model``,
+    ``fix_aspect_ratio`` and ``use_release_object`` come from the ``fit`` block,
+    ``fix_k2`` from ``methods.<board>``. The two untemplated knobs
+    (``use_release_object``, ``fix_k2``) read False when absent, for mono and
+    stereo alike.
+
+    Returns plain values (``distortion_model`` is the string id); callers wrap
+    it in their ``DistortionModel`` and apply per-call overrides (a CLI flag, a
+    request field) on top.
+    """
+    fit = settings.get("fit") or {}
+    method = (settings.get("methods") or {}).get(board) or {}
+    return {
+        "distortion_model": str(fit.get("distortion_model", "standard")),
+        "fix_aspect_ratio": bool(fit.get("fix_aspect_ratio", True)),
+        "fix_k2": bool(method.get("fix_k2", False)),
+        "use_release_object": bool(fit.get("use_release_object", False)),
+    }
 
 
 # ---------------------------------------------------------------------------

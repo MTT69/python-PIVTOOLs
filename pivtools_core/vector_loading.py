@@ -288,9 +288,15 @@ def find_non_empty_run(
     return pr, run
 
 
-def _stack_velocity_components(pr, ux: np.ndarray, uy: np.ndarray) -> np.ndarray:
+def _stack_velocity_components(
+    pr, ux: np.ndarray, uy: np.ndarray, source: str
+) -> np.ndarray:
     """
     Stack velocity components into array, including uz for stereo data if present.
+
+    A ``uz`` field whose shape differs from ``ux`` (an empty ``uz`` beside a filled ``ux``
+    included) raises ``ValueError`` naming ``source``: reading it as 2C would silently
+    drop the out-of-plane component of a 3C file.
 
     Returns:
         Stacked array of shape (3, H, W) for 2D or (4, H, W) for stereo.
@@ -309,7 +315,12 @@ def _stack_velocity_components(pr, ux: np.ndarray, uy: np.ndarray) -> np.ndarray
     uz_raw = getattr(pr, "uz", None)
     if uz_raw is not None:
         uz = np.asarray(uz_raw)
-        if uz.size > 0 and uz.shape == ux.shape:
+        if uz.shape != ux.shape:
+            raise ValueError(
+                f"{source}: uz shape {uz.shape} does not match ux shape {ux.shape} — "
+                "damaged 3C stereo output; re-run the stereo reconstruction"
+            )
+        if uz.size > 0:
             return np.stack([ux, uy, uz, b_mask], axis=0)  # (4, H, W) for stereo
 
     return np.stack([ux, uy, b_mask], axis=0)  # (3, H, W) for 2D
@@ -355,7 +366,9 @@ def read_mat_contents(
                 uy = np.asarray(pr.uy)
 
                 if ux.size > 0 and uy.size > 0:
-                    stacked = _stack_velocity_components(pr, ux, uy)  # (3 or 4, H, W)
+                    stacked = _stack_velocity_components(
+                        pr, ux, uy, file_path
+                    )  # (3 or 4, H, W)
                 else:
                     # Empty run - create placeholder with consistent shape if possible
                     stacked = np.array([[], [], []])  # Will be reshaped later
@@ -391,7 +404,9 @@ def read_mat_contents(
         pr = piv_result[run_index]
         ux = np.asarray(pr.ux)
         uy = np.asarray(pr.uy)
-        stacked = _stack_velocity_components(pr, ux, uy)[None, ...]  # (1, 3_or_4, H, W)
+        stacked = _stack_velocity_components(pr, ux, uy, file_path)[
+            None, ...
+        ]  # (1, 3_or_4, H, W)
         return stacked
 
     # Single run struct
@@ -402,7 +417,9 @@ def read_mat_contents(
     pr = piv_result
     ux = np.asarray(pr.ux)
     uy = np.asarray(pr.uy)
-    stacked = _stack_velocity_components(pr, ux, uy)[None, ...]  # (1, 3_or_4, H, W)
+    stacked = _stack_velocity_components(pr, ux, uy, file_path)[
+        None, ...
+    ]  # (1, 3_or_4, H, W)
     return stacked
 
 

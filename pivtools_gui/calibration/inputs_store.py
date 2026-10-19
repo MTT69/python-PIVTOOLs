@@ -12,8 +12,11 @@ Layout (one file per model dir, ``<model_dir>/inputs.mat``):
     path_type          'joint' | 'mono' | 'stereo' | 'stepped'
     board_type         'dotboard' | 'charuco' | 'stepped'
     coords_json        JSON string of the path-specific clicked inputs (None -> "null")
-    det_count          number of (camera, view) detections stored (0 -> field absent)
-    detections         flat struct array, one element per (camera, view)
+    board_params_json  JSON string of the board geometry (None -> "null")
+    det_key            parameter key of the stored detections ('' if not keyed)
+    det_count          number of (camera, view) detections stored
+    detections         (only when det_count > 0)
+                       flat struct array, one element per (camera, view)
     image_size_by_cam  (M, 3) int rows [camera, width, height]
     detection_stamp    uuid4 hex, regenerated on every detections write ('' if none)
 
@@ -22,11 +25,16 @@ already plain nested dicts (the same shape the config block used), JSON round-tr
 ragged ``anchors`` / ``same_as`` shapes losslessly, and the existing
 ``_global_grid_spec_from_cfg`` consumes that exact dict unchanged. Detections are stored as
 native ``.mat`` arrays (not pickle) so the file is a real model artefact.
+
+Every field above except ``detections`` is always written, so ``load_inputs`` requires it
+and raises naming the file and field when it is absent (a sidecar from an older build —
+regenerate it). ``detections`` is required exactly when ``det_count > 0``.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import threading
@@ -40,7 +48,7 @@ from scipy.io import loadmat, savemat
 
 from .detection.base import DetectionResult
 from .detection.grid_detection import DETECTOR_VERSION
-from .record import _empty_if_none, _scalar
+from .record import _empty_if_none, _missing_field, _require, _scalar
 
 SCHEMA_VERSION = 1
 INPUTS_FILENAME = "inputs.mat"
@@ -56,6 +64,15 @@ _write_lock = threading.Lock()
 # Sentinel for save_inputs: a field left unset is preserved from the existing file rather
 # than overwritten. None is a real value (clear the coords), so it cannot double as "unset".
 _UNSET = object()
+
+
+class InputsReadError(OSError):
+    """The ``inputs.mat`` sidecar exists but the file could not be read from disk.
+
+    An I/O failure (permissions, a dropped network share), not damage: the file may be
+    fine, so it is never reported as ``InputsCorrupt`` (whose advice is to delete it).
+    Subclasses ``OSError`` so callers that already treat I/O failures as such still do.
+    """
 
 
 class InputsCorrupt(Exception):
@@ -86,7 +103,7 @@ class InputsRecord:
     image_size_by_cam: Dict[int, Tuple[int, int]] = field(default_factory=dict)
     # Board geometry (the ``record.geometry_meta`` dict) that produced the detections, so a model
     # can be regenerated — and the GUI/CLI can read geometry — without re-typing it into config.
-    # None when the writer did not supply it (e.g. a legacy sidecar).
+    # None when the writer did not supply it (stored as JSON null).
     board_params: Optional[Dict[str, Any]] = None
     # Identifies the parameters (n_views, format, board params, ...) that produced the stored
     # detections, so a caller can tell whether they still match the current request before
@@ -210,13 +227,12 @@ def _rehydrate_level(lv: Any) -> Optional[Dict[str, Any]]:
 
 
 def _loads_field(json_str: str, field: str) -> Any:
-    """Parse one stored JSON field; a blank field is the writer's encoding of "absent" (None).
+    """Parse one stored JSON field. The writer encodes "absent" as JSON ``null``.
 
-    Anything else that does not parse is damage, so it raises naming the field (wrapped as
-    ``InputsCorrupt`` by ``try_load_inputs``) instead of reading back as empty.
+    Anything that does not parse — a blank field included — is damage, so it raises naming
+    the field (wrapped as ``InputsCorrupt`` by ``try_load_inputs``) instead of reading back
+    as empty.
     """
-    if not json_str:
-        return None
     try:
         return json.loads(json_str)
     except (ValueError, TypeError) as exc:
@@ -235,20 +251,27 @@ def _level_data_from(json_str: str) -> Optional[Dict[str, Any]]:
     return {"a": _rehydrate_level(ld.get("a")), "b": _rehydrate_level(ld.get("b"))}
 
 
-def _str_field(v: Any) -> str:
-    """A loaded ``.mat`` string field -> python str ('' for an empty/absent field)."""
-    if v is None:
-        return ""
+def _str_field(v: Any, field: str) -> str:
+    """A loaded ``.mat`` string field -> python str.
+
+    An empty char array is how ``savemat`` round-trips ``''``, so it reads back as ``''``.
+    Any other non-string value (a numeric array, a number) is not what the writer stored:
+    it raises naming ``field``.
+    """
     s = _scalar(v)
-    if s is None:
-        return ""
-    if isinstance(s, np.ndarray):  # squeeze left an empty/odd array — no usable string
-        return ""
+    if isinstance(s, np.ndarray):
+        if s.size == 0:
+            return ""
+        raise ValueError(
+            f"field {field!r} is not a string (a {s.dtype} array of size {s.size})"
+        )
     if isinstance(
         s, (bytes, np.bytes_)
     ):  # some scipy versions load char arrays as bytes
         return s.decode("utf-8", errors="replace")
-    return str(s)
+    if not isinstance(s, str):
+        raise ValueError(f"field {field!r} is not a string (got {type(s).__name__})")
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -303,11 +326,14 @@ def _detection_from(obj) -> Tuple[int, int, DetectionResult]:
     sp = _scalar(getattr(obj, "spacing_mm", float("nan")))
     spacing = None if (sp is None or sp != sp) else float(sp)  # NaN -> None
     diag = _loads_field(
-        _str_field(getattr(obj, "diagnostics_json", "")), "diagnostics_json"
+        _str_field(getattr(obj, "diagnostics_json", ""), "diagnostics_json"),
+        "diagnostics_json",
     )
     if diag is None:
         diag = {}
-    level_data = _level_data_from(_str_field(getattr(obj, "level_data_json", "")))
+    level_data = _level_data_from(
+        _str_field(getattr(obj, "level_data_json", ""), "level_data_json")
+    )
 
     d = DetectionResult(
         success=bool(int(_scalar(getattr(obj, "success", 0)))),
@@ -331,20 +357,38 @@ def _detection_from(obj) -> Tuple[int, int, DetectionResult]:
 
 
 def load_inputs(model_dir) -> InputsRecord:
-    """Load the sidecar for a model dir. Raises ``FileNotFoundError`` if absent."""
+    """Load the sidecar for a model dir.
+
+    Raises ``FileNotFoundError`` if absent, ``OSError`` when the file cannot be read from
+    disk, and ``ValueError`` when it does not parse or an always-written field is missing
+    (a sidecar from an older build), naming the file and field.
+    """
     path = inputs_path(model_dir)
     if not path.is_file():
         raise FileNotFoundError(f"calibration inputs sidecar not found: {path}")
-    mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    # Read the bytes first so an I/O failure (OSError) is told apart from a parse failure:
+    # scipy raises OSError for a truncated file too, which is damage, so every parse
+    # failure is re-raised as ValueError.
+    raw = path.read_bytes()
+    try:
+        mat = loadmat(io.BytesIO(raw), squeeze_me=True, struct_as_record=False)
+    except Exception as exc:
+        raise ValueError(f"{path} is not a readable .mat file: {exc}") from exc
 
-    coords = _loads_field(_str_field(mat.get("coords_json")), "coords_json")
+    coords = _loads_field(
+        _str_field(_require(mat, "coords_json", path), "coords_json"), "coords_json"
+    )
     board_params = _loads_field(
-        _str_field(mat.get("board_params_json")), "board_params_json"
+        _str_field(_require(mat, "board_params_json", path), "board_params_json"),
+        "board_params_json",
     )
 
+    # ``detections`` is written exactly when det_count > 0; det_count == 0 -> None.
     detections: Optional[Dict[int, List[DetectionResult]]] = None
-    det_count = int(_scalar(mat.get("det_count", 0))) if "det_count" in mat else 0
-    if "detections" in mat and det_count > 0:
+    det_count = int(_scalar(_require(mat, "det_count", path)))
+    if det_count > 0:
+        if "detections" not in mat:
+            raise _missing_field(path, "detections")
         grouped: Dict[int, List[Tuple[int, DetectionResult]]] = {}
         for obj in np.atleast_1d(mat["detections"]):
             cam, view, d = _detection_from(obj)
@@ -354,39 +398,45 @@ def load_inputs(model_dir) -> InputsRecord:
             for cam, views in grouped.items()
         }
 
+    # Always written; zero rows (no camera sized yet) reads back as {}.
     image_size: Dict[int, Tuple[int, int]] = {}
-    if "image_size_by_cam" in mat:
-        rows = np.asarray(mat["image_size_by_cam"], dtype=np.int64)
-        if rows.size:
-            for r in rows.reshape(-1, 3):
-                image_size[int(r[0])] = (int(r[1]), int(r[2]))
+    rows = np.asarray(_require(mat, "image_size_by_cam", path), dtype=np.int64)
+    if rows.size:
+        for r in rows.reshape(-1, 3):
+            image_size[int(r[0])] = (int(r[1]), int(r[2]))
 
     return InputsRecord(
-        path_type=str(_scalar(mat.get("path_type", ""))),
-        board_type=str(_scalar(mat.get("board_type", ""))),
+        path_type=_str_field(_require(mat, "path_type", path), "path_type"),
+        board_type=_str_field(_require(mat, "board_type", path), "board_type"),
         coords=coords,
         detections=detections,
         image_size_by_cam=image_size,
-        det_key=_str_field(mat.get("det_key")),
+        # Both always written; '' (not keyed / never detected) is legitimate.
+        det_key=_str_field(_require(mat, "det_key", path), "det_key"),
         board_params=board_params,
-        detection_stamp=_str_field(mat.get("detection_stamp")),
+        detection_stamp=_str_field(
+            _require(mat, "detection_stamp", path), "detection_stamp"
+        ),
     )
 
 
 def try_load_inputs(model_dir) -> Optional[InputsRecord]:
     """``load_inputs``, or ``None`` when the sidecar does not exist.
 
-    Absence is the only "no sidecar" case. A file that exists but cannot be read raises
-    ``InputsCorrupt``. Writes are atomic (temp-then-replace), so a reader never sees a
-    half-written file and an unreadable one is genuinely damaged. Treating it as absent would
-    let ``save_inputs`` / ``update_inputs`` overwrite the user's detections and clicks with
-    defaults.
+    Absence is the only "no sidecar" case. A file that cannot be read from disk raises
+    ``InputsReadError`` (an ``OSError``) with its own message; a file that reads but does
+    not parse, or lacks an always-written field, raises ``InputsCorrupt``. Writes are atomic
+    (temp-then-replace), so a reader never sees a half-written file and an unparseable one is
+    genuinely damaged. Treating either as absent would let ``save_inputs`` /
+    ``update_inputs`` overwrite the user's detections and clicks with defaults.
     """
     path = inputs_path(model_dir)
     if not path.is_file():
         return None
     try:
         return load_inputs(model_dir)
+    except OSError as exc:
+        raise InputsReadError(f"could not read inputs.mat at {path}: {exc}") from exc
     except Exception as exc:
         raise InputsCorrupt(Path(model_dir), path, exc) from exc
 

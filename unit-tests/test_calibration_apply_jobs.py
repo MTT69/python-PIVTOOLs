@@ -102,6 +102,7 @@ def env(tmp_path, monkeypatch):
                 "label": f"unit {name}",
                 "uncal": tmp_path / "uncal",
                 "out": tmp_path / name,
+                "cameras": (1,),
             }
             for name in data["outs"]
         ]

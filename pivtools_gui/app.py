@@ -1580,6 +1580,25 @@ def update_config():
             )
             del incoming_imgs["vector_format"]
 
+    # Guard: num_images drives every frame-pair count. A null/blank/non-positive
+    # value used to be persisted, after which Config.num_frame_pairs raised
+    # TypeError and GET /backend/config returned 500 ("Cannot connect to backend").
+    # Refuse before anything is written so the previous value survives.
+    if isinstance(incoming_imgs, dict) and "num_images" in incoming_imgs:
+        n = incoming_imgs["num_images"]
+        if isinstance(n, bool) or not isinstance(n, int) or n <= 0:
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            f"images.num_images must be a positive integer, got {n!r}. "
+                            "The previous value was kept."
+                        )
+                    }
+                ),
+                400,
+            )
+
     # Check if paths or image format are changing (these affect cache validity)
     paths_changing = "paths" in data and (
         "source_paths" in data.get("paths", {}) or "base_paths" in data.get("paths", {})

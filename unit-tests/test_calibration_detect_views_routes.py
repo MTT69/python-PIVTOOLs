@@ -288,6 +288,9 @@ def test_generate_stereo_force_redetect_keeps_stored_clicks(env):
     client, base, params = env
     sdir = rec.stereo_model_dir_for_source(base, 1, 2, "dotboard")
     clicks = _clicks_from_detection(_detection(_tilt(1, 1))[0])
+    clicks2 = _clicks_from_detection(_detection(_tilt(1, 2))[0])
+    # Stereo sidecars store the picks per camera (a dotboard pair needs both).
+    coords = V._stereo_coords(1, 2, clicks, clicks2)
     INP.save_inputs(
         sdir,
         path_type="stereo",
@@ -298,7 +301,7 @@ def test_generate_stereo_force_redetect_keeps_stored_clicks(env):
         },
         image_size_by_cam={1: (W, H), 2: (W, H)},
         det_key=_mono_key(params, cameras=(1, 2)),
-        coords=clicks,
+        coords=coords,
     )
 
     data = client.post(
@@ -321,10 +324,7 @@ def test_generate_stereo_force_redetect_keeps_stored_clicks(env):
     assert data["detections_cached"] is False
     assert data["frame_total"] == N_VIEWS and data["frame_total_source"] == "request"
     side = INP.load_inputs(sdir)
-    assert (
-        side.coords is not None
-    ), "force_redetect erased the stored world-frame clicks"
-    assert np.allclose(side.coords["origin"], clicks["origin"])
+    assert side.coords == coords, "force_redetect erased the stored world-frame clicks"
 
 
 # ---------------------------------------------------------------------------
@@ -355,9 +355,9 @@ def test_joint_detect_memory_cache_follows_source_path(tmp_path, monkeypatch):
     params = DotboardParams(dot_spacing_mm=SPACING_MM)
     args = ("dotboard", params, [1], 2, 0, FMT, "standard", SPACING_MM)
 
-    first, _ = V._joint_detect(*args)
+    first, _, _ = V._joint_detect(*args)
     current["path"] = dirs[1]  # same index, edited in place to another directory
-    second, _ = V._joint_detect(*args)
+    second, _, _ = V._joint_detect(*args)
 
     assert runs["n"] == 2, "the second source was served the first source's detections"
     assert not np.allclose(first[1][0].image_points, second[1][0].image_points)

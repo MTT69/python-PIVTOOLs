@@ -45,6 +45,7 @@ from test_calibration_stepped_stereo import (  # noqa: E402
 import pivtools_gui.calibration.app.stepped_views as sv
 from pivtools_cli.synthetic_calibration_common import make_camera_matrix
 from pivtools_core import calibration_settings as cs
+from pivtools_core.image_handling.calibration_loader import FrameCount
 from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 
 # ---------------------------------------------------------------------------
@@ -127,6 +128,15 @@ def client(scene, tmp_path, monkeypatch):
         return scene["images"][int(camera)][int(frame) - 1]
 
     monkeypatch.setattr(sv, "read_calibration_image", _fake_read)
+    # detect_sequence counts the frames (absent num_frames, and to refuse a window past
+    # the last frame); the in-memory scene has one frame per pose for each camera.
+    monkeypatch.setattr(
+        sv,
+        "get_calibration_frame_count",
+        lambda camera, config, source_idx: FrameCount(
+            len(scene["images"][int(camera)]), "files"
+        ),
+    )
 
     app = Flask(__name__)
     app.register_blueprint(sv.calibration_stepped_bp)
@@ -500,7 +510,8 @@ def test_inputs_save_persists_clicks_without_generate(client, scene):
 
 
 def test_inputs_save_noop_without_detection(client, scene):
-    """No detected sequence -> nothing to attach clicks to -> saved:false (not an error)."""
+    """No detected sequence -> nothing to attach clicks to -> saved:false with the reason
+    (not an HTTP error)."""
     r = client.post(
         "/calibration/stepped/inputs/save",
         json={
@@ -510,7 +521,9 @@ def test_inputs_save_noop_without_detection(client, scene):
             "cameras": {"1": _spec(scene, 1)},
         },
     )
-    assert r.status_code == 200 and r.get_json() == {"saved": False}
+    body = r.get_json()
+    assert r.status_code == 200 and body["saved"] is False
+    assert "Detect sequence" in body["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -579,8 +592,9 @@ def test_inputs_save_refuses_missing_request_stamp(client, scene, tmp_path):
 
 
 def test_inputs_save_refuses_sidecar_without_stamp(client, scene, tmp_path):
-    """Forward-only: a sidecar written before stamping existed is not defaulted — the
-    save is refused and the error says to re-run detection."""
+    """A sidecar whose detections carry an empty stamp is not defaulted — the save is
+    refused and the error says to re-run detection. (A sidecar MISSING the field is
+    rejected earlier by the reader as written by an older build.)"""
     import scipy.io
 
     from pivtools_gui.calibration.inputs_store import inputs_path
@@ -588,7 +602,7 @@ def test_inputs_save_refuses_sidecar_without_stamp(client, scene, tmp_path):
     _detect(client, [1, 2])
     path = inputs_path(_stereo_model_dir(tmp_path))
     mat = scipy.io.loadmat(str(path))
-    del mat["detection_stamp"]
+    mat["detection_stamp"] = ""
     scipy.io.savemat(
         str(path), {k: v for k, v in mat.items() if not k.startswith("__")}
     )

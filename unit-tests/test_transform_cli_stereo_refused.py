@@ -2,7 +2,9 @@
 
 The operations are written for 2C fields and their effect on uz / the right-handed stereo
 frame is unverified, so a stereo request must stop before any file is written, never fall
-through to transforming the per-camera data.
+through to transforming the per-camera data. ``-s stereo`` on the command line is not a
+choice, so argparse rejects it (exit 2, "invalid choice"); a stereo endpoint read from
+config.yaml is refused by ``transform_command`` itself (exit 1).
 """
 
 from __future__ import annotations

@@ -3,8 +3,8 @@
 Mirrors the PIV rule in ``Config.get_camera_folder`` (see
 ``test_camera_folder_resolution.py``): a single-camera setup always resolves calibration
 images at the source root, and a stored ``camera_subfolders`` entry (stale state from a
-previous multi-camera session) never overrides that. Multi-camera behaviour is unchanged:
-an explicit entry wins, else ``Cam{N}``, and the toggle off keeps the flat layout.
+previous multi-camera session) never overrides that. Multi-camera: an explicit entry wins,
+else ``Cam{N}``; the ``use_camera_subfolders`` toggle gates IM7 only.
 
 The ``/calibration/settings`` POST keeps the sidecar consistent with the configured camera
 count, as ``/update_config`` does for config.yaml
@@ -57,11 +57,19 @@ def test_multi_camera_without_entries_uses_cam_n():
     assert calibration_camera_folder(image, "standard", 2, 2) == "Cam2"
 
 
-def test_multi_camera_toggle_off_is_flat_layout():
-    """The flat multi-camera layout (all cameras in the source root) stays allowed."""
+def test_multi_camera_toggle_off_standard_still_uses_subfolders():
+    """use_camera_subfolders gates IM7 only: standard multi-camera always uses the
+    explicit entry / Cam{N} (the PIV rule, decision 1 of Calibration P4)."""
     image = _image(False, ["left", "right"])
-    assert calibration_camera_folder(image, "standard", 1, 2) == ""
-    assert calibration_camera_folder(image, "standard", 2, 2) == ""
+    assert calibration_camera_folder(image, "standard", 1, 2) == "left"
+    assert calibration_camera_folder(image, "standard", 2, 2) == "right"
+
+
+def test_multi_camera_toggle_off_im7_is_flat_layout():
+    """Multi-camera .im7 files hold every camera, so with the toggle off they sit at the root."""
+    image = _image(False, ["left", "right"])
+    assert calibration_camera_folder(image, "lavision_im7", 1, 2) == ""
+    assert calibration_camera_folder(image, "lavision_im7", 2, 2) == ""
 
 
 @pytest.mark.parametrize("image_type", ["lavision_set", "cine"])

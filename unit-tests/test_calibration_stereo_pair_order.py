@@ -43,6 +43,10 @@ def _save_reversed(source):
     record = _stereo_record()
     record.cam1, record.cam2 = 2, 1
     record.model1.rms, record.model2.rms = 0.21, 0.37
+    # Fields run_stereo always stores; the model summary reports them, never a stand-in.
+    record.board_meta.update(
+        stereo_method="stereoCalibrate", n_stereo_views=3, relative_angle_deg=30.0
+    )
     REC.save_stereo(record, REC.stereo_model_dir_for_source(source, 2, 1, BOARD))
     return record
 

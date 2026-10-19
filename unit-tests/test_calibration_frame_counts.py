@@ -55,9 +55,16 @@ def _source(path: Path, **image) -> _FakeConfig:
 # ---------------------------------------------------------------------------
 
 
+def _cam1(source: Path) -> Path:
+    """Camera 1's folder: a standard multi-camera rig (the fake's default 2) uses Cam{N}."""
+    folder = source / "Cam1"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 def test_files_counted_with_source(tmp_path):
     for i in range(1, 5):
-        (tmp_path / f"cal_{i:03d}.tif").write_bytes(b"x")
+        (_cam1(tmp_path) / f"cal_{i:03d}.tif").write_bytes(b"x")
     cfg = _source(tmp_path, image_format=FMT, image_type="standard")
 
     assert get_calibration_frame_count(1, cfg, 0) == FrameCount(4, "files")
@@ -66,7 +73,7 @@ def test_files_counted_with_source(tmp_path):
 def test_stored_n_views_is_not_returned(tmp_path):
     """The sidecar n_views is honoured upstream (_frame_total), never by the counter."""
     for i in range(1, 3):
-        (tmp_path / f"cal_{i:03d}.tif").write_bytes(b"x")
+        (_cam1(tmp_path) / f"cal_{i:03d}.tif").write_bytes(b"x")
     cfg = _source(tmp_path, image_format=FMT, image_type="standard", n_views=9)
 
     assert get_calibration_frame_count(1, cfg, 0).n == 2
@@ -84,12 +91,12 @@ def test_missing_camera_path_raises_naming_path(tmp_path):
 
 
 def test_zero_matches_raises_naming_dir_and_glob(tmp_path):
-    (tmp_path / "unrelated.png").write_bytes(b"x")
+    (_cam1(tmp_path) / "unrelated.png").write_bytes(b"x")
     cfg = _source(tmp_path, image_format=FMT, image_type="standard")
 
     with pytest.raises(ValueError) as err:
         get_calibration_frame_count(1, cfg, 0)
-    assert str(tmp_path) in str(err.value) and "cal_*.tif" in str(err.value)
+    assert str(tmp_path / "Cam1") in str(err.value) and "cal_*.tif" in str(err.value)
 
 
 def test_im7_zero_matches_raises(tmp_path):

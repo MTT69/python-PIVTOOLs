@@ -40,7 +40,10 @@ from flask import Blueprint, jsonify, request
 from pivtools_cli import calibration_cli as c2
 from pivtools_core import calibration_settings as cs
 from pivtools_core.config import get_config
-from pivtools_core.image_handling.calibration_loader import read_calibration_image
+from pivtools_core.image_handling.calibration_loader import (
+    get_calibration_frame_count,
+    read_calibration_image,
+)
 from pivtools_gui.calibration import record as rec
 from pivtools_gui.calibration import world_frame as WF
 from pivtools_gui.calibration.camera_model import DistortionModel
@@ -139,7 +142,12 @@ def _resolve_cameras(data: dict) -> List[int]:
         return [int(c) for c in cams]
     rig = _settings(data).get("rig") or {}
     if bool(data.get("stereo", False)):
-        pair = data.get("camera_pair") or rig.get("camera_pair") or [1, 2]
+        pair = data.get("camera_pair") or rig.get("camera_pair")
+        if not pair:
+            raise ValueError(
+                "camera_pair is required for stereo: none in the request and none in the "
+                "settings rig.camera_pair"
+            )
         if isinstance(pair, str):
             pair = [int(x) for x in pair.split(",")]
         return [int(pair[0]), int(pair[1])]
@@ -325,17 +333,10 @@ def _dets_from_sidecar(side_dets: dict) -> Dict[int, list]:
     }
 
 
-def _save_sequence_sidecar(source, entry: dict) -> str:
-    """Persist a detected sequence's detections + descriptor + det_key + geometry,
-    merging into any existing ``coords`` so a prior generate's clicks are preserved.
-
-    The merge reads the previous coords inside ``update_inputs``' lock, so a click commit
-    landing at the same moment is not lost. Returns the new ``detection_stamp``.
-    """
-    cameras = entry["cameras"]
-    model_dir = _sidecar_model_dir(source, cameras)
-    det_key = _stepped_det_key(
-        cameras,
+def _entry_det_key(source, entry: dict) -> str:
+    """det_key of a sequence entry under the source's current 0/1 frame numbering."""
+    return _stepped_det_key(
+        entry["cameras"],
         entry["frame_indices"],
         entry["datum_frame_idx"],
         entry["image_format"],
@@ -347,6 +348,18 @@ def _save_sequence_sidecar(source, entry: dict) -> str:
             ]
         ),
     )
+
+
+def _save_sequence_sidecar(source, entry: dict) -> str:
+    """Persist a detected sequence's detections + descriptor + det_key + geometry,
+    merging into any existing ``coords`` so a prior generate's clicks are preserved.
+
+    The merge reads the previous coords inside ``update_inputs``' lock, so a click commit
+    landing at the same moment is not lost. Returns the new ``detection_stamp``.
+    """
+    cameras = entry["cameras"]
+    model_dir = _sidecar_model_dir(source, cameras)
+    det_key = _entry_det_key(source, entry)
     sequence = {
         "frame_indices": [int(f) for f in entry["frame_indices"]],
         "datum_frame_idx": int(entry["datum_frame_idx"]),
@@ -375,6 +388,12 @@ def _save_sequence_sidecar(source, entry: dict) -> str:
     return written.detection_stamp
 
 
+# The one _entry_from_sidecar refusal that is the normal first-use state, not an error.
+_NO_SAVED_DETECTIONS = (
+    "no saved detections for this camera set — run detect_sequence first"
+)
+
+
 def _entry_from_sidecar(data: dict, cameras: List[int]):
     """Rebuild a sequence ``entry`` from a model dir's sidecar (no live sequence).
 
@@ -398,17 +417,7 @@ def _entry_from_sidecar(data: dict, cameras: List[int]):
             None,
             None,
             None,
-            (
-                jsonify(
-                    {
-                        "error": (
-                            "no saved detections for this camera set — run detect_sequence "
-                            "first"
-                        )
-                    }
-                ),
-                410,
-            ),
+            (jsonify({"error": _NO_SAVED_DETECTIONS}), 410),
         )
     seq = (side.coords or {}).get("sequence") or {}
     frame_indices = [int(f) for f in seq.get("frame_indices", [])]
@@ -467,6 +476,8 @@ def _entry_from_sidecar(data: dict, cameras: List[int]):
         "detections": {int(c): dets.get(int(c), []) for c in cameras},
         "images": {int(c): [None] * len(frame_indices) for c in cameras},
         "image_size": {int(k): tuple(v) for k, v in side.image_size_by_cam.items()},
+        # The detection set this entry IS: generate compares it against the sidecar.
+        "detection_stamp": side.detection_stamp or None,
         "created_at": time.time(),
     }
     return entry, model_dir, side, None
@@ -549,9 +560,11 @@ def detect_sequence():
     Returns ``{job_id, sequence_id}``; poll the job for per-pose summaries.
     """
     data = request.get_json() or {}
-    cameras = _resolve_cameras(data)
+    try:
+        cameras = _resolve_cameras(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     source_idx = _source_idx(data)
-    num_frames = int(data.get("num_frames", 1))
     start_frame_idx = int(data.get("start_frame_idx", 1))
     datum_frame_idx = int(data.get("datum_frame_idx", start_frame_idx))
     image_format = data.get("image_format")
@@ -560,8 +573,45 @@ def detect_sequence():
         _settings(data).get("methods") or {}, "stepped", data.get("board_params")
     )
 
+    # The frames that exist, per camera: an absent num_frames means "to the last frame",
+    # and a window past the last frame is refused rather than detected as load failures.
+    counts: Dict[int, int] = {}
+    for camera in cameras:
+        try:
+            counts[camera] = get_calibration_frame_count(
+                camera, get_config(), source_idx
+            ).n
+        except Exception as exc:
+            return (
+                jsonify(
+                    {
+                        "error": f"could not count camera {camera}'s calibration frames: {exc}"
+                    }
+                ),
+                400,
+            )
+    raw_n = data.get("num_frames")
+    if raw_n in (None, ""):
+        num_frames = min(counts.values()) - start_frame_idx + 1
+    else:
+        num_frames = int(raw_n)
     if num_frames < 1:
         return jsonify({"error": "num_frames must be >= 1"}), 400
+    last = start_frame_idx + num_frames - 1
+    short = [c for c in cameras if last > counts[c]]
+    if short:
+        return (
+            jsonify(
+                {
+                    "error": "; ".join(
+                        f"frames {start_frame_idx}..{last} requested but camera {c} has "
+                        f"{counts[c]}"
+                        for c in short
+                    )
+                }
+            ),
+            400,
+        )
     frame_indices = list(range(start_frame_idx, start_frame_idx + num_frames))
     if datum_frame_idx not in frame_indices:
         return (
@@ -659,14 +709,26 @@ def detect_sequence():
             # sidecar there is no detection_stamp (null), so inputs/save cannot persist
             # clicks for this sequence. Anything else (a corrupt inputs.mat raising
             # InputsCorrupt, an unresolvable source) fails the job with its message.
+            #
+            # On a read-only source the response keeps the stamp of the detections already
+            # on disk when they were made with the same inputs (det_key): clicks echoing it
+            # then reach inputs/save, which reports that nothing can be saved there. Any
+            # other previous set is unrelated to this one, so no stamp is returned.
             detection_stamp: Optional[str] = None
             persist_skipped: Optional[str] = None
             src = get_config().get_calibration_source(int(source_idx))
             try:
                 detection_stamp = _save_sequence_sidecar(src, cache_entry)
+                cache_entry["detection_stamp"] = detection_stamp
             except OSError as exc:
                 logger.warning("stepped detect: sidecar not written: %s", exc)
-                persist_skipped = f"sidecar not written: {exc}"
+                persist_skipped = f"detections were not saved (read-only source): {exc}"
+                cache_entry["detection_stamp"] = None
+                prev = try_load_inputs(_sidecar_model_dir(src, cameras))
+                if prev is not None and prev.det_key == _entry_det_key(
+                    src, cache_entry
+                ):
+                    detection_stamp = prev.detection_stamp or None
 
             # Per-camera, per-pose JSON-safe summary + the datum detection for the overlay.
             poses, datum_detection = _summarize_sequence(cache_entry, per_frame_status)
@@ -763,18 +825,46 @@ def stepped_inputs_save():
         cameras = [int(data.get("camera", 1))]
     try:
         source = get_config().get_calibration_source(_source_idx(data))
-    except (ValueError, IndexError):
-        return jsonify({"saved": False})
+    except (ValueError, IndexError) as exc:
+        return jsonify(
+            {"saved": False, "error": f"calibration source not configured ({exc})"}
+        )
     model_dir = _sidecar_model_dir(source, cameras)
     request_stamp = data.get("detection_stamp")
     cams_in = data.get("cameras") or {}
+    if not isinstance(cams_in, dict):
+        return jsonify({"saved": False, "error": "cameras must be an object"}), 400
+    bad = [
+        c
+        for c in cameras
+        if str(c) in cams_in and not isinstance(cams_in[str(c)], dict)
+    ]
+    if bad:
+        return (
+            jsonify(
+                {
+                    "saved": False,
+                    "error": "; ".join(
+                        f"camera {c}: picks must be an object of fiducials / "
+                        "clicked_level / pose_levels"
+                        for c in bad
+                    ),
+                }
+            ),
+            400,
+        )
     stereo_config = data.get("stereo_config")
     # Why the mutate declined to write; read after update_inputs returns.
     outcome: Dict[str, Any] = {"saved": False}
 
     def _mutate(side: Optional[InputsRecord]) -> Optional[dict]:
         if side is None or not side.detections:
-            return None  # nothing detected yet — no sidecar to attach to
+            # Nothing detected (or saved) for this camera set: no sidecar to attach to.
+            outcome["error"] = (
+                "no detections are saved for this camera set -- run Detect sequence "
+                "first (a read-only source cannot save them)"
+            )
+            return None
         if not side.detection_stamp:
             outcome.update(
                 stale=True,
@@ -797,14 +887,23 @@ def stepped_inputs_save():
         cams_out = dict(coords.get("cameras") or {})
         for cam in cameras:
             c = cams_in.get(str(cam))
-            if isinstance(c, dict):
+            if c is not None:
                 cams_out[str(cam)] = c  # stored verbatim; restore handles partial picks
         coords["cameras"] = cams_out
         if stereo_config:
             coords["stereo_config"] = str(stereo_config)
         return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
 
-    if update_inputs(model_dir, _mutate) is None:
+    try:
+        written = update_inputs(model_dir, _mutate)
+    except OSError as exc:
+        return jsonify(
+            {
+                "saved": False,
+                "error": f"clicks not saved: detections were not saved (read-only source): {exc}",
+            }
+        )
+    if written is None:
         return jsonify(outcome)
     return jsonify({"saved": True})
 
@@ -828,7 +927,12 @@ def restore_sequence():
         cameras = [int(request.args.get("camera", 1))]
     entry, _model_dir, side, err = _entry_from_sidecar(request.args, cameras)
     if err is not None:
-        return jsonify({"exists": False})
+        # Nothing saved yet is the normal first-use state: a plain exists:false. Every
+        # other refusal (source not configured, a damaged sequence descriptor, a datum
+        # outside the saved window) is a real error, returned with its status and message.
+        if err[0].get_json()["error"] == _NO_SAVED_DETECTIONS:
+            return jsonify({"exists": False})
+        return err
     # The saved det_key carries the 0/1 numbering the frames were read with; under the
     # current numbering the same frame indices are different files.
     expected_key = _stepped_det_key(
@@ -1147,7 +1251,10 @@ def generate_model():
             ),
             400,
         )
-    cameras_req = _resolve_cameras(data)
+    try:
+        cameras_req = _resolve_cameras(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     # Resolve the detected sequence: the live in-session cache first, else the persisted
     # sidecar (a regenerate after restart / cache expiry / a fresh session with no clicks).
@@ -1155,10 +1262,12 @@ def generate_model():
     entry = None
     model_dir = None
     side = None
+    live = False
     if sequence_id:
         entry, err = _lookup(sequence_id)
         if err is not None:
             entry = None  # expired/missing -> fall through to the sidecar
+        live = entry is not None
     if entry is None:
         entry, model_dir, side, err = _entry_from_sidecar(data, cameras_req)
         if err is not None:
@@ -1174,12 +1283,45 @@ def generate_model():
             jsonify({"error": "stereo requested but the sequence has one camera"}),
             400,
         )
-    use_cams = cameras[:2] if stereo else cameras[:1]
+    if stereo:
+        use_cams = cameras[:2]
+    else:
+        # Mono solves the camera the request names, not the sequence's first camera.
+        mono_cam = int(cameras_req[0])
+        if mono_cam not in [int(c) for c in cameras]:
+            return (
+                jsonify(
+                    {
+                        "error": f"camera {mono_cam} is not in the detected sequence "
+                        f"(cameras {[int(c) for c in cameras]})"
+                    }
+                ),
+                400,
+            )
+        use_cams = [mono_cam]
 
     try:
         source = get_config().get_calibration_source(int(entry["source_idx"]))
     except (ValueError, IndexError) as exc:
         return jsonify({"error": f"calibration source not configured ({exc})"}), 400
+    # A live sequence whose detections were saved must still BE the saved set: if another
+    # tab or session re-detected this camera set meanwhile, the clicks merged below would be
+    # attached to detections this solve did not use. (A sequence that was never saved --
+    # read-only source -- has no stamp and nothing to compare.)
+    live_stamp = entry.get("detection_stamp") if live else None
+    if live_stamp:
+        own = try_load_inputs(_sidecar_model_dir(source, cameras))
+        if own is None or own.detection_stamp != live_stamp:
+            return (
+                jsonify(
+                    {
+                        "error": "the saved detections for this camera set were "
+                        "re-detected since this sequence was detected (another tab or "
+                        "session) -- reload the saved sequence or detect again"
+                    }
+                ),
+                409,
+            )
     from .views import _generate_dt  # local: views imports this module first
 
     try:
@@ -1209,7 +1351,11 @@ def generate_model():
 
     def _merge_spec(prev: Optional[InputsRecord]) -> dict:
         coords = dict(prev.coords) if (prev and prev.coords) else {}
+        # Per camera key: picks stored for a camera this solve does not use survive.
+        cams = dict(coords.get("cameras") or {})
+        cams.update(spec_coords["cameras"])
         coords.update(spec_coords)
+        coords["cameras"] = cams
         return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
 
     # Same rule as detect_views: only a read-only source (OSError) is reported and carried
@@ -1244,7 +1390,8 @@ def generate_model():
     )
 
     def _run():
-        from .views import _intrinsics  # local: views imports this module first
+        # local: views imports this module first
+        from .views import _intrinsics, _require_meta
 
         try:
             job_manager.update_job(
@@ -1285,6 +1432,12 @@ def generate_model():
                 )
                 record.board_meta["assumed_poses"] = assumed_poses
                 record.board_meta["dt"] = gen_dt
+                n_pairs = int(
+                    _require_meta(record.board_meta, "n_stereo_views", "stepped solve")
+                )
+                method = _require_meta(
+                    record.board_meta, "stereo_method", "stepped solve"
+                )
                 path = rec.save_stereo(record, model_dir)
                 done = dict(
                     stereo=True,
@@ -1292,17 +1445,16 @@ def generate_model():
                     model_path=str(path),
                     rms_cam1=_model_rms(record.model1),
                     rms_cam2=_model_rms(record.model2),
+                    rms_units="px",
                     per_view_rms1=list(record.per_view_rms1),
                     per_view_rms2=list(record.per_view_rms2),
                     plane_rms_cam1=_plane_rms(record.model1),
                     plane_rms_cam2=_plane_rms(record.model2),
-                    num_pairs_used=record.board_meta.get(
-                        "n_stereo_views", len(record.per_view_rms1)
-                    ),
+                    num_pairs_used=n_pairs,
                     stereo_config=record.board_meta.get("stereo_config"),
                     baseline_mm=record.board_meta.get("baseline_mm"),
                     relative_angle_deg=record.board_meta.get("relative_angle_deg"),
-                    method=record.board_meta.get("stereo_method"),
+                    method=method,
                     assumed_poses=assumed_poses,
                     figures=_list_figures(fig_dir),
                 )
@@ -1345,6 +1497,7 @@ def generate_model():
                     model_path=str(path),
                     camera=camera,
                     rms=_model_rms(cm),
+                    rms_units="px",
                     num_views_used=len(record.per_view_rms),
                     per_view_rms=list(record.per_view_rms),
                     plane_rms=_plane_rms(cm),

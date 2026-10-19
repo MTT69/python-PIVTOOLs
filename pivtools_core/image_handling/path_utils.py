@@ -18,6 +18,7 @@ from typing import (
     List,
     NamedTuple,
     Optional,
+    Sequence,
     Tuple,
 )
 
@@ -64,6 +65,46 @@ def _glob_images(directory: Path, pattern: str) -> List[Path]:
     return [f for f in directory.glob(pattern) if not f.name.startswith(".")]
 
 
+def camera_subfolder_name(
+    image_type: str,
+    camera: int,
+    camera_count: int,
+    *,
+    use_camera_subfolders: bool,
+    camera_subfolders: Sequence[str],
+) -> str:
+    """Subfolder holding one camera's images: THE rule for PIV and calibration alike.
+
+    - Container formats (``lavision_set``, ``cine``) never use a subfolder: all
+      cameras live in one ``.set``, and ``.cine`` files sit side by side in the
+      source directory (``%d`` in the pattern names the camera).
+    - IM7 uses a subfolder only when ``use_camera_subfolders`` is True (one
+      single-camera ``.im7`` per folder); otherwise one multi-camera ``.im7``
+      per time instance sits at the source root. This is the only format the
+      flag applies to.
+    - A single-camera setup (``camera_count == 1``) always resolves at the
+      source root. A stored subfolder entry there is stale state from a
+      previous multi-camera session, never a valid override.
+    - Otherwise (standard formats at ``camera_count > 1``, or IM7 with the flag
+      on) an explicit ``camera_subfolders`` entry wins, else ``Cam{N}``.
+
+    ``Config.get_camera_folder`` (PIV images, ``paths.camera_subfolders``) and
+    :func:`calibration_camera_folder` (calibration images, the sidecar's
+    ``image`` block) both call this, so the two can never disagree.
+    """
+    if image_type in ("lavision_set", "cine"):
+        return ""
+    if image_type == "lavision_im7" and not use_camera_subfolders:
+        return ""
+    if camera_count == 1:
+        return ""
+    idx = camera - 1  # camera is 1-based
+    subfolders = list(camera_subfolders or [])
+    if idx < len(subfolders) and subfolders[idx]:
+        return str(subfolders[idx])
+    return f"Cam{camera}"
+
+
 def calibration_camera_folder(
     image_settings: dict,
     image_type: str,
@@ -72,26 +113,17 @@ def calibration_camera_folder(
 ) -> str:
     """Subfolder name for one camera's calibration images (settings-sidecar based).
 
-    Container formats (.cine, .set) never use camera subfolders. Standard and
-    IM7 formats respect ``image.use_camera_subfolders``. A single-camera setup
-    (``num_cameras == 1``, the configured camera count) always resolves at the
-    source root. Otherwise an explicit ``camera_subfolders`` entry wins, else
-    the ``Cam{N}`` default.
+    The same rule as PIV images (:func:`camera_subfolder_name`), fed from the
+    sidecar ``image`` block: ``use_camera_subfolders`` gates IM7 only, and
+    ``num_cameras`` is the configured rig camera count.
     """
-    if image_type in ("lavision_set", "cine"):
-        return ""
-    if not image_settings.get("use_camera_subfolders", False):
-        return ""
-    # Single camera resolves at the source root — a stored subfolder entry is stale
-    # state from a previous multi-camera session, never a valid override. Mirrors
-    # Config.get_camera_folder for PIV images.
-    if num_cameras == 1:
-        return ""
-    subfolders = image_settings.get("camera_subfolders") or []
-    idx = camera - 1  # camera is 1-based
-    if idx < len(subfolders) and subfolders[idx]:
-        return str(subfolders[idx])
-    return f"Cam{camera}"
+    return camera_subfolder_name(
+        image_type,
+        camera,
+        num_cameras,
+        use_camera_subfolders=bool(image_settings.get("use_camera_subfolders", False)),
+        camera_subfolders=image_settings.get("camera_subfolders") or [],
+    )
 
 
 def build_calibration_camera_path(
@@ -106,26 +138,15 @@ def build_calibration_camera_path(
     (``pivtools_core.calibration_settings``) — the persisted YAML config plays
     no part in calibration image resolution.
 
-    Path structure:
-    - Container formats (.set, .cine): the source path directly (no camera subfolders)
-    - IM7 with use_camera_subfolders=False: the source path directly
-    - IM7/Standard with use_camera_subfolders=True: source / camera_folder
+    The camera folder follows :func:`camera_subfolder_name` (the PIV rule):
+    containers resolve to ``source`` itself (the ``.set`` file, or the
+    directory holding the ``.cine`` files), IM7 takes a subfolder only with
+    ``use_camera_subfolders``, standard formats take ``Cam{N}`` (or the explicit
+    entry) whenever ``num_cameras > 1``.
     """
     source = Path(source)
     fmt = image_settings.get("image_format") or ""
     image_type = image_settings.get("image_type") or infer_image_type(fmt)
-
-    # Container formats: path is directly to file, no camera subfolder
-    if image_type in ("lavision_set", "cine"):
-        return source
-
-    # IM7 without camera subfolders: return source directly
-    if image_type == "lavision_im7" and not image_settings.get(
-        "use_camera_subfolders", False
-    ):
-        return source
-
-    # Standard/IM7 with subfolders: apply camera folder
     folder = calibration_camera_folder(image_settings, image_type, camera, num_cameras)
     if folder:
         return source / folder
@@ -638,12 +659,30 @@ def _container_count_failure(
     return result
 
 
+def _check_container_count(
+    result: Dict[str, Any], expected_count: Optional[int]
+) -> None:
+    """Set ``valid`` for a container whose entry count was read into ``found_count``.
+
+    Fewer entries than the caller expects fails with "found N entries, expected
+    M" (the same shortfall rule the per-file listing applies); more is a
+    processing subset and passes. ``expected_count=None`` means the caller holds
+    no count, so any readable count passes.
+    """
+    found = result["found_count"]
+    if expected_count is not None and found < expected_count:
+        result["valid"] = False
+        result["error"] = f"found {found} entries, expected {expected_count}"
+        return
+    result["valid"] = True
+
+
 def validate_images_generic(
     camera_path: Path,
     camera: int,
     image_format: str,
     image_type: str,
-    expected_count: int,
+    expected_count: Optional[int],
     zero_based_indexing: bool,
     read_frame_fn: Callable[[int], np.ndarray],
 ) -> Dict[str, Any]:
@@ -662,8 +701,11 @@ def validate_images_generic(
         Image format pattern (e.g., "%05d.tif", "data.set")
     image_type : str
         One of "lavision_set", "lavision_im7", "cine", "standard"
-    expected_count : int
-        Expected number of images/frames
+    expected_count : int or None
+        Expected number of images/frames. A container (.set / .cine) holding
+        fewer entries fails validation; more is a processing subset and passes.
+        ``None`` is allowed for containers only, when the caller has no count to
+        hold the container to (calibration with a blank ``n_views``).
     zero_based_indexing : bool
         Whether file indices are 0-based
     read_frame_fn : Callable[[int], np.ndarray]
@@ -721,6 +763,12 @@ def validate_images_generic(
         "suggested_zero_based": None,  # set when a wrong 0/1 start index is the cause
     }
 
+    if expected_count is None and image_type not in ("lavision_set", "cine"):
+        raise ValueError(
+            f"expected_count is required for {image_type} images (only containers "
+            "can be validated without one)"
+        )
+
     start_idx = 0 if zero_based_indexing else 1
 
     # Check for empty pattern first (glob('') throws ValueError)
@@ -773,7 +821,7 @@ def validate_images_generic(
             result["found_count"] = get_set_entry_count(str(set_file))
         except Exception as e:
             return _container_count_failure(result, set_file, e)
-        result["valid"] = True
+        _check_container_count(result, expected_count)
 
         # Read the first frame. A read failure is a genuine error (corrupt/locked
         # container, wrong camera), so surface it instead of passing silently.
@@ -824,7 +872,11 @@ def validate_images_generic(
 
         mismatch = cine_extension_mismatch(cine_file)
         if mismatch is not None:
+            # read_error too: the PIV route rebuilds its message from read_error
+            # for a container whose first frame did not read, and would otherwise
+            # replace this with "First frame not found" for a file that exists.
             result["error"] = mismatch
+            result["read_error"] = mismatch
             return result
 
         result["format_detected"] = "cine"
@@ -837,7 +889,7 @@ def validate_images_generic(
             result["found_count"] = get_cine_frame_count(str(cine_file))
         except Exception as e:
             return _container_count_failure(result, cine_file, e)
-        result["valid"] = True
+        _check_container_count(result, expected_count)
 
         # Surface a genuine first-frame read failure.
         try:

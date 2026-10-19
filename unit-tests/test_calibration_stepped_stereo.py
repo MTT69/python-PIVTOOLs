@@ -37,7 +37,11 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 
-from pivtools_cli.synthetic_calibration_common import make_camera_matrix
+from pivtools_cli.synthetic_calibration_common import (
+    adaptive_dot_radii,
+    make_camera_matrix,
+    render_dots,
+)
 from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 from pivtools_gui.calibration.detection.stepped_levels import SteppedBoardSpec
 from pivtools_gui.calibration.record import load_stereo, save_stereo
@@ -118,13 +122,7 @@ def _render(R, t, K):
     proj = cv2.projectPoints(
         allpts, rvec, np.asarray(t, np.float64).reshape(3), K, np.zeros(5)
     )[0].reshape(-1, 2)
-    nn = cKDTree(proj).query(proj, k=2)[0][:, 1]
-    radii = np.maximum(np.round(0.22 * nn).astype(int), 2)
-    img = np.zeros((H, W), np.uint8)
-    for (cx, cy), rad in zip(proj, radii):
-        ix, iy = int(round(cx)), int(round(cy))
-        if 0 <= ix < W and 0 <= iy < H:
-            cv2.circle(img, (ix, iy), int(rad), 255, -1)
+    img = render_dots(proj, adaptive_dot_radii(proj, 0.22, 2.0), (W, H))
     return img, proj
 
 
@@ -199,7 +197,7 @@ def same_side_scene():
     R_extra, _ = cv2.Rodrigues(np.asarray(RVEC_EXTRA, np.float64))
 
     imgs1, projs1, imgs2, projs2 = [], [], [], []
-    R1d = t1d = Zd = None
+    Zd = None
     for i, rv in enumerate(POSE_RVECS):
         R1, t1, Z, _centre = _cam1_pose(rv, K)
         im1, pr1 = _render(R1, t1, K)
@@ -210,7 +208,7 @@ def same_side_scene():
         imgs2.append(im2)
         projs2.append(pr2)
         if i == 0:
-            R1d, t1d, Zd = R1, t1, Z
+            Zd = Z
 
     det = SteppedDetector(
         SteppedParams(dot_spacing_mm=SPACING_MM, step_height_mm=STEP_MM)
