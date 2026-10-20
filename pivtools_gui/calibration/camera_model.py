@@ -327,7 +327,7 @@ class ScaleFactorModel:
 
     Image-down y means the user's "+Y up" choice is ``row_sign = -1`` (world Y grows
     as the pixel row decreases). It exposes the same ``back_project_to_plane``
-    signature as ``CameraModel`` so the mono apply / measure / global-coords paths
+    signature as ``CameraModel`` so the mono apply / global-coords paths
     are shared verbatim; ``z_world`` / ``tilt_*`` are accepted and ignored (the map
     is a single flat plane). No ``project`` / ``jacobian`` — those are stereo only.
     """

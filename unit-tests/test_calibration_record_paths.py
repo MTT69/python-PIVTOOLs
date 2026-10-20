@@ -1,4 +1,4 @@
-"""Per-type model record filenames + the CLI stereo reuse guard (triage items 8, A7).
+"""Per-type model record filenames (triage item 8).
 
 Records are saved as ``model_{model_type}.mat`` / ``stereo_model_{model_type}.mat``
 so fitting a second model type never clobbers the first. Resolution rules under
@@ -8,15 +8,18 @@ test (``record.resolve_mono_path`` / ``resolve_stereo_path``):
 - with no requested type, one record present -> it, several -> ValueError listing
   them (no silent pick).
 
-A7 — the CLI stereo reuse path must not reuse a record fitted for a DIFFERENT
-board: the stereo model dir is shared across board types (mono dirs embed the
-board in their path), so ``_reusable_stereo`` checks the stored ``board_type``.
+Stereo model dirs embed the board (``stereo_{board}_cam{A}_cam{B}``), like mono
+(``Cam{N}/{board}_planar``) and joint (``joint_{board}``) dirs, so calibrations of one
+pair with different boards never share a record, ``inputs.mat`` or figures folder.
+
+The CLI no longer reuses an existing model at all (it always re-solves, as the GUI
+does), so the former A7 reuse-guard tests went with ``_reusable_stereo``; see
+``test_calibration_cli_parity.py``.
 """
 
 import numpy as np
 import pytest
 
-from pivtools_cli.calibration_cli import _reusable_stereo
 from pivtools_gui.calibration import record as rec
 from pivtools_gui.calibration.camera_model import (
     CameraModel,
@@ -146,31 +149,29 @@ def test_old_single_name_stereo_file_not_resolved(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# A7 — stereo reuse guard (board_type must match)
+# Stereo model dir is board-scoped and pair-canonical
 # ---------------------------------------------------------------------------
 
 
-def test_reuse_rejects_other_board_stereo_model(tmp_path, capsys):
-    rec.save_stereo(_stereo_record(board="stepped"), tmp_path)
-    assert _reusable_stereo(tmp_path, "dotboard", "pinhole", force=False) is None
-    assert "recomputing" in capsys.readouterr().out
+def test_stereo_dirs_are_board_scoped(tmp_path):
+    dot_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2, "dotboard")
+    charuco_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2, "charuco")
+    assert dot_dir != charuco_dir
+    assert dot_dir.parent.name == "stereo_dotboard_cam1_cam2"
+    assert charuco_dir.parent.name == "stereo_charuco_cam1_cam2"
+    rec.save_stereo(_stereo_record(board="dotboard"), dot_dir)
+    rec.save_stereo(_stereo_record(board="charuco"), charuco_dir)
+    assert rec.load_stereo(dot_dir).board_type == "dotboard"
+    assert rec.load_stereo(charuco_dir).board_type == "charuco"
 
 
-def test_reuse_accepts_matching_board_stereo_model(tmp_path):
-    saved = rec.save_stereo(_stereo_record(board="dotboard"), tmp_path)
-    reuse = _reusable_stereo(tmp_path, "dotboard", "pinhole", force=False)
-    assert reuse is not None
-    path, existing = reuse
-    assert path == saved
-    assert existing.board_type == "dotboard"
+def test_stereo_dir_pair_order_independent(tmp_path):
+    assert rec.stereo_model_dir_for_source(
+        tmp_path, 2, 1, "dotboard"
+    ) == rec.stereo_model_dir_for_source(tmp_path, 1, 2, "dotboard")
 
 
-def test_reuse_force_recomputes(tmp_path):
-    rec.save_stereo(_stereo_record(), tmp_path)
-    assert _reusable_stereo(tmp_path, "dotboard", "pinhole", force=True) is None
-
-
-def test_reuse_requested_type_absent_recomputes(tmp_path):
-    # Only a pinhole record exists; a polynomial3d detect run must recompute.
-    rec.save_stereo(_stereo_record(), tmp_path)
-    assert _reusable_stereo(tmp_path, "dotboard", "polynomial3d", force=False) is None
+@pytest.mark.parametrize("board", ["", None, "stereo_charuco", "stepped_stereo"])
+def test_stereo_dir_requires_board(tmp_path, board):
+    with pytest.raises(ValueError, match="board"):
+        rec.stereo_model_dir_for_source(tmp_path, 1, 2, board)

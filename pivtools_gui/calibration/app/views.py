@@ -24,7 +24,6 @@ Routes (prefix ``/calibration`` under the app's ``/backend``):
 - POST /calibration/snap_fiducial   -> snap a click to the nearest detected dot
 - POST /calibration/generate_model  -> run the full calibration (mono/stereo), save + figures
 - GET  /calibration/model           -> summary of a saved model
-- POST /calibration/measure         -> distance in mm between two pixels (back-projection)
 - GET  /calibration/figures|figure  -> list / serve the proof figures for a model
 - POST /calibration/global/compute  -> planar N-camera datum-chain shifts
 - POST /calibration/set_datum       -> shift a type's coordinates.mat (viewer datum/offset)
@@ -37,7 +36,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -55,18 +54,19 @@ from pivtools_core.image_handling.calibration_loader import (
 )
 from pivtools_core.image_handling.path_utils import infer_image_type
 from pivtools_core.paths import get_data_paths, vector_glob_from_format
-from pivtools_gui.calibration import apply as c2apply
 from pivtools_gui.calibration import global_coords as gc2
 from pivtools_gui.calibration import record as rec
 from pivtools_gui.calibration import runio as c2runio
 from pivtools_gui.calibration import self_cal as c2sc
 from pivtools_gui.calibration import world_frame as WF
 from pivtools_gui.calibration.camera_model import (
+    CameraModel,
     DistortionModel,
     Polynomial3DModel,
     PolynomialModel,
     ScaleFactorModel,
 )
+from pivtools_gui.calibration.detection.charuco import CharucoBoardDetector
 from pivtools_gui.calibration.global_grid import (
     first_view_orientation_candidates,
     resolve_global_grid_partial,
@@ -75,6 +75,7 @@ from pivtools_gui.calibration.inputs_store import (
     joint_det_key,
     save_inputs,
     try_load_inputs,
+    update_inputs,
 )
 from pivtools_gui.calibration.joint import (
     PoseDiversity,
@@ -125,8 +126,26 @@ def _detect_parallel(board, params, imgs, spacing_mm=None, on_done=None):
                 on_done()
     return dets
 
-# Datum-view detections cached for the snap workflow, keyed by camera number.
-_datum_cache = {}
+
+def _board_not_detected(detector: Any, img: np.ndarray, det: Any) -> Tuple[str, dict]:
+    """Error text and diagnostics for one frame whose board was not detected.
+
+    ChArUco failures are diagnosed (wrong dictionary, wrong squares count, no
+    markers) and the hint is folded into the text: "board not detected — <hint>".
+    The diagnosis re-runs marker detection, so it belongs on single-frame failure
+    paths only.
+    """
+    if isinstance(detector, CharucoBoardDetector):
+        diag = detector.diagnose_failure(img, det)
+        return f"board not detected — {diag['hint']}", diag
+    return "board not detected", det.diagnostics
+
+
+# Datum-view detections cached for the snap workflow: camera number ->
+# ``((camera, source_idx, board, datum_frame), DetectionResult)``. One entry per camera, so
+# both cameras of a stereo pair can be picked at once; snap_fiducial refuses a detection whose
+# key (source, board or datum frame) differs from the snap request's.
+_datum_cache: dict = {}
 _datum_lock = threading.Lock()
 
 # Joint multi-camera: detections cached per (source path, board, n_views, format, params) so the
@@ -135,6 +154,15 @@ _datum_lock = threading.Lock()
 # _joint_detect), keyed by _joint_det_key so a param change forces a re-detect.
 _joint_detect_cache: dict = {}
 _joint_detect_lock = threading.Lock()
+
+# Apply jobs: cooperative cancel events keyed by job id (the video_maker pattern), and the
+# lock that makes "no running apply overlaps my output dirs" + create_job + registering
+# the event one atomic step, so two near-simultaneous Apply clicks cannot both pass the
+# overlap check before either job exists.
+_apply_cancel_events: dict[str, threading.Event] = {}
+_apply_lock = threading.Lock()
+# Job statuses during which an apply job may still write calibrated frames.
+_APPLY_ACTIVE_STATUSES = ("starting", "running")
 
 
 def _joint_inputs_dir(source_idx: int, board: str) -> Optional[Path]:
@@ -153,9 +181,30 @@ def _joint_inputs_dir(source_idx: int, board: str) -> Optional[Path]:
 # The GUI offers exactly one model — the DaVis PinholeOpenCV (k1,k2,p1,p2).
 _MODEL = DistortionModel.STANDARD
 
+# frame_total_source labels for a view count the user set rather than one counted
+# from the images (those carry the loader's FrameCount.source).
+FRAME_TOTAL_FROM_REQUEST = "request"
+FRAME_TOTAL_FROM_SETTING = "n_views setting"
+# Mono generate_model only: the auto-count failed (images gone) and the view count is
+# the length of the detection set cached in the inputs.mat sidecar.
+FRAME_TOTAL_FROM_SIDECAR = "inputs.mat cache"
+
 
 def _cfg() -> dict:
     return c2._cfg2(get_config())
+
+
+def _request_board(get: Callable[[str], Any]) -> Tuple[str, Optional[bool]]:
+    """``(board, active_stereo)`` for a request.
+
+    An explicit request ``board`` wins and ``active_stereo`` is None (the route's own
+    ``stereo`` flag decides). Otherwise both come from ``calibration.active`` via
+    ``parse_active_method``, which raises when the key is missing or unknown.
+    """
+    board = get("board")
+    if board:
+        return board, None
+    return c2runio.parse_active_method(_cfg().get("active"))
 
 
 def _source_idx(get: Callable[[str], Any]) -> int:
@@ -183,6 +232,15 @@ def _settings_idx(source_idx: int) -> dict:
         return cs.default_settings()
     settings = cs.try_load_settings(source)
     return settings if settings is not None else cs.default_settings()
+
+
+def _zero_based(source_idx: int) -> bool:
+    """The source's ``image.zero_based_indexing`` — what the frame reader applies.
+
+    Folded into every detection cache key (``joint_det_key`` and the in-memory joint
+    cache): flipping it maps each frame number to a different file.
+    """
+    return bool(_settings_idx(source_idx)["image"]["zero_based_indexing"])
 
 
 def _settings_for(get: Callable[[str], Any]) -> dict:
@@ -229,7 +287,7 @@ def _generate_dt(get: Callable[[str], Any], source: Path) -> float:
     """
     v = get("dt")
     if v not in (None, ""):
-        return float(v)
+        return c2runio.require_positive_dt(v, "the request 'dt'")
     settings = cs.try_load_settings(source)
     dt = ((settings or {}).get("rig") or {}).get("dt")
     if dt is None:
@@ -238,7 +296,7 @@ def _generate_dt(get: Callable[[str], Any], source: Path) -> float:
             "safe default. Set dt in the Calibration tab (saved to the "
             "source's calibration/settings.yaml) or pass 'dt' in the request."
         )
-    return float(dt)
+    return c2runio.require_positive_dt(dt, "settings rig.dt")
 
 
 def _resolve_board(get: Callable[[str], Any], overrides: Optional[dict] = None):
@@ -248,7 +306,7 @@ def _resolve_board(get: Callable[[str], Any], overrides: Optional[dict] = None):
     board geometry comes from the source's settings sidecar + request overrides.
     """
     cfg = _cfg()
-    board = get("board") or cfg.get("active", "charuco")
+    board = _request_board(get)[0]
     params = c2._board_params(_methods(get), board, overrides)
     detector = c2._build_detector(board, params)
     return cfg, board, params, detector
@@ -285,6 +343,10 @@ def save_calibration_settings():
     exists to kill. Keys nested inside known blocks stay open: the deliberately
     untemplated knobs (``fit.use_release_object``, ``methods.<board>.fix_k2``)
     are legal precisely because they are absent from the template.
+
+    Every save reconciles ``image.camera_subfolders`` with the configured camera
+    count (empty at one camera, at most one entry per camera otherwise), so the
+    returned ``settings`` carry the list actually stored.
     """
     data = request.get_json(force=True) or {}
     partial = data.get("settings")
@@ -294,10 +356,7 @@ def save_calibration_settings():
     if unknown:
         return (
             jsonify(
-                {
-                    "error": "unknown settings block(s): "
-                    + ", ".join(sorted(unknown))
-                }
+                {"error": "unknown settings block(s): " + ", ".join(sorted(unknown))}
             ),
             400,
         )
@@ -314,6 +373,22 @@ def save_calibration_settings():
             # the whole migration path for existing datasets rides on it.
             cs.save_settings(source, seed_settings(source))
         merged = cs.save_settings(source, partial)
+        # Camera-subfolder invariant (mirrors /update_config for config.yaml): a
+        # single camera resolves at the source root and a multi-camera rig has at
+        # most one entry per camera. Stale entries from a previous session must not
+        # survive, so prune on every persist. This route is the only writer that can
+        # put entries in the list (the seed and init-settings write the empty default).
+        camera_count = get_config().camera_count
+        subfolders = list((merged.get("image") or {}).get("camera_subfolders") or [])
+        pruned = [] if camera_count == 1 else subfolders[:camera_count]
+        if pruned != subfolders:
+            logger.info(
+                "Pruned calibration camera_subfolders %r -> %r for camera_count=%d",
+                subfolders,
+                pruned,
+                camera_count,
+            )
+            merged = cs.save_settings(source, {"image": {"camera_subfolders": pruned}})
     except (ValueError, PermissionError) as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"status": "success", "settings": merged})
@@ -329,11 +404,13 @@ def _load_one(
 ) -> np.ndarray:
     """Load one calibration frame (any format) via the app-wide reader.
 
-    ``normalize_uint8`` defaults True because detection (OpenCV) needs an 8-bit
-    array. Display endpoints that drive the auto-contrast slider must pass
-    ``normalize_uint8=False`` so the native bit depth reaches
-    ``get_display_contrast_stats`` — collapsing a 12/16-bit frame to uint8 first
-    makes that function short-circuit to a dead [0, 100] window.
+    Detection callers pass ``normalize_uint8=False``: the dotboard detector works in
+    float32 and the ChArUco / stepped detectors scale to uint8 themselves, so the
+    native 12/16-bit frame is what they must see (the CLI already does this; an
+    8-bit min-max collapse of a retro-reflective board lost 89 of 129 dots,
+    2026-10-20). The display endpoints that drive the auto-contrast slider also
+    need the native depth so ``get_display_contrast_stats`` sees the real range.
+    The uint8 default remains for the 8-bit preview routes.
     """
     return read_calibration_image(
         int(frame),
@@ -354,29 +431,88 @@ def _load_views(
     image_type: Optional[str],
 ) -> List[np.ndarray]:
     return [
-        _load_one(camera, k + 1, source_idx, image_format, image_type)
+        _load_one(
+            camera, k + 1, source_idx, image_format, image_type, normalize_uint8=False
+        )
         for k in range(int(frame_total))
     ]
 
 
-def _frame_total(get: Callable[[str], Any], camera: int, source_idx: int) -> int:
-    """Resolve frame total: request value, else settings ``image.n_views``, else auto-detect."""
+def _frame_total(
+    get: Callable[[str], Any], camera: int, source_idx: int
+) -> Tuple[int, str]:
+    """Resolve ``(frame total, source)``: request value, else settings ``image.n_views``,
+    else the auto-count from the images.
+
+    ``source`` is ``"request"``, ``"n_views setting"`` or the auto-count's
+    ``FrameCount.source`` (``"files"``, ``".set index"``, ``".cine header"``), so the
+    GUI can say where the number came from.
+
+    Raises ``ValueError`` for a non-positive request value, and naming the camera and
+    source when the auto-count fails: a zero or guessed view count would silently
+    detect, persist or solve the wrong set.
+    """
     v = get("frame_total")
     if v not in (None, ""):
-        return int(v)
+        n = int(v)
+        if n <= 0:
+            raise ValueError(f"frame_total must be a positive view count, got {v!r}")
+        return n, FRAME_TOTAL_FROM_REQUEST
     n = int((_settings_idx(source_idx).get("image") or {}).get("n_views") or 0)
     if n > 0:
-        return n
+        return n, FRAME_TOTAL_FROM_SETTING
     try:
-        return get_calibration_frame_count(int(camera), get_config(), int(source_idx))
+        count = get_calibration_frame_count(int(camera), get_config(), int(source_idx))
+    except Exception as exc:
+        raise ValueError(
+            f"could not auto-detect the number of calibration views for camera "
+            f"{camera}, source {source_idx}: {exc} -- set n_views explicitly"
+        ) from exc
+    return count.n, count.source
+
+
+def _pair_frame_total(
+    get: Callable[[str], Any], cameras: List[int], source_idx: int
+) -> Tuple[int, str]:
+    """Resolve ``(frame total, source)`` for a stereo pair.
+
+    An explicit request ``frame_total`` or settings ``n_views`` applies to every camera
+    and is not compared. Otherwise each camera is auto-counted and a mismatch raises
+    ``ValueError``: calibration pairs views by index, so unequal counts mean the pairs
+    are misaligned or a view is missing.
+    """
+    n, source = _frame_total(get, cameras[0], source_idx)
+    if source in (FRAME_TOTAL_FROM_REQUEST, FRAME_TOTAL_FROM_SETTING):
+        return n, source
+    for other in cameras[1:]:
+        m, _ = _frame_total(get, other, source_idx)
+        if m != n:
+            raise ValueError(
+                f"Camera {cameras[0]} has {n} views, camera {other} has {m} -- "
+                "calibration pairs views by index, so the counts must match"
+            )
+    return n, source
+
+
+def _frame_count_or_error(
+    camera: int, source_idx: int
+) -> Tuple[Optional[int], Optional[str]]:
+    """``(frame_count, None)`` from the auto-count, or ``(None, reason)`` when it fails.
+
+    For the browsing routes only: they still serve a frame that loads when the count
+    cannot be read, and report the reason instead of a fake ``0`` so the GUI can show
+    why the frame range is unknown.
+    """
+    try:
+        return get_calibration_frame_count(camera, get_config(), source_idx).n, None
     except Exception as exc:
         logger.warning(
-            "frame-count auto-detect failed for cam %s source %s: %s",
+            "calibration frame count failed for camera %s, source %s: %s",
             camera,
             source_idx,
             exc,
         )
-        return 0
+        return None, str(exc)
 
 
 def _datum_frame(get: Callable[[str], Any]) -> int:
@@ -414,6 +550,117 @@ def _origin_mm_from(payload) -> Optional[tuple]:
     if om is None:
         return None
     return (float(om[0]), float(om[1]))
+
+
+_PICK_ROLES = ("origin", "x_axis", "y_axis")
+
+
+def _stereo_coords(cam1: int, cam2: int, clicks, clicks2) -> Optional[dict]:
+    """Stereo sidecar ``coords`` from a request's per-camera world-frame picks.
+
+    Shape (string camera keys, as the stepped sidecar)::
+
+        {"cameras": {"<cam1>": {"origin": [x, y], "x_axis": [x, y], "y_axis": [x, y]},
+                     "<cam2>": {...}},
+         "origin_mm": [X, Y]}
+
+    ``clicks`` (camera 1) carries the world ``origin_mm`` of the shared frame; any
+    ``origin_mm`` in ``clicks2`` is ignored (camera 2 is labelled into camera 1's frame).
+    A camera without picks is absent from ``cameras``. Returns None when the request
+    carries no picks at all. Raises ``ValueError`` when camera 1's picks lack
+    ``origin_mm``.
+    """
+    if not clicks and not clicks2:
+        return None
+    cams: dict = {}
+    for cam, payload in ((cam1, clicks), (cam2, clicks2)):
+        if payload:
+            cams[str(int(cam))] = {
+                role: [float(v) for v in payload[role]] for role in _PICK_ROLES
+            }
+    origin_mm = None
+    if clicks:
+        om = clicks.get("origin_mm")
+        if om is None:
+            raise ValueError(
+                f"clicks for camera {cam1} must carry origin_mm (the world X, Y mm of the "
+                "origin dot)"
+            )
+        origin_mm = [float(om[0]), float(om[1])]
+    return {"cameras": cams, "origin_mm": origin_mm}
+
+
+def _stereo_cameras_block(coords) -> Optional[dict]:
+    """The ``cameras`` map of a stereo ``coords`` blob, or None when no picks are stored.
+
+    A non-empty stereo blob without ``cameras`` is the pre-2026-10-19 flat shape (camera 1's
+    picks only): raise, never read it as camera 1's frame.
+    """
+    if not coords:
+        return None
+    if not isinstance(coords, dict) or "cameras" not in coords:
+        raise ValueError(
+            "stale sidecar: the stereo world-frame picks in inputs.mat lack 'cameras' "
+            "(written before per-camera picks) -- delete it and re-pick both cameras"
+        )
+    return coords["cameras"]
+
+
+def _stereo_clicks(coords, camera: int) -> Optional[dict]:
+    """One camera's picks from a stereo ``coords`` blob, as ``_clicks_from`` returns them.
+
+    None when the blob is empty or holds no picks for ``camera``.
+    """
+    cams = _stereo_cameras_block(coords)
+    if cams is None:
+        return None
+    return _clicks_from(cams.get(str(int(camera))))
+
+
+def _stereo_origin_mm(coords) -> Optional[tuple]:
+    """The shared frame's world ``origin_mm`` of a stereo ``coords`` blob (None if unset)."""
+    if _stereo_cameras_block(coords) is None:
+        return None
+    om = coords.get("origin_mm")
+    return None if om is None else (float(om[0]), float(om[1]))
+
+
+def _require_camera_pair(get: Callable[[str], Any]) -> Tuple[int, int]:
+    """Stereo camera pair: request ``camera_pair`` (list or "a,b"), else the settings rig's.
+
+    Raises ``ValueError`` when neither names one: a literal default pair would silently
+    detect, solve or restore cameras the user never chose.
+    """
+    pair = get("camera_pair") or _rig(get).get("camera_pair")
+    if not pair:
+        raise ValueError(
+            "camera_pair is required for stereo: none in the request and none in the "
+            "settings rig.camera_pair"
+        )
+    if isinstance(pair, str):
+        pair = [int(x) for x in pair.split(",")]
+    if len(pair) != 2:
+        raise ValueError(f"camera_pair must name two cameras, got {pair!r}")
+    return int(pair[0]), int(pair[1])
+
+
+def _require_meta(meta: dict, key: str, what: str):
+    """``meta[key]`` from a record's ``board_meta``, or ``ValueError`` naming the key.
+
+    For response fields the record always stores: a missing key means the record is stale,
+    and a guessed stand-in would report something the solve never did.
+    """
+    if not isinstance(meta, dict) or meta.get(key) is None:
+        raise ValueError(
+            f"{what}: board_meta has no {key!r} (written by an older build) -- "
+            "regenerate the model"
+        )
+    return meta[key]
+
+
+def _rms_units(model_type: str) -> str:
+    """Unit of a model type's reported RMS: planar polynomial fits in mm, the rest in px."""
+    return "mm" if model_type == "polynomial" else "px"
 
 
 def _figure_rank(name: str) -> int:
@@ -480,16 +727,24 @@ def _geometry_payload(board_meta) -> Optional[dict]:
     }
 
 
-def _inputs_world_frame(model_dir) -> Optional[dict]:
+def _inputs_world_frame(model_dir, camera: Optional[int] = None) -> Optional[dict]:
     """World-frame picks recovered from the model dir's ``inputs.mat`` (the clicks survive a
     model delete), shaped like ``_world_frame_payload`` so the GUI restores origin/+X/+Y and a
     deleted model can be re-solved without re-clicking. None when no usable clicks are stored.
+
+    ``camera=None`` reads a mono sidecar's flat coords. ``camera=N`` reads camera N's picks
+    from a stereo sidecar (``coords["cameras"]["N"]``) with the pair's shared ``origin_mm``;
+    a stereo sidecar in the old flat shape raises ``ValueError`` (stale, re-pick). An
+    unreadable sidecar raises ``InputsCorrupt`` (surfaced by the app's JSON error handler).
     """
-    try:
-        side = try_load_inputs(model_dir)
-    except Exception:
-        return None
+    side = try_load_inputs(model_dir)
     c = side.coords if side else None
+    if camera is not None:
+        cams = _stereo_cameras_block(c)
+        picks = (cams or {}).get(str(int(camera)))
+        if not picks:
+            return None
+        c = {**picks, "origin_mm": c.get("origin_mm")}
     if not isinstance(c, dict) or not c.get("origin"):
         return None
 
@@ -557,9 +812,12 @@ def _polynomial3d_summary(pm: Polynomial3DModel) -> dict:
 
 
 def _scale_factor_summary(
-    sf: ScaleFactorModel, dt: float, frame_idx=None, wf=None
+    sf: ScaleFactorModel, dt: Optional[float], frame_idx=None, wf=None
 ) -> dict:
     """Scale-factor params shaped for the GUI results card + restore-on-load.
+
+    ``dt`` is the record's stamped dt, or None when the record carries none (a
+    stale model) — reported as null, never replaced by a made-up default.
 
     ``frame_idx`` (the 1-based frame the origin was picked on), when known, lets the GUI
     restore the origin/axis overlay on that same frame rather than always frame 1.
@@ -584,7 +842,7 @@ def _scale_factor_summary(
         "origin_mm": origin_mm,
         "mm_per_pixel": float(sf.mm_per_pixel),
         "px_per_mm": float(px_per_mm),
-        "dt": float(dt),
+        "dt": float(dt) if dt is not None else None,
         "col_sign": int(sf.col_sign),
         "row_sign": int(sf.row_sign),
         "swap_axes": int(sf.swap_axes),
@@ -598,17 +856,20 @@ def _scale_factor_summary(
 
 def _figures_dir(get: Callable[[str], Any]) -> Path:
     """Resolve the figures dir for a model from request locators (mono or stereo)."""
-    cfg = _cfg()
-    board = get("board") or cfg.get("active", "charuco")
+    board, active_stereo = _request_board(get)
     source = _source_path(_source_idx(get))
     if str(get("joint")) in ("1", "true", "True"):
         return rec.joint_model_dir_for_source(source, board).parent / "figures"
-    if str(get("stereo")) in ("1", "true", "True"):
-        pair = get("camera_pair") or _rig(get).get("camera_pair") or [1, 2]
-        if isinstance(pair, str):
-            pair = [int(x) for x in pair.split(",")]
+    stereo_arg = get("stereo")
+    stereo = (
+        str(stereo_arg) in ("1", "true", "True")
+        if stereo_arg not in (None, "")
+        else bool(active_stereo)
+    )
+    if stereo:
+        cam1, cam2 = _require_camera_pair(get)
         return (
-            rec.stereo_model_dir_for_source(source, int(pair[0]), int(pair[1])).parent
+            rec.stereo_model_dir_for_source(source, cam1, cam2, board).parent
             / "figures"
         )
     camera = int(get("camera") or _rig(get).get("camera") or 1)
@@ -671,7 +932,9 @@ def detect_datum():
     """Detect the datum view for a camera; cache it and return dot pixels for clicking."""
     data = request.get_json() or {}
     try:
-        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+        cfg, board, params, detector = _resolve_board(
+            data.get, data.get("board_params")
+        )
     except ValueError as exc:
         # Missing board geometry is a routine incomplete-form condition, not a fault —
         # the message is already actionable, so one WARNING line, no traceback.
@@ -682,26 +945,32 @@ def detect_datum():
     frame = _datum_frame(data.get)
     try:
         img = _load_one(
-            camera, frame, source_idx, data.get("image_format"), data.get("image_type")
+            camera,
+            frame,
+            source_idx,
+            data.get("image_format"),
+            data.get("image_type"),
+            normalize_uint8=False,
         )
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 
     det = detector.detect(img)
     if not det.success:
+        error, diagnostics = _board_not_detected(detector, img, det)
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": "board not detected",
-                    "diagnostics": det.diagnostics,
+                    "error": error,
+                    "diagnostics": diagnostics,
                 }
             ),
             200,
         )
 
     with _datum_lock:
-        _datum_cache[camera] = det
+        _datum_cache[camera] = ((camera, int(source_idx), str(board), int(frame)), det)
     h, w = np.asarray(img).shape[:2]
     return jsonify(
         {
@@ -777,16 +1046,14 @@ def frame_json():
         request.args.get("format", default="jpeg", type=str) or "jpeg"
     ).lower()
     quality = request.args.get("quality", default=85, type=int)
-    try:
-        frame_count = get_calibration_frame_count(camera, get_config(), source_idx)
-    except Exception:
-        frame_count = 0
-    if frame_count > 0 and idx > frame_count:
+    frame_count, frame_count_error = _frame_count_or_error(camera, source_idx)
+    if frame_count is not None and idx > frame_count:
         return (
             jsonify(
                 {
                     "error": f"Frame index {idx} exceeds available frames ({frame_count})",
                     "frame_count": frame_count,
+                    "frame_count_error": None,
                     "requested_idx": idx,
                 }
             ),
@@ -795,7 +1062,7 @@ def frame_json():
     try:
         # Display path: keep native bit depth so get_display_contrast_stats and
         # numpy_to_base64 see the real dynamic range (sqrt + percentile window),
-        # matching the PIV viewer. Detection routes still load uint8 for OpenCV.
+        # matching the PIV viewer. Detection routes load native depth too.
         img = _load_one(
             camera,
             idx,
@@ -805,7 +1072,16 @@ def frame_json():
             normalize_uint8=False,
         )
     except (FileNotFoundError, ValueError, IndexError) as exc:
-        return jsonify({"error": str(exc), "frame_count": frame_count}), 404
+        return (
+            jsonify(
+                {
+                    "error": str(exc),
+                    "frame_count": frame_count,
+                    "frame_count_error": frame_count_error,
+                }
+            ),
+            404,
+        )
 
     arr = np.asarray(img)
     arr_f = arr.astype(np.float32)
@@ -826,6 +1102,7 @@ def frame_json():
             "height": int(arr.shape[0]),
             "stats": stats,
             "frame_count": frame_count,
+            "frame_count_error": frame_count_error,
             "current_idx": idx,
         }
     )
@@ -840,7 +1117,9 @@ def detect_frame():
     """
     data = request.get_json() or {}
     try:
-        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+        cfg, board, params, detector = _resolve_board(
+            data.get, data.get("board_params")
+        )
     except ValueError as exc:
         # See detect_datum: incomplete board geometry is routine, not a fault.
         logger.warning("calibration detect_frame: %s", exc)
@@ -848,32 +1127,43 @@ def detect_frame():
     camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
     source_idx = _source_idx(data.get)
     frame = int(data.get("frame", 1))
-    try:
-        frame_count = get_calibration_frame_count(camera, get_config(), source_idx)
-    except Exception:
-        frame_count = 0
+    frame_count, frame_count_error = _frame_count_or_error(camera, source_idx)
     try:
         img = _load_one(
-            camera, frame, source_idx, data.get("image_format"), data.get("image_type")
+            camera,
+            frame,
+            source_idx,
+            data.get("image_format"),
+            data.get("image_type"),
+            normalize_uint8=False,
         )
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return (
-            jsonify({"success": False, "error": str(exc), "frame_count": frame_count}),
+            jsonify(
+                {
+                    "success": False,
+                    "error": str(exc),
+                    "frame_count": frame_count,
+                    "frame_count_error": frame_count_error,
+                }
+            ),
             200,
         )
     det = detector.detect(img)
     h, w = np.asarray(img).shape[:2]
     if not det.success:
+        error, diagnostics = _board_not_detected(detector, img, det)
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": "board not detected",
+                    "error": error,
                     "frame": int(frame),
                     "frame_count": frame_count,
+                    "frame_count_error": frame_count_error,
                     "width": int(w),
                     "height": int(h),
-                    "diagnostics": det.diagnostics,
+                    "diagnostics": diagnostics,
                 }
             ),
             200,
@@ -885,6 +1175,7 @@ def detect_frame():
             "board": board,
             "frame": int(frame),
             "frame_count": frame_count,
+            "frame_count_error": frame_count_error,
             "n_points": det.n,
             "width": int(w),
             "height": int(h),
@@ -924,15 +1215,25 @@ def detect_views():
         logger.warning("calibration detect_views: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 200
     source_idx = _source_idx(data.get)
-    frame_total = int(data.get("frame_total", 1))
     image_format = data.get("image_format")
     image_type = data.get("image_type")
     stereo = bool(data.get("stereo", False))
     if stereo:
-        pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
-        cameras = [int(pair[0]), int(pair[1])]
+        try:
+            cameras = list(_require_camera_pair(data.get))
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
     else:
         cameras = [int(data.get("camera") or _rig(data.get).get("camera") or 1)]
+    try:
+        frame_total, frame_total_source = (
+            _pair_frame_total(data.get, cameras, source_idx)
+            if stereo
+            else _frame_total(data.get, cameras[0], source_idx)
+        )
+    except ValueError as exc:
+        logger.warning("calibration detect_views: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 200
 
     by_camera: dict[str, dict] = {}
     detections: dict[int, list] = {}
@@ -945,7 +1246,14 @@ def detect_views():
         width = height = 0
         for frame in range(1, frame_total + 1):
             try:
-                img = _load_one(camera, frame, source_idx, image_format, image_type)
+                img = _load_one(
+                    camera,
+                    frame,
+                    source_idx,
+                    image_format,
+                    image_type,
+                    normalize_uint8=False,
+                )
             except (FileNotFoundError, ValueError, IndexError) as exc:
                 unloadable.append(f"cam{camera} frame {frame}: {exc}")
                 continue
@@ -984,7 +1292,7 @@ def detect_views():
     else:
         source = _source_path(source_idx)
         model_dir = (
-            rec.stereo_model_dir_for_source(source, cameras[0], cameras[1])
+            rec.stereo_model_dir_for_source(source, cameras[0], cameras[1], board)
             if stereo
             else rec.mono_model_dir_for_source(source, cameras[0], board)
         )
@@ -995,6 +1303,7 @@ def detect_views():
             infer_image_type(image_format),
             cameras,
             params,
+            zero_based=_zero_based(source_idx),
         )
         try:
             save_inputs(
@@ -1016,6 +1325,8 @@ def detect_views():
             "success": True,
             "board": board,
             "cameras": cameras,
+            "frame_total": frame_total,
+            "frame_total_source": frame_total_source,
             "by_camera": by_camera,
             "persisted": persisted,
             "persist_skipped": persist_skipped,
@@ -1058,7 +1369,9 @@ def restore_detections():
     """
     data = request.get_json() or {}
     try:
-        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+        cfg, board, params, detector = _resolve_board(
+            data.get, data.get("board_params")
+        )
     except ValueError as exc:
         # Incomplete board geometry (no dot spacing entered yet) is the routine
         # first-visit state. Without geometry there is no det_key to compare, so
@@ -1067,14 +1380,28 @@ def restore_detections():
         return jsonify({"exists": False}), 200
 
     source_idx = _source_idx(data.get)
-    frame_total = int(data.get("frame_total", 1))
     image_format = data.get("image_format")
     stereo = bool(data.get("stereo", False))
     if stereo:
-        pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
-        cameras = [int(pair[0]), int(pair[1])]
+        try:
+            cameras = list(_require_camera_pair(data.get))
+        except ValueError as exc:
+            # Same contract as the other "nothing to restore" answers: 200, with the reason.
+            logger.warning("calibration restore_detections: %s", exc)
+            return jsonify({"exists": False, "error": str(exc)}), 200
     else:
         cameras = [int(data.get("camera") or _rig(data.get).get("camera") or 1)]
+    try:
+        frame_total, frame_total_source = (
+            _pair_frame_total(data.get, cameras, source_idx)
+            if stereo
+            else _frame_total(data.get, cameras[0], source_idx)
+        )
+    except ValueError as exc:
+        # Without a view count there is no det_key to compare: nothing to restore,
+        # but the reason is returned so the GUI can say why.
+        logger.warning("calibration restore_detections: %s", exc)
+        return jsonify({"exists": False, "error": str(exc)}), 200
 
     try:
         source = _source_path(source_idx)
@@ -1083,7 +1410,7 @@ def restore_detections():
         return jsonify({"exists": False}), 200
 
     model_dir = (
-        rec.stereo_model_dir_for_source(source, cameras[0], cameras[1])
+        rec.stereo_model_dir_for_source(source, cameras[0], cameras[1], board)
         if stereo
         else rec.mono_model_dir_for_source(source, cameras[0], board)
     )
@@ -1106,6 +1433,7 @@ def restore_detections():
         infer_image_type(image_format),
         cameras,
         params,
+        zero_based=_zero_based(source_idx),
     )
     if side.det_key != det_key:
         stored_views = len(side.detections[cameras[0]])
@@ -1114,6 +1442,8 @@ def restore_detections():
                 {
                     "exists": True,
                     "fresh": False,
+                    "frame_total": frame_total,
+                    "frame_total_source": frame_total_source,
                     "by_camera": None,
                     "stale_reason": (
                         "saved detections were made with different settings"
@@ -1163,6 +1493,8 @@ def restore_detections():
                 "board": board,
                 "cameras": cameras,
                 "det_key": det_key,
+                "frame_total": frame_total,
+                "frame_total_source": frame_total_source,
                 "n_views": len(side.detections[cameras[0]]),
                 "by_camera": by_camera,
                 "stale_reason": None,
@@ -1174,14 +1506,40 @@ def restore_detections():
 
 @calibration_bp.route("/calibration/snap_fiducial", methods=["POST"])
 def snap_fiducial():
-    """Snap a click to the nearest detected dot; return its pixel + grid index."""
+    """Snap a click to the nearest detected dot; return its pixel + grid index.
+
+    ``click_x``/``click_y`` are required. The camera, source, board and datum frame resolve
+    exactly as in ``detect_datum`` (request, else settings rig / calibration pointer), and
+    the cached datum detection must have been made for that same key -- a detection of
+    another source, board or datum frame is refused, never snapped against.
+    """
     data = request.get_json() or {}
-    camera = int(data.get("camera", 1))
-    cx, cy = float(data.get("click_x", 0)), float(data.get("click_y", 0))
+    missing = [k for k in ("click_x", "click_y") if data.get(k) is None]
+    if missing:
+        return jsonify({"error": f"{' and '.join(missing)} required"}), 400
+    cx, cy = float(data["click_x"]), float(data["click_y"])
+    camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
+    key = (
+        camera,
+        int(_source_idx(data.get)),
+        str(_request_board(data.get)[0]),
+        int(_datum_frame(data.get)),
+    )
     with _datum_lock:
-        det = _datum_cache.get(camera)
-    if det is None:
-        return jsonify({"error": "no cached detection; call detect_datum first"}), 400
+        cached = _datum_cache.get(camera)
+    if cached is None or cached[0] != key:
+        return (
+            jsonify(
+                {
+                    "error": (
+                        f"no datum detection for camera {camera} on source {key[1]}, "
+                        f"board {key[2]}, datum frame {key[3]} -- detect the datum first"
+                    )
+                }
+            ),
+            400,
+        )
+    det = cached[1]
     idx = WF._snap(det.image_points, (cx, cy))
     px = det.image_points[idx]
     gi = det.grid_indices[idx]
@@ -1210,26 +1568,247 @@ def _fit_knobs(source_idx: int, board: str, data: dict) -> dict:
     calibrated differently on GUI regenerate. A ``fix_k2`` in the request still wins
     (the stereo hooks send it); it falls back to the sidecar, never to a literal.
     """
-    settings = _settings_idx(source_idx)
-    fit = settings.get("fit") or {}
-    method = (settings.get("methods") or {}).get(board) or {}
+    knobs = cs.fit_knobs(_settings_idx(source_idx), board)
     fix_k2 = data.get("fix_k2")
-    if fix_k2 is None:
-        fix_k2 = method.get("fix_k2", False)
-    return {
-        "distortion_model": DistortionModel(fit.get("distortion_model", "standard")),
-        "fix_aspect_ratio": bool(fit.get("fix_aspect_ratio", True)),
-        "fix_k2": bool(fix_k2),
-        "use_release_object": bool(fit.get("use_release_object", False)),
+    if fix_k2 is not None:
+        knobs["fix_k2"] = bool(fix_k2)
+    knobs["distortion_model"] = DistortionModel(knobs["distortion_model"])
+    return knobs
+
+
+def _persist_generate_inputs(
+    model_dir: Path, request_coords: Any, used_coords: Any, fields: dict
+) -> None:
+    """Write a generate's detections + picks into the sidecar under its lock.
+
+    The solve read the sidecar before it ran. Writing ``used_coords`` back after it would
+    overwrite any pick committed meanwhile (another tab, the CLI) with that stale read. So
+    the coords are only written when the REQUEST carried picks; otherwise the stored ones
+    are left untouched, and if they no longer match what the solve used the generate is
+    refused before the model is saved (the model would carry picks the sidecar no longer
+    holds).
+    """
+
+    def _mutate(prev) -> dict:
+        out = dict(fields)
+        if request_coords is not None:
+            out["coords"] = request_coords
+        elif (prev.coords if prev else None) != used_coords:
+            raise RuntimeError(
+                f"the world-frame picks in {model_dir / 'inputs.mat'} changed while this "
+                "model was being solved (saved from another tab or the CLI) -- nothing was "
+                "saved; re-run Generate"
+            )
+        return out
+
+    update_inputs(model_dir, _mutate)
+
+
+def _mono_model_type(data: dict, board: str) -> str:
+    """Mono model type: the request's ``model_type``, else the settings sidecar's
+    ``methods.<board>.model_type`` (the CLI rule). An explicit ``null`` is an error, not
+    "use the default"."""
+    if "model_type" in data:
+        if data["model_type"] is None:
+            raise ValueError(
+                "model_type is null -- send a model type, or omit the key to use the "
+                f"settings methods.{board}.model_type"
+            )
+        return str(data["model_type"])
+    mt = (_methods(data.get).get(board) or {}).get("model_type")
+    if not mt:
+        raise ValueError(
+            f"no model_type in the request and none in the settings methods.{board}"
+        )
+    return str(mt)
+
+
+def _generate_mono_camera(
+    data: dict,
+    camera: int,
+    clicks_request: Optional[dict],
+    *,
+    source: Path,
+    source_idx: int,
+    board: str,
+    params: Any,
+    detector: Any,
+    spacing: float,
+    model_type: str,
+    make_figs: bool,
+    datum_frame: int,
+    datum_index: int,
+    gen_dt: float,
+    image_format: Optional[str],
+    image_type: Optional[str],
+) -> dict:
+    """Solve, persist and summarise ONE camera's mono model; returns the response dict.
+
+    ``clicks_request`` is this camera's world-frame picks from the request (None: the
+    picks stored in the sidecar, if any). Raises on any failure; the caller reports it.
+    """
+    model_dir = rec.mono_model_dir_for_source(source, camera, board)
+    # Detection sidecar (parity with stereo/joint): reuse stored detections + clicks when
+    # the request params still match (det_key), so a model can be regenerated without
+    # re-detecting or re-clicking — and, with figures off, without the images on disk.
+    # force_redetect bypasses the cached DETECTIONS only; the stored clicks are kept.
+    force_redetect = bool(data.get("force_redetect", False))
+    side = try_load_inputs(model_dir)
+    cached = (side.detections or {}).get(camera) if side else None
+    # View count from the request/config/auto-count. When the auto-count fails and the
+    # sidecar holds a cached set, the cached count is used so a re-solve still runs after
+    # the images are gone: the sidecar stores every view (failed ones in place), so its
+    # length IS the view count it was detected with, and the det_key gate below still
+    # rejects it unless every other detection parameter matches. Logged, not silent.
+    try:
+        frame_total, frame_total_source = _frame_total(data.get, camera, source_idx)
+    except ValueError as exc:
+        if not cached:
+            raise
+        frame_total = len(cached)
+        frame_total_source = FRAME_TOTAL_FROM_SIDECAR
+        logger.warning(
+            "generate_model: %s; using the %d views cached in the sidecar",
+            exc,
+            frame_total,
+        )
+    if not (0 <= datum_index < frame_total):
+        return {
+            "success": False,
+            "error": f"datum frame {datum_frame} is outside 1..{frame_total}",
+        }
+    det_key = joint_det_key(
+        board,
+        frame_total,
+        image_format,
+        infer_image_type(image_format),
+        [camera],
+        params,
+        zero_based=_zero_based(source_idx),
+    )
+    cached_size = None
+    cache_hit = (
+        not force_redetect
+        and side is not None
+        and side.det_key == det_key
+        and bool(cached)
+    )
+    if cache_hit:
+        cached_size = side.image_size_by_cam.get(camera)
+    used_coords = side.coords if side else None
+    # World-frame picks: the live request, else the stored coords (re-solve w/o re-click).
+    clicks_payload = clicks_request or used_coords
+    # Load images only to detect or to draw figures; a cached re-solve with figures off
+    # touches no image files. (A cached hit lacking a stored size also needs an image.)
+    # Whenever images are needed a missing one raises naming its file -- a re-solve after
+    # the images were removed must be run with figures off.
+    need_images = make_figs or not cache_hit or cached_size is None
+    imgs = (
+        _load_views(camera, frame_total, source_idx, image_format, image_type)
+        if need_images
+        else []
+    )
+    fig_dir = (model_dir.parent / "figures") if make_figs else None
+    calr = Calibrator(
+        detector=detector,
+        board_type=board,
+        model_type=model_type,
+        **_fit_knobs(source_idx, board, data),
+    )
+    dets = list(cached) if cache_hit else _detect_parallel(board, params, imgs)
+    record = calr.run_mono(
+        imgs,
+        camera=camera,
+        clicks=_clicks_from(clicks_payload),
+        origin_mm=_origin_mm_from(clicks_payload),
+        datum_index=datum_index,
+        spacing_mm=spacing,
+        image_size=cached_size,
+        figure_dir=fig_dir,
+        detections=dets,
+    )
+    record.board_meta["dt"] = gen_dt
+    if image_format:
+        record.board_meta["image_format"] = str(image_format)
+    isz = record.camera_model.image_size
+    _persist_generate_inputs(
+        model_dir,
+        clicks_request,
+        used_coords,
+        {
+            "path_type": "mono",
+            "board_type": board,
+            "detections": {camera: list(dets)},
+            "image_size_by_cam": {camera: (int(isz[0]), int(isz[1]))},
+            "det_key": det_key,
+            "board_params": rec.geometry_meta(board, params),
+        },
+    )
+    path = rec.save_mono(record, model_dir)
+    cm = record.camera_model
+    resp = {
+        "success": True,
+        "stereo": False,
+        "model_path": str(path),
+        "camera": camera,
+        "num_images_used": len(record.per_view_rms),
+        "per_view_rms": list(record.per_view_rms),
+        "detections_cached": bool(cache_hit),
+        "frame_total": frame_total,
+        "frame_total_source": frame_total_source,
+        "figures": _list_figures(fig_dir),
     }
+    if isinstance(cm, PolynomialModel):
+        resp.update(_polynomial_summary(cm))
+    elif isinstance(cm, Polynomial3DModel):
+        resp.update(_polynomial3d_summary(cm))
+    else:
+        resp.update(
+            {
+                "model_type": "pinhole",
+                "rms": cm.rms,
+                "fx": float(cm.K[0, 0]),
+                "fy": float(cm.K[1, 1]),
+                "cx": float(cm.K[0, 2]),
+                "cy": float(cm.K[1, 2]),
+                "camera_matrix": cm.K.tolist(),
+                "dist_coeffs": cm.dist.tolist(),
+                "image_width": int(cm.image_size[0]),
+                "image_height": int(cm.image_size[1]),
+            }
+        )
+    resp["rms_units"] = _rms_units(resp["model_type"])
+    return resp
+
+
+def _stereo_dotboard_missing_picks(cam1: int, cam2: int, missing: List[int]) -> str:
+    """Refusal text for a stereo dotboard generate without picks on every camera."""
+    which = " and ".join(str(c) for c in missing)
+    noun = "camera" if len(missing) == 1 else "cameras"
+    return (
+        f"stereo dotboard needs world-frame picks on {noun} {which}: dotboard grid indices "
+        f"are re-zeroed per view, so camera {cam2}'s origin/+X/+Y must mark the same "
+        f"physical dots as camera {cam1}'s"
+    )
 
 
 @calibration_bp.route("/calibration/generate_model", methods=["POST"])
 def generate_model():
-    """Run the full calibration (mono or stereo), save it + proof figures into the source."""
+    """Run the full calibration (mono or stereo), save it + proof figures into the source.
+
+    Mono: one ``camera`` (else the rig camera); the GUI solves several cameras with one
+    request each.
+
+    Stereo: ``clicks`` (camera 1, carries ``origin_mm``) and ``clicks2`` (camera 2). A
+    dotboard pair needs both (grid indices are re-zeroed per view) and is refused with a
+    400 naming the camera without picks; ChArUco needs at most camera 1's. Without picks in
+    the request the sidecar's per-camera picks are used.
+    """
     data = request.get_json() or {}
     try:
-        cfg, board, params, detector = _resolve_board(data.get, data.get("board_params"))
+        cfg, board, params, detector = _resolve_board(
+            data.get, data.get("board_params")
+        )
     except ValueError as exc:
         # See detect_datum: incomplete board geometry is routine, not a fault.
         logger.warning("calibration generate_model: %s", exc)
@@ -1237,9 +1816,12 @@ def generate_model():
     source_idx = _source_idx(data.get)
     image_format, image_type = data.get("image_format"), data.get("image_type")
     stereo = bool(data.get("stereo", False))
-    model_type = str(
-        data.get("model_type", "pinhole")
-    )  # polynomial is planar (mono) only
+    model_type = None
+    if not stereo:  # stereo is pinhole only; model_type selects the mono fit
+        try:
+            model_type = _mono_model_type(data, board)
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
     make_figs = not bool(data.get("no_figures", False))
     spacing = c2._spacing_mm(board, params)
     datum_frame = _datum_frame(data.get)
@@ -1251,9 +1833,10 @@ def generate_model():
         # detection pass, while the user is still at the form.
         gen_dt = _generate_dt(data.get, source)
         if stereo:
-            pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
-            cam1, cam2 = int(pair[0]), int(pair[1])
-            frame_total = _frame_total(data.get, cam1, source_idx)
+            cam1, cam2 = _require_camera_pair(data.get)
+            frame_total, frame_total_source = _pair_frame_total(
+                data.get, [cam1, cam2], source_idx
+            )
             if not (0 <= datum_index < frame_total):
                 return (
                     jsonify(
@@ -1264,9 +1847,39 @@ def generate_model():
                     ),
                     200,
                 )
+            model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2, board)
+            # The sidecar is always read: force_redetect bypasses its DETECTIONS only. The
+            # picked world frames stored beside them must survive a Re-detect without a
+            # re-pick.
+            force_redetect = bool(data.get("force_redetect", False))
+            side = try_load_inputs(model_dir)
+            used_coords = side.coords if side else None
+            # World-frame picks per camera: the live request, else the sidecar's (so a
+            # deleted-model re-solve rebuilds the shared frame without re-picking).
+            request_coords = _stereo_coords(
+                cam1, cam2, data.get("clicks"), data.get("clicks2")
+            )
+            coords = request_coords if request_coords is not None else used_coords
+            clicks1 = _stereo_clicks(coords, cam1)
+            clicks2 = _stereo_clicks(coords, cam2)
+            if board == "dotboard":
+                missing = [
+                    c for c, k in ((cam1, clicks1), (cam2, clicks2)) if k is None
+                ]
+                if missing:
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": _stereo_dotboard_missing_picks(
+                                    cam1, cam2, missing
+                                ),
+                            }
+                        ),
+                        400,
+                    )
             imgs1 = _load_views(cam1, frame_total, source_idx, image_format, image_type)
             imgs2 = _load_views(cam2, frame_total, source_idx, image_format, image_type)
-            model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
             fig_dir = (model_dir.parent / "figures") if make_figs else None
             # Detection sidecar/cache (parity with the joint path): reuse stored detections
             # when the request params still match (det_key), else detect fresh. Persisted
@@ -1278,12 +1891,8 @@ def generate_model():
                 infer_image_type(image_format),
                 [cam1, cam2],
                 params,
+                zero_based=_zero_based(source_idx),
             )
-            # The sidecar is always read: force_redetect bypasses its DETECTIONS only. The
-            # clicked world frame stored beside them must survive a Re-detect without a
-            # re-click (it is re-saved from `side.coords` below).
-            force_redetect = bool(data.get("force_redetect", False))
-            side = try_load_inputs(model_dir)
             cache_hit = (
                 not force_redetect
                 and side is not None
@@ -1297,9 +1906,6 @@ def generate_model():
             else:
                 det1 = _detect_parallel(board, params, imgs1)
                 det2 = _detect_parallel(board, params, imgs2)
-            # World-frame picks: the live request, else the cam1 clicks stored in the sidecar
-            # (so a deleted-model re-solve rebuilds the shared frame without re-clicking).
-            clicks_payload = data.get("clicks") or (side.coords if side else None)
             sc = StereoCalibrator(
                 detector=detector,
                 board_type=board,
@@ -1310,38 +1916,45 @@ def generate_model():
                 imgs2,
                 cam1=cam1,
                 cam2=cam2,
-                clicks=_clicks_from(clicks_payload),
-                clicks2=_clicks_from(data.get("clicks2")),
-                origin_mm=_origin_mm_from(clicks_payload),
+                clicks=clicks1,
+                clicks2=clicks2,
+                origin_mm=_stereo_origin_mm(coords),
                 datum_index=datum_index,
                 spacing_mm=spacing,
                 figure_dir=fig_dir,
                 det1=det1,
                 det2=det2,
             )
+            method = _require_meta(record.board_meta, "stereo_method", "stereo solve")
+            n_pairs = int(
+                _require_meta(record.board_meta, "n_stereo_views", "stereo solve")
+            )
             record.board_meta["dt"] = gen_dt
             if image_format:
                 record.board_meta["image_format"] = str(image_format)
-            path = rec.save_stereo(record, model_dir)
-            save_inputs(
+            _persist_generate_inputs(
                 model_dir,
-                path_type="stereo",
-                board_type=board,
-                detections={cam1: list(det1), cam2: list(det2)},
-                image_size_by_cam={
-                    cam1: (
-                        int(record.model1.image_size[0]),
-                        int(record.model1.image_size[1]),
-                    ),
-                    cam2: (
-                        int(record.model2.image_size[0]),
-                        int(record.model2.image_size[1]),
-                    ),
+                request_coords,
+                used_coords,
+                {
+                    "path_type": "stereo",
+                    "board_type": board,
+                    "detections": {cam1: list(det1), cam2: list(det2)},
+                    "image_size_by_cam": {
+                        cam1: (
+                            int(record.model1.image_size[0]),
+                            int(record.model1.image_size[1]),
+                        ),
+                        cam2: (
+                            int(record.model2.image_size[0]),
+                            int(record.model2.image_size[1]),
+                        ),
+                    },
+                    "det_key": det_key,
+                    "board_params": rec.geometry_meta(board, params),
                 },
-                det_key=det_key,
-                board_params=rec.geometry_meta(board, params),
-                coords=clicks_payload,
             )
+            path = rec.save_stereo(record, model_dir)
             ang = float(
                 np.degrees(
                     np.arccos(np.clip((np.trace(record.R_stereo) - 1) / 2, -1, 1))
@@ -1354,145 +1967,46 @@ def generate_model():
                     "model_path": str(path),
                     "rms_cam1": record.model1.rms,
                     "rms_cam2": record.model2.rms,
+                    "rms_units": "px",
                     "per_view_rms1": list(record.per_view_rms1),
                     "per_view_rms2": list(record.per_view_rms2),
                     "intrinsics1": _intrinsics(record.model1),
                     "intrinsics2": _intrinsics(record.model2),
-                    "num_pairs_used": record.board_meta.get(
-                        "n_stereo_views", len(record.per_view_rms1)
-                    ),
+                    "num_pairs_used": n_pairs,
                     "stereo_angle_deg": ang,
                     "baseline_mm": float(np.linalg.norm(record.T_stereo)),
                     "stereo_rms_px": _finite_or_none(
                         record.board_meta.get("stereo_rms_px")
                     ),
-                    "method": record.board_meta.get("stereo_method", "stereoCalibrate"),
+                    "method": method,
                     "detections_cached": bool(cache_hit),
+                    "frame_total": frame_total,
+                    "frame_total_source": frame_total_source,
                     "figures": _list_figures(fig_dir),
                 }
             )
-        else:
-            camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
-            model_dir = rec.mono_model_dir_for_source(source, camera, board)
-            # Detection sidecar (parity with stereo/joint): reuse stored detections + clicks when
-            # the request params still match (det_key), so a model can be regenerated without
-            # re-detecting or re-clicking — and, with figures off, without the images on disk.
-            # As in the stereo branch: force_redetect bypasses the cached DETECTIONS only,
-            # the stored clicks are re-saved from `side.coords` below.
-            force_redetect = bool(data.get("force_redetect", False))
-            side = try_load_inputs(model_dir)
-            cached = (side.detections or {}).get(camera) if side else None
-            # View count from the request/config, falling back to the sidecar's cached count so a
-            # re-solve still resolves when the images (and thus the auto-count) are gone.
-            frame_total = _frame_total(data.get, camera, source_idx) or (
-                len(cached) if cached else 0
-            )
-            if not (0 <= datum_index < frame_total):
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "error": f"datum frame {datum_frame} is outside 1..{frame_total}",
-                        }
-                    ),
-                    200,
-                )
-            det_key = joint_det_key(
-                board,
-                frame_total,
-                image_format,
-                infer_image_type(image_format),
-                [camera],
-                params,
-            )
-            cached_size = None
-            cache_hit = (
-                not force_redetect
-                and side is not None
-                and side.det_key == det_key
-                and bool(cached)
-            )
-            if cache_hit:
-                cached_size = side.image_size_by_cam.get(camera)
-            # World-frame picks: the live request, else the stored coords (re-solve w/o re-click).
-            clicks_payload = data.get("clicks") or (side.coords if side else None)
-            # Load images only to detect or to draw figures; a cached re-solve with figures off
-            # touches no image files. (A cached hit lacking a stored size also needs an image.)
-            need_images = make_figs or not cache_hit or cached_size is None
-            imgs = (
-                _load_views(camera, frame_total, source_idx, image_format, image_type)
-                if need_images
-                else []
-            )
-            # Figures need the images; if they could not be loaded (a re-solve from the sidecar
-            # after the images were removed), skip them rather than fail the solve.
-            fig_dir = (model_dir.parent / "figures") if (make_figs and imgs) else None
-            calr = Calibrator(
+
+        camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
+        return jsonify(
+            _generate_mono_camera(
+                data,
+                camera,
+                data.get("clicks"),
+                source=source,
+                source_idx=source_idx,
+                board=board,
+                params=params,
                 detector=detector,
-                board_type=board,
+                spacing=spacing,
                 model_type=model_type,
-                **_fit_knobs(source_idx, board, data),
-            )
-            dets = (
-                list(cached) if cache_hit else _detect_parallel(board, params, imgs)
-            )
-            record = calr.run_mono(
-                imgs,
-                camera=camera,
-                clicks=_clicks_from(clicks_payload),
-                origin_mm=_origin_mm_from(clicks_payload),
+                make_figs=make_figs,
+                datum_frame=datum_frame,
                 datum_index=datum_index,
-                spacing_mm=spacing,
-                image_size=cached_size,
-                figure_dir=fig_dir,
-                detections=dets,
+                gen_dt=gen_dt,
+                image_format=image_format,
+                image_type=image_type,
             )
-            record.board_meta["dt"] = gen_dt
-            if image_format:
-                record.board_meta["image_format"] = str(image_format)
-            path = rec.save_mono(record, model_dir)
-            isz = record.camera_model.image_size
-            save_inputs(
-                model_dir,
-                path_type="mono",
-                board_type=board,
-                detections={camera: list(dets)},
-                image_size_by_cam={camera: (int(isz[0]), int(isz[1]))},
-                det_key=det_key,
-                board_params=rec.geometry_meta(board, params),
-                coords=clicks_payload,
-            )
-            cm = record.camera_model
-            resp = {
-                "success": True,
-                "stereo": False,
-                "model_path": str(path),
-                "camera": camera,
-                "num_images_used": len(record.per_view_rms),
-                "per_view_rms": list(record.per_view_rms),
-                "detections_cached": bool(cache_hit),
-                "figures": _list_figures(fig_dir),
-            }
-            if isinstance(cm, PolynomialModel):
-                resp.update(_polynomial_summary(cm))
-            elif isinstance(cm, Polynomial3DModel):
-                resp.update(_polynomial3d_summary(cm))
-            else:
-                resp.update(
-                    {
-                        "model_type": "pinhole",
-                        "rms": cm.rms,
-                        "fx": float(cm.K[0, 0]),
-                        "fy": float(cm.K[1, 1]),
-                        "cx": float(cm.K[0, 2]),
-                        "cy": float(cm.K[1, 2]),
-                        "camera_matrix": cm.K.tolist(),
-                        "dist_coeffs": cm.dist.tolist(),
-                        "image_width": int(cm.image_size[0]),
-                        "image_height": int(cm.image_size[1]),
-                    }
-                )
-            return jsonify(resp)
+        )
     except (
         Exception
     ) as exc:  # surface failures to the GUI (full traceback to the server log)
@@ -1595,30 +2109,73 @@ def scale_factor_generate():
         return jsonify({"success": False, "error": str(exc)}), 200
 
 
+def _optical_axis_angle_deg(model1: CameraModel, model2: CameraModel) -> float:
+    """Angle (deg) between two pinhole cameras' optical axes in the world frame.
+
+    ``R.T @ [0, 0, 1]`` is a camera's optical axis in world coordinates; the same formula
+    ``stepped_calibrate`` stamps as ``board_meta["relative_angle_deg"]``.
+    """
+    z = np.array([0.0, 0.0, 1.0])
+    a1 = np.asarray(model1.R).T @ z
+    a2 = np.asarray(model2.R).T @ z
+    return float(np.degrees(np.arccos(np.clip(float(a1 @ a2), -1.0, 1.0))))
+
+
 @calibration_bp.route("/calibration/model", methods=["GET"])
 def load_model():
     """Return a summary of a saved model (mono or stereo) for the summary panel."""
-    cfg = _cfg()
-    board = request.args.get("board") or cfg.get("active", "charuco")
+    board, active_stereo = _request_board(request.args.get)
     try:
         source = _source_path(_source_idx(request.args.get))
     except (ValueError, IndexError):
         return jsonify({"exists": False}), 200
-    if request.args.get("stereo") in ("1", "true", "True"):
-        pair = request.args.get("camera_pair", "1,2").split(",")
-        cam1, cam2 = int(pair[0]), int(pair[1])
-        mdir = rec.stereo_model_dir_for_source(source, cam1, cam2)
+    stereo_arg = request.args.get("stereo")
+    stereo = (
+        stereo_arg in ("1", "true", "True")
+        if stereo_arg not in (None, "")
+        else bool(active_stereo)
+    )
+    if stereo:
+        try:
+            cam1, cam2 = _required_camera_pair(request.args.get)
+        except ValueError as exc:
+            return jsonify({"exists": False, "error": str(exc)}), 200
+        mdir = rec.stereo_model_dir_for_source(source, cam1, cam2, board)
         try:
             mpath = rec.resolve_stereo_path(
                 mdir, _model_type_arg(request.args.get, board, stereo=True)
             )
             r = rec.load_stereo(mpath)
+            # rms_cam1 / intrinsics1 are model1's: label them with the record's cam1.
+            cam1, cam2 = rec.record_pair(r, (cam1, cam2))
         except FileNotFoundError:
-            return (
-                jsonify({"exists": False, "world_frame": _inputs_world_frame(mdir)}),
-                200,
+            # No model: both cameras' picks come back from the sidecar so the GUI can
+            # restore them and re-solve without re-picking.
+            try:
+                return (
+                    jsonify(
+                        {
+                            "exists": False,
+                            "world_frame": _inputs_world_frame(mdir, camera=cam1),
+                            "world_frame2": _inputs_world_frame(mdir, camera=cam2),
+                        }
+                    ),
+                    200,
+                )
+            except ValueError as exc:  # a stale (flat) stereo sidecar
+                return jsonify({"exists": False, "error": str(exc)}), 200
+        except ValueError as exc:  # several types and none requested, or other cameras
+            return jsonify({"exists": False, "error": str(exc)}), 200
+        try:
+            # Camera 2's frame is an input only (the record stores camera 1's): it comes
+            # from the sidecar picks. Pair counts and the stereo method are what the
+            # solve stored, never a stand-in.
+            world_frame2 = _inputs_world_frame(mdir, camera=cam2)
+            num_pairs_used = int(
+                _require_meta(r.board_meta, "n_stereo_views", str(mpath))
             )
-        except ValueError as exc:  # several types saved, none requested
+            stereo_method = _require_meta(r.board_meta, "stereo_method", str(mpath))
+        except ValueError as exc:
             return jsonify({"exists": False, "error": str(exc)}), 200
         common = {
             "exists": True,
@@ -1628,9 +2185,11 @@ def load_model():
             "model_path": str(mpath),
             "per_view_rms1": list(r.per_view_rms1),
             "per_view_rms2": list(r.per_view_rms2),
-            "num_pairs_used": r.board_meta.get("n_stereo_views", len(r.per_view_rms1)),
+            "rms_units": "px",
+            "num_pairs_used": num_pairs_used,
             "world_frame_mode": r.world_frame.mode,
             "world_frame": _world_frame_payload(r.world_frame),
+            "world_frame2": world_frame2,
             "image_width": int(r.model1.image_size[0]),
             "image_height": int(r.model1.image_size[1]),
             "spacing_mm": _meta_float(r.board_meta, "spacing_mm"),
@@ -1660,25 +2219,16 @@ def load_model():
                     "intrinsics1": _intrinsics(r.model1),
                     "intrinsics2": _intrinsics(r.model2),
                     "distortion_model": r.model1.distortion_model.value,
-                    # The PIV-meaningful angle is the optical-axis angle, computed and
-                    # stored at fit time (board_meta["relative_angle_deg"]). The R_stereo
-                    # rotation angle below is a DIFFERENT quantity (it conflates the axis
-                    # change with camera roll, e.g. ~178deg in transmission) — keep it only
-                    # as a fallback for legacy models saved before the angle was persisted.
-                    "stereo_angle_deg": (
-                        float(r.board_meta["relative_angle_deg"])
-                        if r.board_meta.get("relative_angle_deg") is not None
-                        else float(
-                            np.degrees(
-                                np.arccos(
-                                    np.clip((np.trace(r.R_stereo) - 1) / 2, -1, 1)
-                                )
-                            )
-                        )
-                    ),
+                    # The PIV-meaningful angle is the optical-axis angle, derived from the
+                    # stored poses (the stepped path also stamps it as relative_angle_deg
+                    # with the same formula; the flat stereoCalibrate path does not). Never
+                    # the R_stereo rotation angle: it conflates the axis change with camera
+                    # roll (e.g. ~178deg in transmission).
+                    "stereo_angle_deg": _optical_axis_angle_deg(r.model1, r.model2),
                     "baseline_mm": float(np.linalg.norm(r.T_stereo)),
                     "stereo_rms_px": _finite_or_none(r.board_meta.get("stereo_rms_px")),
-                    "method": r.board_meta.get("stereo_method"),
+                    "method": stereo_method,
+                    "stereo_config": r.board_meta.get("stereo_config"),
                 }
             )
         return jsonify(common)
@@ -1709,7 +2259,7 @@ def load_model():
         summary.update(
             _scale_factor_summary(
                 cm,
-                _meta_float(r.board_meta, "dt") or 1.0,
+                _meta_float(r.board_meta, "dt"),
                 frame_idx=_meta_int(r.board_meta, "frame_idx"),
                 wf=r.world_frame,
             )
@@ -1734,67 +2284,14 @@ def load_model():
                 "image_height": int(cm.image_size[1]),
             }
         )
+    if not isinstance(cm, ScaleFactorModel):  # a scale factor has no fit residual
+        summary["rms_units"] = _rms_units(summary["model_type"])
     return jsonify(summary)
 
 
 # ---------------------------------------------------------------------------
-# Measure tool + figure serving
+# Figure serving
 # ---------------------------------------------------------------------------
-
-
-@calibration_bp.route("/calibration/measure", methods=["POST"])
-def measure():
-    """Distance in mm between two pixels, via the saved model's back-projection."""
-    data = request.get_json() or {}
-    cfg = _cfg()
-    board = data.get("board") or cfg.get("active", "charuco")
-    p1 = np.asarray(data.get("p1"), dtype=float)
-    p2 = np.asarray(data.get("p2"), dtype=float)
-    if p1.shape != (2,) or p2.shape != (2,):
-        return jsonify({"error": "p1 and p2 must be [x, y] pixel pairs"}), 400
-    z = float(data.get("z_world", 0.0))
-    tx = float(data.get("tilt_x", 0.0))
-    ty = float(data.get("tilt_y", 0.0))
-    try:
-        source = _source_path(_source_idx(data.get))
-        if bool(data.get("stereo", False)):
-            pair = data.get("camera_pair") or _rig(data.get).get("camera_pair") or [1, 2]
-            cam1, cam2 = int(pair[0]), int(pair[1])
-            model = rec.load_stereo(
-                rec.stereo_model_dir_for_source(source, cam1, cam2),
-                model_type=_model_type_arg(data.get, board, stereo=True),
-            ).model1
-        else:
-            camera = int(data.get("camera") or _rig(data.get).get("camera") or 1)
-            # Joint-preferred: a measure after a joint solve uses the unified rig model.
-            model = rec.mono_record_for_camera(
-                rec.mono_model_dir_for_source(source, camera, board),
-                camera,
-                _model_type_arg(data.get, board),
-            ).camera_model
-    except (FileNotFoundError, ValueError, IndexError) as exc:
-        return (
-            jsonify(
-                {
-                    "error": f"no saved model — generate the model first to measure in mm ({exc})"
-                }
-            ),
-            200,
-        )
-    world = c2apply.calibrate_coordinates(model, np.vstack([p1, p2]), z, tx, ty)
-    if not np.all(np.isfinite(world)):
-        return (
-            jsonify({"error": "back-projection failed (ray missed the sheet plane)"}),
-            200,
-        )
-    return jsonify(
-        {
-            "distance_mm": float(np.linalg.norm(world[1] - world[0])),
-            "distance_px": float(np.linalg.norm(p2 - p1)),
-            "world_p1": [float(world[0, 0]), float(world[0, 1])],
-            "world_p2": [float(world[1, 0]), float(world[1, 1])],
-        }
-    )
 
 
 @calibration_bp.route("/calibration/figures", methods=["GET"])
@@ -1841,8 +2338,7 @@ def _global_chain(data):
     physical point. Raises ``_GlobalChainError`` (with a user-facing message) on a
     missing datum, a missing model, or a broken chain.
     """
-    cfg = _cfg()
-    board = data.get("board") or cfg.get("active", "charuco")
+    board = _request_board(data.get)[0]
     datum_camera = int(data.get("datum_camera", 1))
     datum_pixel = data.get("datum_pixel")
     datum_physical = data.get("datum_physical", [0.0, 0.0])
@@ -1937,34 +2433,87 @@ def global_save():
 # ---------------------------------------------------------------------------
 
 
+class _ApplyRequestError(ValueError):
+    """An apply request that is malformed on its own terms (HTTP 400, nothing planned)."""
+
+
+# Request keys of an explicit (ad-hoc, single-unit) apply override, per mode. All or none.
+_EXPLICIT_KEYS_MONO = ("uncalibrated_dir", "calibrated_dir")
+_EXPLICIT_KEYS_STEREO = (
+    "uncalibrated_dir_cam1",
+    "uncalibrated_dir_cam2",
+    "calibrated_dir",
+)
+
+
+def _required_camera_pair(get: Callable[[str], Any]) -> List[int]:
+    """Stereo camera pair: request ``camera_pair`` (list or "a,b"), else the settings
+    sidecar's ``rig.camera_pair``; neither raises — never an assumed ``[1, 2]``."""
+    pair = get("camera_pair") or _rig(get).get("camera_pair")
+    if not pair:
+        raise ValueError(
+            "camera_pair is required for stereo: pass it in the request or set "
+            "rig.camera_pair in the calibration settings"
+        )
+    if isinstance(pair, str):
+        pair = pair.split(",")
+    return [int(pair[0]), int(pair[1])]
+
+
 def _apply_units(data, full_cfg, source, board, stereo, type_name):
     """Resolve apply units for a Flask request — thin wrapper over ``runio.plan_apply_units``.
 
     Translates the request body into the shared planner's args: an explicit
-    ``uncalibrated_dir``/``calibrated_dir`` (mono) or ``uncalibrated_dir_cam1/2`` (stereo)
-    forces a single ad-hoc unit; otherwise units are derived from config across
-    ``active_paths`` x cameras. The planner does the config derivation + per-unit model load
-    (so the CLI's ``--all-paths`` apply uses the identical logic).
+    ``uncalibrated_dir``/``calibrated_dir`` (mono) or ``uncalibrated_dir_cam1/2`` +
+    ``calibrated_dir`` (stereo) forces a single ad-hoc unit; otherwise units are derived
+    from config across ``active_paths`` x cameras. The planner does the config derivation +
+    per-unit model load (so the CLI's ``--all-paths`` apply uses the identical logic).
+
+    Raises ``_ApplyRequestError`` (a 400) for a partial explicit override — it must never
+    fall through to applying every dataset — for a non-list ``active_paths`` (a scalar
+    ``0`` would read as "all"), and for a stereo request with no camera pair.
     """
     get = data.get
+    keys = _EXPLICIT_KEYS_STEREO if stereo else _EXPLICIT_KEYS_MONO
+    given = [k for k in keys if get(k)]
     explicit = None
-    if stereo:
-        if get("calibrated_dir") and get("uncalibrated_dir_cam1"):
+    if given:
+        missing = [k for k in keys if k not in given]
+        if missing:
+            raise _ApplyRequestError(
+                f"explicit apply override is incomplete: got {given}, missing "
+                f"{', '.join(repr(k) for k in missing)} (give all of {list(keys)} or none)"
+            )
+        if stereo:
             explicit = {
                 "uncal1": data["uncalibrated_dir_cam1"],
                 "uncal2": data["uncalibrated_dir_cam2"],
                 "out": data["calibrated_dir"],
             }
-    elif get("calibrated_dir") and get("uncalibrated_dir"):
-        explicit = {"uncal": data["uncalibrated_dir"], "out": data["calibrated_dir"]}
+        else:
+            explicit = {
+                "uncal": data["uncalibrated_dir"],
+                "out": data["calibrated_dir"],
+            }
+    active_paths = get("active_paths")
+    if active_paths is not None and not isinstance(active_paths, list):
+        raise _ApplyRequestError(
+            f"active_paths must be a list of base-path indices, got {active_paths!r}"
+        )
+    camera_pair = None
+    if stereo:
+        try:
+            camera_pair = _required_camera_pair(get)
+        except ValueError as exc:
+            raise _ApplyRequestError(str(exc)) from exc
     return c2runio.plan_apply_units(
         full_cfg,
         source,
         board,
         stereo,
         type_name,
-        active_paths=get("active_paths"),
-        camera_pair=(get("camera_pair") or _rig(get).get("camera_pair") or [1, 2]),
+        active_paths=active_paths,
+        camera_pair=camera_pair,
         camera=get("camera"),
         explicit=explicit,
         model_type=_model_type_arg(get, board, stereo=stereo),
@@ -2099,6 +2648,36 @@ def calibration_set_datum():
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
 
+def _dirs_overlap(a: Path, b: Path) -> bool:
+    """True when two output directories are the same or one contains the other."""
+    return a == b or a in b.parents or b in a.parents
+
+
+def _overlapping_apply_job(out_dirs: List[str]) -> Optional[tuple[str, str]]:
+    """First active apply job writing into any of ``out_dirs``: ``(job_id, its dir)``.
+
+    Paths are compared resolved, so a symlinked or relative spelling of the same
+    directory is still caught. Call with ``_apply_lock`` held.
+    """
+    mine = [Path(d).resolve() for d in out_dirs]
+    for job_id, job in job_manager.list_jobs(job_type="calibration_apply").items():
+        if job.get("status") not in _APPLY_ACTIVE_STATUSES:
+            continue
+        for other in job["out_dirs"]:
+            other_path = Path(other).resolve()
+            if any(_dirs_overlap(m, other_path) for m in mine):
+                return job_id, other
+    return None
+
+
+def _apply_cancelled_message(frames_written: int, out_dirs: List[str]) -> str:
+    """Cancel outcome for the job status: what stopped and what stays on disk."""
+    return (
+        f"cancelled by user after {frames_written} frame(s) written; frames already "
+        f"written remain on disk in {'; '.join(out_dirs)}"
+    )
+
+
 @calibration_bp.route("/calibration/apply", methods=["POST"])
 def apply_model():
     """Start applying a saved model to PIV output (mono apply / stereo 3C) as a job.
@@ -2109,9 +2688,10 @@ def apply_model():
     """
     data = request.get_json() or {}
     full_cfg = get_config()
-    cfg = _cfg()
-    board = data.get("board") or cfg.get("active", "charuco")
-    stereo = bool(data.get("stereo", False))
+    board, active_stereo = _request_board(data.get)
+    stereo = (
+        bool(data["stereo"]) if data.get("stereo") is not None else bool(active_stereo)
+    )
     # Light-sheet plane: request > 0.0 for mono (the board plane, a geometric
     # identity); stereo additionally defaults from the record's self-cal below.
     z = float(data.get("z_world", 0.0))
@@ -2139,30 +2719,31 @@ def apply_model():
 
     try:
         source = _source_path(_source_idx(data.get))
-        if not interpolator:
-            # Settings-sidecar knob (defaulted there); no config source. The
-            # sidecar value gets the same membership check as a request value —
-            # a typo'd rig.interpolator must fail here, not inside the worker.
-            settings = cs.try_load_settings(source)
-            interpolator = ((settings or {}).get("rig") or {}).get(
-                "interpolator", "lanczos"
-            )
+        if stereo and not interpolator:
+            # Settings-sidecar knob (load_settings layers its default under the stored
+            # value); a missing sidecar raises rather than assuming a kernel. The
+            # sidecar value gets the same membership check as a request value — a
+            # typo'd rig.interpolator must fail here, not inside the worker. Mono apply
+            # never resamples, so it does not read the knob.
+            try:
+                interpolator = cs.load_settings(source)["rig"]["interpolator"]
+            except FileNotFoundError as exc:
+                return jsonify({"success": False, "error": str(exc)}), 200
             if interpolator not in ("linear", "cubic", "lanczos"):
                 raise ValueError(
                     f"rig.interpolator in the settings sidecar must be "
                     f"linear|cubic|lanczos, got {interpolator!r}"
                 )
         units = _apply_units(data, full_cfg, source, board, stereo, type_name)
+    except _ApplyRequestError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
     except (FileNotFoundError, ValueError, IndexError) as exc:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": f"model not found — generate it first ({exc})",
-                }
-            ),
-            200,
-        )
+        # The planner's messages already name the camera / model / dataset; only a
+        # missing file gets the "generate it first" hint, and only once.
+        msg = str(exc)
+        if isinstance(exc, FileNotFoundError) and "generate it first" not in msg:
+            msg = f"{msg} — generate it first"
+        return jsonify({"success": False, "error": msg}), 200
     except KeyError as exc:
         return (
             jsonify({"success": False, "error": f"missing directory field {exc}"}),
@@ -2207,6 +2788,8 @@ def apply_model():
             u["dt"] = c2runio.resolve_dt(explicit_dt, model_dt)
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 200
+    # resolve_dt prefers the request, so a request dt is used for every unit.
+    dt_source = "request" if explicit_dt is not None else "model"
 
     # Built here (not in the worker) so it captures the source/board this request
     # resolved, independent of any config change made while the job runs.
@@ -2214,17 +2797,61 @@ def apply_model():
 
     n_units = len(units)
     out_dirs = [str(u["out"]) for u in units]
-    job_id = job_manager.create_job(
-        "calibration_apply", stereo=stereo, out_dir=out_dirs[0]
-    )
+    # Which cameras this run covers (mono applies every configured camera), so the GUI
+    # can label it "Apply to all N cameras".
+    cameras = sorted({int(c) for u in units for c in u["cameras"]})
+    with _apply_lock:
+        clash = _overlapping_apply_job(out_dirs)
+        if clash is not None:
+            running_id, running_dir = clash
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": (
+                            f"apply job {running_id} is already writing to "
+                            f"{running_dir} -- wait for it to finish or cancel it"
+                        ),
+                    }
+                ),
+                200,
+            )
+        job_id = job_manager.create_job(
+            "calibration_apply",
+            stereo=stereo,
+            out_dir=out_dirs[0],
+            out_dirs=out_dirs,
+            # Per unit, aligned with out_dirs: the dt each unit is calibrated with
+            # and where it came from ("request" or "model"). Lists rather than a
+            # label-keyed dict because unit labels are not guaranteed unique.
+            dt_used=[float(u["dt"]) for u in units],
+            dt_source=[dt_source] * n_units,
+            cameras=cameras,
+            n_cameras=len(cameras),
+            # Non-fatal problems (a provenance stamp that failed after the vectors were
+            # written), one line each, for the GUI to show beside the result.
+            warnings=[],
+        )
+        cancel_event = threading.Event()
+        _apply_cancel_events[job_id] = cancel_event
 
     def _run():
+        total_written = 0
+        warnings: List[str] = []
         try:
             job_manager.update_job(
                 job_id, status="running", progress=0, processed=0, total=n_units
             )
-            total_written = 0
             for i, u in enumerate(units):
+                # Between units: a cancel stops before the next dataset starts, leaving
+                # the previous unit's frame counts in the status.
+                if cancel_event.is_set():
+                    job_manager.cancel_job(
+                        job_id,
+                        _apply_cancelled_message(total_written, out_dirs),
+                        n_frames=total_written,
+                    )
+                    return
                 # Which dataset is running, published before the first frame ticks so the
                 # label is never a unit behind. Frame counts reset to 0 ("not yet reported")
                 # rather than carrying the previous unit's totals into this one.
@@ -2259,6 +2886,7 @@ def apply_model():
                         progress_cb=cb,
                         vector_glob=vector_glob,
                         interpolator=interpolator,
+                        cancel_event=cancel_event,
                     )
                 else:
                     written = c2runio.calibrate_mono_run(
@@ -2271,30 +2899,100 @@ def apply_model():
                         ty,
                         progress_cb=cb,
                         vector_glob=vector_glob,
+                        cancel_event=cancel_event,
+                    )
+                if not written:
+                    # The runs raise on an empty input dir, but a stereo run whose every
+                    # frame lacked the pass writes nothing: never report that as success.
+                    raise RuntimeError(
+                        f"{label}: no frames were written — nothing was calibrated"
                     )
                 total_written += len(written)
                 # Record what actually calibrated these vectors in the run's archived
                 # config. The snapshot was written when PIV started, so its calibration
                 # block still names whatever dataset was configured before this one.
-                c2runio.stamp_unit(u, applied_pointer)
+                stamp_warning = c2runio.stamp_unit(u, applied_pointer)
+                if stamp_warning is not None:
+                    warnings.append(stamp_warning)
+                    job_manager.update_job(job_id, warnings=list(warnings))
                 job_manager.update_job(job_id, processed=i + 1, total=n_units)
             job_manager.complete_job(
                 job_id, n_frames=total_written, out_dir="; ".join(out_dirs)
+            )
+        except c2runio.ApplyCancelled as exc:
+            # Mid-unit cancel: the partial unit is not stamped (its run config would
+            # claim a calibration it only half received). Its exact frame counts come
+            # from the exception, which includes frames that were in flight.
+            frames_written = total_written + len(exc.written)
+            job_manager.cancel_job(
+                job_id,
+                _apply_cancelled_message(frames_written, out_dirs),
+                n_frames=frames_written,
+                frame_done=exc.done,
+                frame_total=exc.total,
+            )
+        except c2runio.ApplyFailed as exc:
+            # A frame raised: the queued frames were cancelled; what was written stays.
+            logger.exception("apply job %s failed", job_id)
+            job_manager.fail_job(job_id, f"{exc} (output dirs: {'; '.join(out_dirs)})")
+            job_manager.update_job(
+                job_id,
+                n_frames=total_written + len(exc.written),
+                frame_done=exc.done,
+                frame_total=exc.total,
             )
         except (
             Exception
         ) as exc:  # surface in the job status (full traceback to the server log)
             logger.exception("apply job %s failed", job_id)
             job_manager.fail_job(job_id, str(exc))
+        finally:
+            with _apply_lock:
+                _apply_cancel_events.pop(job_id, None)
 
     threading.Thread(target=_run, daemon=True).start()
-    return jsonify({"success": True, "job_id": job_id})
+    return jsonify(
+        {
+            "success": True,
+            "job_id": job_id,
+            "cameras": cameras,
+            "n_cameras": len(cameras),
+        }
+    )
 
 
 @calibration_bp.route("/calibration/apply/status/<job_id>", methods=["GET"])
 def apply_status(job_id):
     """Poll an apply job's status (same shape as the v1 vector-job status)."""
     return _job_status_response(job_id)
+
+
+@calibration_bp.route("/calibration/apply/cancel/<job_id>", methods=["POST"])
+def apply_cancel(job_id):
+    """Request a cooperative cancel of a running apply job.
+
+    The worker stops between units, and within a unit as frames complete; frames
+    not yet started are dropped, frames already written stay on disk. The job then
+    reports ``status: cancelled`` with its frame counts. 404 for an unknown job id;
+    ``success: false`` (HTTP 200) when the job exists but has already finished.
+    """
+    with _apply_lock:
+        cancel_event = _apply_cancel_events.get(job_id)
+    if cancel_event is None:
+        job = job_manager.get_job(job_id)
+        if job is None or job.get("job_type") != "calibration_apply":
+            return jsonify({"success": False, "error": "job not found"}), 404
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"apply job {job_id} is not running (status: {job['status']})",
+                }
+            ),
+            200,
+        )
+    cancel_event.set()
+    return jsonify({"success": True, "job_id": job_id, "status": "cancelling"})
 
 
 # ---------------------------------------------------------------------------
@@ -2325,7 +3023,7 @@ def _joint_setup(get: Callable[[str], Any]):
     params, spacing, datum_camera, datum_view). Raises ValueError for the caller to surface.
     """
     cfg = _cfg()
-    board = get("board") or cfg.get("active", "dotboard")
+    board = _request_board(get)[0]
     if board not in ("dotboard", "charuco"):
         raise ValueError(f"joint: board must be dotboard|charuco, got {board!r}")
     source_idx = _source_idx(get)
@@ -2355,8 +3053,11 @@ def _joint_setup(get: Callable[[str], Any]):
     # Same contract as the CLI (_n_views_cli): request > sidecar image.n_views > loud error.
     # No literal fallback -- a silent 10-view solve is a different calibration.
     n_views_raw = next(
-        (v for v in (get("n_views"), get("frame_total"), image_settings.get("n_views"))
-         if v not in (None, "")),
+        (
+            v
+            for v in (get("n_views"), get("frame_total"), image_settings.get("n_views"))
+            if v not in (None, "")
+        ),
         None,
     )
     if n_views_raw is None:
@@ -2405,16 +3106,20 @@ def _joint_detect(
     cached_only=False,
     progress_cb=None,
 ):
-    """Detect every view of every camera, cached by (source, board, n_views, format, params).
+    """Detect every view of every camera, cached by (source, board, n_views, format, params,
+    0/1 indexing).
 
-    Returns (detections_by_cam, image_size_by_cam). A view that fails detection is kept in place
+    Returns (detections_by_cam, image_size_by_cam, persist_skipped). ``persist_skipped`` is
+    None when the detections are in the sidecar (served from it, or written to it) and the
+    reason when a read-only source (OSError) kept them in memory only; any other write
+    failure raises. A view that fails detection is kept in place
     as an unsuccessful DetectionResult, NOT raised on: a single bad frame must not blank the whole
     overlay or abort the solve. The resolvers skip failed views (reporting them per-view) and the
     solve simply uses the views that detected. The cache makes the live resolve loop and the
     generate job cheap; pass refresh=True after the images change on disk.
 
     ``cached_only=True`` (the GUI's automatic viewer probes) reads the caches and returns
-    ``(None, None)`` on a miss instead of detecting — only an explicit button push may start
+    ``(None, None, None)`` on a miss instead of detecting — only an explicit button push may start
     a real detection. Never combined with ``refresh``.
     """
     # The camera set is part of the key: a hit only detected the cameras it was asked for, so
@@ -2422,6 +3127,7 @@ def _joint_detect(
     # expected_cameras guard, but with a confusing message blaming the grid, not the cache).
     # The source enters as its resolved PATH, not its index: an in-place edit of the path at
     # the same index is a different rig and must not be served the old directory's detections.
+    zero_based = _zero_based(source_idx)
     key = (
         str(_source_path(source_idx)),
         str(board),
@@ -2430,15 +3136,22 @@ def _joint_detect(
         str(image_type),
         tuple(sorted(int(c) for c in cameras)),
         repr(params),
+        zero_based,
     )
     det_key = joint_det_key(
-        board, n_views, image_format, infer_image_type(image_format), cameras, params
+        board,
+        n_views,
+        image_format,
+        infer_image_type(image_format),
+        cameras,
+        params,
+        zero_based=zero_based,
     )
     if not refresh:
         with _joint_detect_lock:
             hit = _joint_detect_cache.get(key)
         if hit is not None:
-            return hit["detections"], hit["image_size_by_cam"]
+            return hit["detections"], hit["image_size_by_cam"], hit["persist_skipped"]
         # Fall back to the persistent sidecar (survives restarts + a model delete); promote it
         # into memory on a hit. det_key guards against serving detections from a different
         # n_views / format / board param.
@@ -2450,18 +3163,20 @@ def _joint_detect(
             payload = {
                 "detections": rec_in.detections,
                 "image_size_by_cam": rec_in.image_size_by_cam,
+                "persist_skipped": None,
             }
             with _joint_detect_lock:
                 _joint_detect_cache[key] = payload
-            return payload["detections"], payload["image_size_by_cam"]
+            return payload["detections"], payload["image_size_by_cam"], None
 
     if cached_only:
-        return None, None
+        return None, None, None
 
     total = len(cameras) * int(n_views)
     done = 0
     detections: dict = {}
     image_size_by_cam: dict = {}
+    blank_hints: List[str] = []  # ChArUco failure hints for cameras with no detection
     for cam in cameras:
         imgs = _load_views(cam, n_views, source_idx, image_format, image_type)
         if not imgs:
@@ -2478,6 +3193,13 @@ def _joint_detect(
         )
         h, w = imgs[0].shape[:2]
         image_size_by_cam[cam] = (int(w), int(h))
+        if not any(d.success for d in detections[cam]):
+            # One diagnosis per blank camera (its first view), not per view.
+            _err, diag = _board_not_detected(
+                c2._build_detector(board, params), imgs[0], detections[cam][0]
+            )
+            if "hint" in diag:
+                blank_hints.append(f"cam{cam} view 1: {diag['hint']}")
 
     # A camera with NO successful view cannot be calibrated at all — that is the one fatal case
     # (almost always a wrong path/format, not a single bad target). Individual failed views are
@@ -2487,15 +3209,20 @@ def _joint_detect(
         raise ValueError(
             f"joint: camera(s) {blank} detected no calibration target in any image — check the "
             f"image path, format and board parameters"
+            + "".join(f"; {hint}" for hint in blank_hints)
         )
 
-    payload = {"detections": detections, "image_size_by_cam": image_size_by_cam}
-    with _joint_detect_lock:
-        _joint_detect_cache[key] = payload
-    # Persist into the sidecar for the next session (best-effort: a read-only source just keeps
-    # the in-memory cache). Merges, so an in-progress coords/click commit is preserved.
+    # Persist into the sidecar for the next session. Merges, so an in-progress coords/click
+    # commit is preserved. Same rule as detect_views / the stepped detect: a read-only source
+    # (OSError) keeps the in-memory cache and says why; anything else (a corrupt sidecar, a
+    # detection that cannot be serialised) raises.
+    persist_skipped: Optional[str] = None
     idir = _joint_inputs_dir(source_idx, board)
-    if idir is not None:
+    if idir is None:
+        persist_skipped = (
+            "sidecar not written: the calibration source is not configured"
+        )
+    else:
         try:
             save_inputs(
                 idir,
@@ -2506,9 +3233,17 @@ def _joint_detect(
                 det_key=det_key,
                 board_params=rec.geometry_meta(board, params),
             )
-        except (OSError, ValueError):
-            pass
-    return detections, image_size_by_cam
+        except OSError as exc:
+            logger.warning("joint detect: sidecar not written: %s", exc)
+            persist_skipped = f"sidecar not written: {exc}"
+    payload = {
+        "detections": detections,
+        "image_size_by_cam": image_size_by_cam,
+        "persist_skipped": persist_skipped,
+    }
+    with _joint_detect_lock:
+        _joint_detect_cache[key] = payload
+    return detections, image_size_by_cam, persist_skipped
 
 
 def _joint_spec(get, gg, board):
@@ -2541,8 +3276,7 @@ def joint_inputs():
     old ``config.calibration.global_grid`` block.
     """
     get = request.args.get
-    cfg = _cfg()
-    board = get("board") or cfg.get("active", "dotboard")
+    board = _request_board(get)[0]
     try:
         source = _source_path(_source_idx(get))
     except (ValueError, IndexError):
@@ -2560,8 +3294,7 @@ def joint_inputs_save():
     """
     data = request.get_json() or {}
     get = data.get
-    cfg = _cfg()
-    board = get("board") or cfg.get("active", "dotboard")
+    board = _request_board(get)[0]
     coords = get("global_grid")
     if coords is None:
         return jsonify({"success": False, "error": "missing 'global_grid' block"}), 200
@@ -2605,7 +3338,7 @@ def joint_resolve_grid():
             datum_camera,
             datum_view,
         ) = _joint_setup(get)
-        detections, _ = _joint_detect(
+        detections, _, persist_skipped = _joint_detect(
             board,
             params,
             cameras,
@@ -2708,6 +3441,7 @@ def joint_resolve_grid():
             "n_resolved": sum(1 for vw in views if vw["resolved"]),
             "n_views_total": len(views),
             "errors": errors,
+            "persist_skipped": persist_skipped,
         }
     )
 
@@ -2741,7 +3475,9 @@ def _pose_diversity_payload(pd: Optional[PoseDiversity]) -> Optional[dict]:
             str(c): _finite_or_none(pd.standoff_range_fraction[c]) for c in pd.cameras
         },
         "flagged_views": [[int(c), int(v)] for c, v in pd.flagged_views],
-        "view_rms_px": {f"{c}-{v}": _finite_or_none(r) for (c, v), r in pd.view_rms_px.items()},
+        "view_rms_px": {
+            f"{c}-{v}": _finite_or_none(r) for (c, v), r in pd.view_rms_px.items()
+        },
         "board_planarity_rms_mm": _finite_or_none(pd.board_planarity_rms_mm),
         "report": format_pose_diversity(pd),
     }
@@ -2836,7 +3572,7 @@ def joint_generate():
                     total=total,
                 )
 
-            detections, image_size_by_cam = _joint_detect(
+            detections, image_size_by_cam, persist_skipped = _joint_detect(
                 board,
                 params,
                 cameras,
@@ -2915,6 +3651,7 @@ def joint_generate():
                 n_board_dots=int(res.n_board_dots),
                 paths=[str(p) for p in res.paths],
                 pose_diversity=_pose_diversity_payload(res.pose_diversity),
+                persist_skipped=persist_skipped,
             )
         except (
             Exception
@@ -2937,8 +3674,7 @@ def joint_model():
     """Load a saved joint model for display: the unified pinhole JointRecord, or per-camera
     polynomial records (which have no shared board to unify)."""
     get = request.args.get
-    cfg = _cfg()
-    board = get("board") or cfg.get("active", "dotboard")
+    board = _request_board(get)[0]
     source = _source_path(_source_idx(get))
     model_type = _model_type_arg(get, board)
     side = try_load_inputs(rec.joint_model_dir_for_source(source, board))
@@ -3051,7 +3787,9 @@ def joint_model():
             "geometry": _geometry_payload(meta),
             # None when the record predates the diagnostic -- never a default all-clear.
             "pose_diversity": _pose_diversity_payload(
-                pose_diversity_from_meta(jr.pose_diversity) if jr.pose_diversity else None
+                pose_diversity_from_meta(jr.pose_diversity)
+                if jr.pose_diversity
+                else None
             ),
         }
     )
@@ -3068,23 +3806,42 @@ def joint_model():
 
 
 def _stereo_locators(get: Callable[[str], Any]):
-    """(source, cam1, cam2, model_dir, self_cal_figdir) from request locators."""
+    """(source, cam1, cam2, board, model_dir, self_cal_figdir) from request locators.
+
+    The board resolves like every other calibration route (request ``board``, else
+    the config's ``active`` board) and scopes the stereo model dir.
+    """
     source = _source_path(_source_idx(get))
-    pair = get("camera_pair") or _rig(get).get("camera_pair") or [1, 2]
-    if isinstance(pair, str):
-        pair = [int(x) for x in pair.split(",")]
-    cam1, cam2 = int(pair[0]), int(pair[1])
-    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2)
+    board = _request_board(get)[0]
+    cam1, cam2 = _required_camera_pair(get)
+    model_dir = rec.stereo_model_dir_for_source(source, cam1, cam2, board)
     figdir = model_dir.parent / "figures" / "self_cal"
-    return source, cam1, cam2, model_dir, figdir
+    return source, cam1, cam2, board, model_dir, figdir
+
+
+def _require_positive_int(value: Any, field: str) -> int:
+    """``value`` as a positive int, else ``ValueError`` naming ``field``.
+
+    Self-cal counts (images, window size, iterations) have no meaningful zero:
+    ``load_particle_pairs`` divides by ``n_images``, and a missing stored field
+    means a stale block, not a count of zero.
+    """
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        n = 0
+    if n <= 0:
+        raise ValueError(f"{field} must be a positive integer (got {value!r})")
+    return n
 
 
 def _self_cal_payload(record) -> dict:
     """The saved self_cal block, shaped for the GUI (radians + degrees).
 
     For a baked record the applied z_offset/tilt are zero (the correction lives in the
-    extrinsics); the recovered sheet is surfaced from the fitted_* provenance fields so
-    the GUI still shows what self-cal found. Legacy (pre-bake) records fall back to the
+    extrinsics); the recovered sheet is surfaced from the fitted_* provenance fields
+    (the TOTAL over all bakes, in the original clicked frame) so the GUI still shows
+    what self-cal found. Legacy (pre-bake) records fall back to the
     applied fields.
     """
     import math as _m
@@ -3107,11 +3864,17 @@ def _self_cal_payload(record) -> dict:
         "tilt_y_deg": _finite_or_none(_m.degrees(ty)),
         "converged": bool(int(sc.get("converged", 0))),
         "final_rms_disparity": _finite_or_none(sc.get("final_rms_disparity", 0.0)),
-        "n_iterations": int(sc.get("n_iterations", 0)),
-        "n_images": int(sc.get("n_images", 0)),
-        "window_size": int(sc.get("window_size", 0)),
+        "n_iterations": _require_positive_int(
+            sc.get("n_iterations"), "self_cal.n_iterations"
+        ),
+        "n_images": _require_positive_int(sc.get("n_images"), "self_cal.n_images"),
+        "window_size": _require_positive_int(
+            sc.get("window_size"), "self_cal.window_size"
+        ),
         "overlap": _finite_or_none(sc.get("overlap", 0.0)),
         "source": str(sc.get("source", "auto")),
+        # How many bakes the total spans; null when the block predates the counter.
+        "n_bakes": int(sc["n_bakes"]) if "n_bakes" in sc else None,
     }
 
 
@@ -3119,14 +3882,27 @@ def _self_cal_payload(record) -> dict:
 def self_cal_result():
     """Current self-calibration block + saved figure list (restore on model load)."""
     try:
-        _, _, _, model_dir, figdir = _stereo_locators(request.args.get)
-        board = request.args.get("board") or _cfg().get("active", "charuco")
+        _, _, _, board, model_dir, figdir = _stereo_locators(request.args.get)
         record = rec.load_stereo(
             model_dir, model_type=_model_type_arg(request.args.get, board, stereo=True)
         )
     except (FileNotFoundError, ValueError, IndexError):
         return jsonify({"exists": False, "has_self_calibration": False}), 200
-    payload = _self_cal_payload(record)
+    try:
+        payload = _self_cal_payload(record)
+    except ValueError as exc:
+        # A stored block with a missing/zero count is stale: say so, never fake a 0.
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "exists": True,
+                    "has_self_calibration": True,
+                    "error": str(exc),
+                }
+            ),
+            200,
+        )
     payload["exists"] = True
     payload["figures"] = _list_figures(figdir)
     return jsonify(payload)
@@ -3138,11 +3914,12 @@ def self_cal_run():
     data = request.get_json() or {}
     full_cfg = get_config()
     try:
-        _, cam1, cam2, model_dir, figdir = _stereo_locators(data.get)
-        board = data.get("board") or _cfg().get("active", "charuco")
+        _, req1, req2, board, model_dir, figdir = _stereo_locators(data.get)
         record = rec.load_stereo(
             model_dir, model_type=_model_type_arg(data.get, board, stereo=True)
         )
+        # Images load in the record's order: c2sc.run correlates imgs1 against model1.
+        cam1, cam2 = rec.record_pair(record, (req1, req2))
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return (
             jsonify(
@@ -3172,10 +3949,19 @@ def self_cal_run():
             ),
             200,
         )
+    # A stale baked block cannot be composed with a new bake; reject it here, before
+    # the expensive correlation loop, rather than failing late inside baked_block.
+    try:
+        c2sc.prev_cumulative(record.self_cal)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 200
 
     base_idx = int(data.get("base_path_idx", 0))
-    n_images = int(data.get("n_images", 20))
-    window_size = int(data.get("window_size", 64))
+    try:
+        n_images = _require_positive_int(data.get("n_images", 20), "n_images")
+        window_size = _require_positive_int(data.get("window_size", 64), "window_size")
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 200
     overlap = float(data.get("overlap", 50.0))
     apply_filters = bool(data.get("apply_filters", True))
 
@@ -3200,9 +3986,16 @@ def self_cal_run():
                 overlap=overlap,
                 figure_dir=figdir,
             )
+            # The previous block holds the map already baked into the poses; read it
+            # before the rebake so this run's increment composes onto it.
+            prev_block = record.self_cal
             c2sc.rebake_record(record, result.z_offset, result.tilt_x, result.tilt_y)
             record.self_cal = c2sc.baked_block(
-                result, n_images=len(imgs1), window_size=window_size, overlap=overlap
+                result,
+                prev_block,
+                n_images=len(imgs1),
+                window_size=window_size,
+                overlap=overlap,
             )
             rec.save_stereo(record, model_dir)
             # Guard every float against NaN/Inf (a diverged fit) so the jsonify'd status
@@ -3254,7 +4047,7 @@ def self_cal_figure():
     if not name or Path(name).name != name:
         return jsonify({"error": "invalid figure name"}), 400
     try:
-        _, _, _, _, figdir = _stereo_locators(request.args.get)
+        _, _, _, _, _, figdir = _stereo_locators(request.args.get)
     except (ValueError, IndexError):
         return jsonify({"error": "source not configured"}), 404
     figdir_r = Path(figdir).resolve()

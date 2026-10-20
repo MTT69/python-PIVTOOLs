@@ -92,9 +92,19 @@ def transform_command(args):
     if source_endpoint is None:
         source_endpoint = config.transforms_source_endpoint
 
-    # Determine use_merged and use_stereo from source_endpoint
+    # Stereo (3C) transforms are not offered: the operations are written for 2C fields and
+    # their effect on uz / the right-handed stereo frame is unverified. Refuse rather than
+    # transform the per-camera files. The viewer writes source_endpoint 'stereo' to the
+    # config while stereo data is shown, so this can arrive from config.yaml too.
+    if source_endpoint == "stereo":
+        print(
+            "Error: stereo transforms are not supported yet. transforms.source_endpoint is "
+            "'stereo' (the vector viewer sets it while stereo data is shown); pass "
+            "--source-endpoint regular or merged to transform 2C data."
+        )
+        sys.exit(1)
+
     use_merged = source_endpoint == "merged"
-    use_stereo = source_endpoint == "stereo"
 
     # Update config if CLI specified source_endpoint
     if args.source_endpoint or args.merged:
@@ -595,7 +605,7 @@ images:
   pair_stride: 1
   pairing_preset: ab_format
   image_type: standard
-  use_camera_subfolders: false
+  use_camera_subfolders: false   # IM7 only: one single-camera .im7 per Cam{N} folder
 batches:
   size: 10
 logging:
@@ -792,16 +802,12 @@ calibration:
   # <source>/calibration/settings.yaml — seed one with
   # `pivtools-cli init-settings` or via the GUI calibration tab.
   calibration_sources: []
-  source: ''                 # calibration image dir; '' -> calibration_sources[source_idx]
-  source_idx: 0
+  source_idx: 0              # which calibration_sources entry the calibration commands use
   # Which saved model downstream code should use. Stored values are the GUI tab
-  # ids: charuco | dotboard | stepped | scale_factor | stereo_charuco |
-  # stereo_dotboard | stepped_stereo.
-  # NOT validated - a typo selects nothing rather than raising.
-  # Config.is_stereo_setup matches ONLY 'stereo_dotboard' and 'stereo_charuco'.
-  # 'stepped_stereo' is a valid value here but is not recognised as stereo by
-  # that property, so the GUI gates keyed on it (merge block, statistics and
-  # transform stereo detection) do not fire for a stepped-stereo setup.
+  # ids: charuco | dotboard | scale_factor | stereo_charuco | stereo_dotboard |
+  # stereo_stepped. The three stereo_* values make Config.is_stereo_setup true.
+  # Required: a missing or blank value raises. Calibration routes/commands reject
+  # an unknown id, and so does Config.is_stereo_setup.
   active: charuco
 filters: []
 preprocessing:
@@ -907,6 +913,10 @@ def ensemble_command(args):
         sys.exit(1)
 
 
+# Environment switch equivalent to ``--debug``: keep the traceback on a reported error.
+DEBUG_ENV_VAR = "PIVTOOLS_DEBUG"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="PIVTOOLs - Particle Image Velocimetry Tools", prog="pivtools-cli"
@@ -914,6 +924,11 @@ def main():
     import logging
 
     logging.info("Starting PIVTOOLs CLI")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=f"show the full traceback on error (also {DEBUG_ENV_VAR}=1)",
+    )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # init command
@@ -1002,8 +1017,8 @@ def main():
         "--source-endpoint",
         "-s",
         default=None,
-        choices=["regular", "merged", "stereo"],
-        help="Data source: regular (per-camera), merged, or stereo",
+        choices=["regular", "merged"],
+        help="Data source: regular (per-camera) or merged. Stereo transforms are not supported yet",
     )
     transform_parser.add_argument(
         "--active-paths",
@@ -1166,7 +1181,17 @@ def main():
         parser.print_help()
         return
 
-    args.func(args)
+    from pivtools_gui.calibration.inputs_store import InputsCorrupt, InputsReadError
+
+    try:
+        args.func(args)
+    except (ValueError, FileNotFoundError, InputsCorrupt, InputsReadError) as exc:
+        # Expected user-facing failures (a missing key, a missing file, a damaged
+        # sidecar) carry their own actionable message; a traceback only buries it.
+        if args.debug or os.environ.get(DEBUG_ENV_VAR) == "1":
+            raise
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

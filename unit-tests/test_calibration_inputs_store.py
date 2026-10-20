@@ -11,15 +11,22 @@ clobbering each other.
 
 from __future__ import annotations
 
+import re
+import threading
+import time
+
 import numpy as np
 import pytest
 
+from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration.detection.base import DetectionResult
 from pivtools_gui.calibration.inputs_store import (
+    InputsCorrupt,
     inputs_path,
     load_inputs,
     save_inputs,
     try_load_inputs,
+    update_inputs,
 )
 
 
@@ -184,3 +191,196 @@ def test_missing_sidecar_raises_and_try_load_is_none(tmp_path):
         load_inputs(tmp_path)
     assert try_load_inputs(tmp_path) is None
     assert not inputs_path(tmp_path).exists()
+
+
+# Byte patterns for an unreadable sidecar: a valid file cut short, and non-MAT bytes.
+_GARBAGE_BYTES = b"this is not a MAT file at all" * 8
+_TRUNCATE_TO_BYTES = 200
+
+
+def _corrupt_sidecar(model_dir, kind: str) -> bytes:
+    """Write an unreadable ``inputs.mat`` into ``model_dir`` and return its bytes."""
+    path = inputs_path(model_dir)
+    if kind == "truncated":
+        save_inputs(
+            model_dir,
+            path_type="mono",
+            board_type="dotboard",
+            detections={1: [_good_detection(charuco=False)]},
+            coords={"a": 1},
+        )
+        data = path.read_bytes()[:_TRUNCATE_TO_BYTES]
+    else:
+        data = _GARBAGE_BYTES
+    path.write_bytes(data)
+    return data
+
+
+@pytest.mark.parametrize("kind", ["truncated", "garbage"])
+def test_corrupt_sidecar_raises_inputs_corrupt(tmp_path, kind):
+    _corrupt_sidecar(tmp_path, kind)
+    with pytest.raises(InputsCorrupt) as info:
+        try_load_inputs(tmp_path)
+    msg = str(info.value)
+    assert str(inputs_path(tmp_path)) in msg
+    assert "Delete it, then re-run detection" in msg
+    assert info.value.__cause__ is not None
+    assert info.value.path == inputs_path(tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["truncated", "garbage"])
+def test_save_inputs_never_overwrites_corrupt_sidecar(tmp_path, kind):
+    data = _corrupt_sidecar(tmp_path, kind)
+    with pytest.raises(InputsCorrupt):
+        save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords={"b": 2})
+    assert inputs_path(tmp_path).read_bytes() == data
+
+
+@pytest.mark.parametrize("kind", ["truncated", "garbage"])
+def test_update_inputs_never_overwrites_corrupt_sidecar(tmp_path, kind):
+    data = _corrupt_sidecar(tmp_path, kind)
+    called: list = []
+
+    def mutate(prev):
+        called.append(prev)
+        return {"path_type": "mono", "board_type": "dotboard", "coords": {"b": 2}}
+
+    with pytest.raises(InputsCorrupt):
+        update_inputs(tmp_path, mutate)
+    assert called == []
+    assert inputs_path(tmp_path).read_bytes() == data
+
+
+@pytest.mark.parametrize("field", ["coords_json", "board_params_json"])
+def test_unparseable_json_field_raises_naming_the_field(tmp_path, field):
+    """A damaged JSON field fails loudly instead of reading back as None."""
+    from scipy.io import loadmat, savemat
+
+    save_inputs(
+        tmp_path,
+        path_type="mono",
+        board_type="dotboard",
+        detections={1: [_good_detection(charuco=False)]},
+        coords={"a": 1},
+        board_params={"rows": 5},
+    )
+    path = inputs_path(tmp_path)
+    mat = {k: v for k, v in loadmat(str(path)).items() if not k.startswith("__")}
+    mat[field] = "{not json"
+    savemat(str(path), mat, oned_as="row")
+
+    with pytest.raises(InputsCorrupt) as info:
+        try_load_inputs(tmp_path)
+    assert field in str(info.value)
+
+
+def test_absent_coords_still_load_as_none(tmp_path):
+    """A blank/"null" field is the writer's encoding of absent, not damage."""
+    save_inputs(
+        tmp_path,
+        path_type="mono",
+        board_type="dotboard",
+        detections={1: [_good_detection(charuco=False)]},
+    )
+    rec = load_inputs(tmp_path)
+    assert rec.coords is None
+    assert rec.board_params is None
+
+
+# ---------------------------------------------------------------------------
+# Detection identity stamp
+# ---------------------------------------------------------------------------
+
+_STAMP_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def test_detection_write_stamps_a_fresh_identity(tmp_path):
+    """Every detections write gets a new stamp; a coords-only write keeps it."""
+    dets = {1: [_good_detection(charuco=False)]}
+    save_inputs(tmp_path, path_type="stepped", board_type="stepped", detections=dets)
+    first = load_inputs(tmp_path).detection_stamp
+    assert _STAMP_RE.match(first)
+
+    save_inputs(tmp_path, path_type="stepped", board_type="stepped", coords={"a": 1})
+    assert load_inputs(tmp_path).detection_stamp == first
+
+    save_inputs(tmp_path, path_type="stepped", board_type="stepped", detections=dets)
+    assert load_inputs(tmp_path).detection_stamp not in ("", first)
+
+
+def test_coords_only_sidecar_has_no_stamp(tmp_path):
+    save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords={"a": 1})
+    assert load_inputs(tmp_path).detection_stamp == ""
+
+
+# ---------------------------------------------------------------------------
+# update_inputs: load + mutate + save under one lock
+# ---------------------------------------------------------------------------
+
+# Long enough that, without the lock, both mutates read the same previous file.
+_SLOW_MUTATE_S = 0.2
+
+
+def test_update_inputs_concurrent_writers_both_persist(tmp_path):
+    """Two cameras committing clicks at once: neither update may be lost."""
+    save_inputs(
+        tmp_path,
+        path_type="stepped",
+        board_type="stepped",
+        detections={1: [_good_detection(charuco=False)]},
+        coords={"cameras": {}},
+    )
+    start = threading.Barrier(2)
+    errors: list = []
+
+    def _commit(cam: int) -> None:
+        def mutate(prev):
+            coords = dict(prev.coords)
+            cams = dict(coords["cameras"])
+            time.sleep(_SLOW_MUTATE_S)
+            cams[str(cam)] = {"clicked_level": "peak"}
+            coords["cameras"] = cams
+            return {"path_type": "stepped", "board_type": "stepped", "coords": coords}
+
+        try:
+            start.wait()
+            update_inputs(tmp_path, mutate)
+        except Exception as exc:  # surfaced below; a thread cannot fail the test itself
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_commit, args=(c,)) for c in (1, 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    assert sorted(load_inputs(tmp_path).coords["cameras"]) == ["1", "2"]
+
+
+def test_update_inputs_returning_none_writes_nothing(tmp_path):
+    save_inputs(tmp_path, path_type="mono", board_type="dotboard", coords={"a": 1})
+    before = inputs_path(tmp_path).stat().st_mtime_ns
+
+    assert update_inputs(tmp_path, lambda prev: None) is None
+
+    assert inputs_path(tmp_path).stat().st_mtime_ns == before
+    assert load_inputs(tmp_path).coords == {"a": 1}
+
+
+def test_update_inputs_sees_none_without_sidecar_and_returns_written(tmp_path):
+    seen: list = []
+
+    def mutate(prev):
+        seen.append(prev)
+        return {
+            "path_type": "stepped",
+            "board_type": "stepped",
+            "detections": {1: [_good_detection(charuco=False)]},
+        }
+
+    written = update_inputs(tmp_path, mutate)
+
+    assert seen == [None]
+    assert isinstance(written, INP.InputsRecord)
+    assert written.detection_stamp == load_inputs(tmp_path).detection_stamp

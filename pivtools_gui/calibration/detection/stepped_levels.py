@@ -231,6 +231,61 @@ def run_single_level_detection(
 # ---------------------------------------------------------------------------
 
 
+def _orient_grid(
+    gi: np.ndarray, swap_axes: bool, col_sign: int, row_sign: int
+) -> np.ndarray:
+    """Apply an axis swap + per-axis sign to integer ``(col, row)`` grid indices.
+
+    The one orientation transform the stitch uses for both levels (and for a lone level),
+    so every branch of ``stitch_levels_pose_local`` returns indices in the convention its
+    ``metadata`` reports.
+    """
+    out = np.asarray(gi).copy()
+    if swap_axes:
+        out = out[:, ::-1]
+    out[:, 0] = col_sign * out[:, 0]
+    out[:, 1] = row_sign * out[:, 1]
+    return out
+
+
+def _single_level_result(
+    level_data: dict, letter: str, orientation_override: Optional[dict]
+) -> dict:
+    """Degraded (one level detected) stitch result.
+
+    With an ``orientation_override`` the lone level's indices are oriented by it, exactly
+    as the two-level branch orients its reference level, and the metadata reports those
+    signs. Without one there is no second level to derive an orientation from, so the
+    BFS indices are returned unchanged (identity: no swap, +1/+1).
+    """
+    if orientation_override is not None:
+        swap_axes = bool(orientation_override["swap_axes"])
+        col_sign = int(orientation_override["col_sign"])
+        row_sign = int(orientation_override["row_sign"])
+    else:
+        swap_axes, col_sign, row_sign = False, 1, 1
+    gi = _orient_grid(
+        np.asarray(level_data["grid_indices"]), swap_axes, col_sign, row_sign
+    )
+    return {
+        "reference": {
+            "centers": np.asarray(level_data["centers"]).copy(),
+            "grid_indices": gi,
+            "source_level": letter,
+        },
+        "metadata": {
+            "n_reference": int(len(level_data["centers"])),
+            "n_other": 0,
+            "n_anchors": 0,
+            "consensus_pct": float("nan"),
+            "swap_axes": bool(swap_axes),
+            "col_sign": int(col_sign),
+            "row_sign": int(row_sign),
+            "degraded_single_level": True,
+        },
+    }
+
+
 def stitch_levels_pose_local(
     level_A_data: Optional[dict],
     level_B_data: Optional[dict],
@@ -273,41 +328,9 @@ def stitch_levels_pose_local(
     if level_A_data is None and level_B_data is None:
         return None
     if level_A_data is None:
-        return {
-            "reference": {
-                "centers": np.asarray(level_B_data["centers"]).copy(),
-                "grid_indices": np.asarray(level_B_data["grid_indices"]).copy(),
-                "source_level": "B",
-            },
-            "metadata": {
-                "n_reference": int(len(level_B_data["centers"])),
-                "n_other": 0,
-                "n_anchors": 0,
-                "consensus_pct": float("nan"),
-                "swap_axes": False,
-                "col_sign": 1,
-                "row_sign": 1,
-                "degraded_single_level": True,
-            },
-        }
+        return _single_level_result(level_B_data, "B", orientation_override)
     if level_B_data is None:
-        return {
-            "reference": {
-                "centers": np.asarray(level_A_data["centers"]).copy(),
-                "grid_indices": np.asarray(level_A_data["grid_indices"]).copy(),
-                "source_level": "A",
-            },
-            "metadata": {
-                "n_reference": int(len(level_A_data["centers"])),
-                "n_other": 0,
-                "n_anchors": 0,
-                "consensus_pct": float("nan"),
-                "swap_axes": False,
-                "col_sign": 1,
-                "row_sign": 1,
-                "degraded_single_level": True,
-            },
-        }
+        return _single_level_result(level_A_data, "A", orientation_override)
 
     # Pick the larger level as the reference frame
     n_A = len(level_A_data["centers"])
@@ -367,17 +390,9 @@ def stitch_levels_pose_local(
 
     # Apply the same orientation transform to BOTH levels so anchor offsets are
     # computed in a single consistent frame.
-    def _orient(gi):
-        out = gi.copy()
-        if swap_axes:
-            out = out[:, ::-1]
-        out[:, 0] = col_sign * out[:, 0]
-        out[:, 1] = row_sign * out[:, 1]
-        return out
-
-    oriented_ref_gi = _orient(ref_gi)
+    oriented_ref_gi = _orient_grid(ref_gi, swap_axes, col_sign, row_sign)
     other_bfs_gi = np.asarray(other_data["grid_indices"], dtype=np.int32).copy()
-    oriented_other_gi = _orient(other_bfs_gi)
+    oriented_other_gi = _orient_grid(other_bfs_gi, swap_axes, col_sign, row_sign)
 
     # Cross-level anchor: each other-level dot is at +half-spacing from the mean of
     # its 4 nearest reference-level neighbours.
@@ -430,10 +445,12 @@ def stitch_levels_pose_local(
             f"stitch_levels_pose_local: no anchor points for {other_letter} "
             f"level ({n_other} dots, reference has {len(ref_centers)})"
         )
+        # Same orientation as the anchored branch: the metadata reports swap/sign, so the
+        # returned indices must carry them (ref_gi is the raw, un-oriented BFS walk).
         return {
             "reference": {
                 "centers": ref_centers,
-                "grid_indices": ref_gi,
+                "grid_indices": oriented_ref_gi,
                 "source_level": ref_letter,
             },
             "metadata": {

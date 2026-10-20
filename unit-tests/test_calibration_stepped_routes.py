@@ -18,6 +18,7 @@ What is asserted:
 
 from __future__ import annotations
 
+import threading
 import time
 
 import cv2
@@ -44,6 +45,7 @@ from test_calibration_stepped_stereo import (  # noqa: E402
 import pivtools_gui.calibration.app.stepped_views as sv
 from pivtools_cli.synthetic_calibration_common import make_camera_matrix
 from pivtools_core import calibration_settings as cs
+from pivtools_core.image_handling.calibration_loader import FrameCount
 from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 
 # ---------------------------------------------------------------------------
@@ -121,11 +123,28 @@ def client(scene, tmp_path, monkeypatch):
     )
 
     def _fake_read(
-        frame, camera, config, source_idx, image_format=None, image_type=None
+        frame,
+        camera,
+        config,
+        source_idx,
+        image_format=None,
+        image_type=None,
+        normalize_uint8=True,
     ):
+        # Detection routes read native depth (normalize_uint8=False); the scene is
+        # already uint8 so the flag changes nothing here.
         return scene["images"][int(camera)][int(frame) - 1]
 
     monkeypatch.setattr(sv, "read_calibration_image", _fake_read)
+    # detect_sequence counts the frames (absent num_frames, and to refuse a window past
+    # the last frame); the in-memory scene has one frame per pose for each camera.
+    monkeypatch.setattr(
+        sv,
+        "get_calibration_frame_count",
+        lambda camera, config, source_idx: FrameCount(
+            len(scene["images"][int(camera)]), "files"
+        ),
+    )
 
     app = Flask(__name__)
     app.register_blueprint(sv.calibration_stepped_bp)
@@ -249,7 +268,12 @@ def test_mono_generate_end_to_end(client, scene, tmp_path):
     sid, _ = _detect(client, [1])
     r = client.post(
         "/calibration/stepped/generate_model",
-        json={"sequence_id": sid, "dt": 1.0, "stereo": False, "cameras": {"1": _spec(scene, 1)}},
+        json={
+            "sequence_id": sid,
+            "dt": 1.0,
+            "stereo": False,
+            "cameras": {"1": _spec(scene, 1)},
+        },
     )
     body = r.get_json()
     assert r.status_code == 200, body
@@ -439,6 +463,21 @@ def test_generate_after_reload_from_sidecar(client, scene):
     assert done2["num_pairs_used"] == len(FRAMES)
 
 
+def test_restore_sequence_stale_after_first_frame_flip(client, scene, tmp_path):
+    """Detections read with 1-based numbering came from different files than a 0-based
+    read would: after the flip the saved sequence is reported stale, never restored."""
+    _detect(client, [1, 2])
+    sv._sequence_cache.clear()
+    cs.save_settings(tmp_path, {"image": {"zero_based_indexing": True}})
+
+    body = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    ).get_json()
+    assert body["exists"] is False
+    assert "first-frame numbering" in body["stale_reason"]
+
+
 def test_restore_sequence_absent_returns_exists_false(client):
     """No sidecar for this source -> the normal first-use state, not an error."""
     r = client.get(
@@ -452,13 +491,14 @@ def test_inputs_save_persists_clicks_without_generate(client, scene):
     """Clicks persist to the sidecar via inputs/save as they are picked (no generate, no
     config) — restore then brings them back. This is the per-pick persistence that replaces
     the old config write."""
-    _detect(client, [1, 2])
+    _sid, done = _detect(client, [1, 2])
     r = client.post(
         "/calibration/stepped/inputs/save",
         json={
             "camera_pair": "1,2",
             "source_path_idx": 0,
             "stereo_config": "auto",
+            "detection_stamp": done["detection_stamp"],
             "cameras": {"1": _spec(scene, 1), "2": _spec(scene, 2)},
         },
     )
@@ -478,13 +518,196 @@ def test_inputs_save_persists_clicks_without_generate(client, scene):
 
 
 def test_inputs_save_noop_without_detection(client, scene):
-    """No detected sequence -> nothing to attach clicks to -> saved:false (not an error)."""
+    """No detected sequence -> nothing to attach clicks to -> saved:false with the reason
+    (not an HTTP error)."""
     r = client.post(
         "/calibration/stepped/inputs/save",
         json={
             "camera_pair": "1,2",
             "source_path_idx": 0,
+            "detection_stamp": "0" * 32,
             "cameras": {"1": _spec(scene, 1)},
         },
     )
-    assert r.status_code == 200 and r.get_json() == {"saved": False}
+    body = r.get_json()
+    assert r.status_code == 200 and body["saved"] is False
+    assert "Detect sequence" in body["error"]
+
+
+# ---------------------------------------------------------------------------
+# 6. Detection identity: clicks are only saved against the detections they were made on
+# ---------------------------------------------------------------------------
+
+
+def _stereo_model_dir(tmp_path):
+    from pivtools_gui.calibration import record as rec
+
+    return rec.stereo_model_dir_for_source(tmp_path, 1, 2, "stepped")
+
+
+def _save_clicks(client, scene, stamp, cams=(1, 2)):
+    return client.post(
+        "/calibration/stepped/inputs/save",
+        json={
+            "camera_pair": "1,2",
+            "source_path_idx": 0,
+            "detection_stamp": stamp,
+            "cameras": {str(c): _spec(scene, c) for c in cams},
+        },
+    )
+
+
+def test_detect_completion_and_restore_return_the_sidecar_stamp(
+    client, scene, tmp_path
+):
+    from pivtools_gui.calibration.inputs_store import load_inputs
+
+    _sid, done = _detect(client, [1, 2])
+    stamp = load_inputs(_stereo_model_dir(tmp_path)).detection_stamp
+    assert stamp and done["detection_stamp"] == stamp
+
+    sv._sequence_cache.clear()
+    body = client.get(
+        "/calibration/stepped/restore_sequence",
+        query_string={"camera_pair": "1,2", "source_path_idx": 0},
+    ).get_json()
+    assert body["exists"] and body["detection_stamp"] == stamp
+
+
+def test_inputs_save_refuses_stale_stamp_after_redetect(client, scene, tmp_path):
+    """Clicks made on an earlier detection must not be written over a re-detected set."""
+    from pivtools_gui.calibration.inputs_store import load_inputs
+
+    _sid, first = _detect(client, [1, 2])
+    _sid2, second = _detect(client, [1, 2])
+    assert second["detection_stamp"] != first["detection_stamp"]
+
+    r = _save_clicks(client, scene, first["detection_stamp"])
+
+    body = r.get_json()
+    assert r.status_code == 200
+    assert body["saved"] is False and body["stale"] is True and body["error"]
+    assert "cameras" not in (load_inputs(_stereo_model_dir(tmp_path)).coords or {})
+
+
+def test_inputs_save_refuses_missing_request_stamp(client, scene, tmp_path):
+    _detect(client, [1, 2])
+
+    r = _save_clicks(client, scene, None)
+
+    body = r.get_json()
+    assert body["saved"] is False and body["stale"] is True
+
+
+def test_inputs_save_refuses_sidecar_without_stamp(client, scene, tmp_path):
+    """A sidecar whose detections carry an empty stamp is not defaulted — the save is
+    refused and the error says to re-run detection. (A sidecar MISSING the field is
+    rejected earlier by the reader as written by an older build.)"""
+    import scipy.io
+
+    from pivtools_gui.calibration.inputs_store import inputs_path
+
+    _detect(client, [1, 2])
+    path = inputs_path(_stereo_model_dir(tmp_path))
+    mat = scipy.io.loadmat(str(path))
+    mat["detection_stamp"] = ""
+    scipy.io.savemat(
+        str(path), {k: v for k, v in mat.items() if not k.startswith("__")}
+    )
+
+    r = _save_clicks(client, scene, "0" * 32)
+
+    body = r.get_json()
+    assert body["saved"] is False and body["stale"] is True
+    assert "re-run detection" in body["error"]
+
+
+def test_inputs_save_concurrent_cameras_both_persist(
+    client, scene, tmp_path, monkeypatch
+):
+    """Two per-camera click commits racing: the slow sidecar read makes both requests
+    load the same previous file unless load + merge + write is one locked step."""
+    from pivtools_gui.calibration import inputs_store as INP
+
+    _sid, done = _detect(client, [1, 2])
+    stamp = done["detection_stamp"]
+    real_load = INP.try_load_inputs
+
+    def _slow_load(model_dir):
+        side = real_load(model_dir)
+        time.sleep(0.2)
+        return side
+
+    monkeypatch.setattr(INP, "try_load_inputs", _slow_load)
+    monkeypatch.setattr(sv, "try_load_inputs", _slow_load)
+    start = threading.Barrier(2)
+    results: dict = {}
+
+    def _commit(cam):
+        start.wait()
+        results[cam] = _save_clicks(client, scene, stamp, cams=(cam,)).get_json()
+
+    threads = [threading.Thread(target=_commit, args=(c,)) for c in (1, 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert results[1]["saved"] and results[2]["saved"], results
+    coords = real_load(_stereo_model_dir(tmp_path)).coords
+    assert sorted(coords["cameras"]) == ["1", "2"]
+
+
+def _start_detect(client, cameras):
+    """Start a detect job and return its final status payload (completed or failed)."""
+    r = client.post(
+        "/calibration/stepped/detect_sequence",
+        json={
+            "source_path_idx": 0,
+            "cameras": cameras,
+            "num_frames": len(FRAMES),
+            "start_frame_idx": 1,
+            "datum_frame_idx": 1,
+        },
+    )
+    body = r.get_json()
+    assert r.status_code == 200, body
+    return _wait(
+        client, f"/calibration/stepped/detect_sequence/status/{body['job_id']}"
+    )
+
+
+def test_detect_reports_persisted(client, scene):
+    _sid, done = _detect(client, [1, 2])
+    assert done["persisted"] is True and done["persist_skipped"] is None
+
+
+def test_detect_with_corrupt_sidecar_fails_with_its_message(client, scene, tmp_path):
+    """A corrupt inputs.mat must surface (InputsCorrupt), not be logged and skipped."""
+    from pivtools_gui.calibration.inputs_store import inputs_path
+
+    model_dir = _stereo_model_dir(tmp_path)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    garbage = b"not a MAT file" * 16
+    inputs_path(model_dir).write_bytes(garbage)
+
+    done = _start_detect(client, [1, 2])
+    assert done["status"] == "failed", done
+    assert "Delete it, then re-run detection" in done["error"]
+    assert inputs_path(model_dir).read_bytes() == garbage
+
+
+def test_detect_on_read_only_source_completes_with_persist_skipped(
+    client, scene, monkeypatch
+):
+    """A read-only source (OSError) completes and says why nothing was saved."""
+
+    def _read_only(source, entry):
+        raise PermissionError("read-only file system")
+
+    monkeypatch.setattr(sv, "_save_sequence_sidecar", _read_only)
+    done = _start_detect(client, [1, 2])
+    assert done["status"] == "completed", done
+    assert done["persisted"] is False
+    assert "read-only file system" in done["persist_skipped"]
+    assert done["detection_stamp"] is None

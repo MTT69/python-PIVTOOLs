@@ -12,10 +12,12 @@ Y-flips — the sign is carried by the camera model.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import pickle
+import threading
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -23,6 +25,7 @@ import numpy as np
 import scipy.io
 import yaml
 
+from pivtools_core.config import CALIBRATION_ACTIVE_METHODS
 from pivtools_core.paths import get_data_paths
 from pivtools_gui.utils.worker_pool import (
     get_max_workers,
@@ -46,17 +49,77 @@ logger = logging.getLogger(__name__)
 ENSEMBLE_FILE = "ensemble_result.mat"
 
 
+class ApplyCancelled(Exception):
+    """An apply run stopped by its cancel event before every frame was written.
+
+    ``written`` lists the output files that WERE written (they stay on disk), ``done``
+    counts the frames that finished, ``total`` the frames the run had planned.
+    """
+
+    def __init__(self, written: List[str], done: int, total: int) -> None:
+        super().__init__(f"apply cancelled after {done}/{total} frames")
+        self.written = written
+        self.done = done
+        self.total = total
+
+
+class ApplyFailed(RuntimeError):
+    """A frame of an apply run raised; the frames not yet started were cancelled.
+
+    ``written`` lists the output files that WERE written (they stay on disk, including
+    frames that were already running when the failure landed), ``done`` counts the frames
+    that finished, ``total`` the frames the run had planned. The failing frame's exception
+    is chained as ``__cause__``.
+    """
+
+    def __init__(
+        self, error: BaseException, written: List[str], done: int, total: int
+    ) -> None:
+        super().__init__(
+            f"apply failed after {done}/{total} frames; {len(written)} frame(s) written "
+            f"remain on disk: {error}"
+        )
+        self.written = written
+        self.done = done
+        self.total = total
+
+
+# Frames named in a stereo frame-set mismatch error (the rest are counted only).
+_MISMATCH_NAMES_SHOWN = 3
+
+
+def require_positive_dt(dt, where: str) -> float:
+    """Return ``dt`` as a float, raising ValueError unless it is finite and > 0.
+
+    Velocity scales as 1/dt, so a zero dt writes inf/NaN into every vector, a negative
+    dt silently flips the velocity sign, and a non-finite dt poisons the whole field.
+    ``where`` names the source of the value (for the error message).
+    """
+    try:
+        value = float(dt)
+    except (TypeError, ValueError):
+        raise ValueError(f"dt from {where} must be a number, got {dt!r}") from None
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(
+            f"dt from {where} must be finite and > 0 (velocity scales as 1/dt), "
+            f"got {dt!r}"
+        )
+    return value
+
+
 def resolve_dt(explicit_dt, model_dt) -> float:
     """Resolve the time-between-frames with NO silent default: explicit > model.
 
     Velocity scales linearly with dt, so a wrong dt silently corrupts every vector by a
     constant factor. There is therefore no safe default — and no config source: every
     record generated since dt stamping carries it in ``board_meta``, so a record
-    without one is stale. If neither source supplies dt, this raises.
+    without one is stale. If neither source supplies dt, this raises; a supplied dt
+    that is not finite and > 0 raises too (see ``require_positive_dt``).
     """
-    for cand in (explicit_dt, model_dt):
-        if cand is not None:
-            return float(cand)
+    if explicit_dt is not None:
+        return require_positive_dt(explicit_dt, "the explicit request/--dt")
+    if model_dt is not None:
+        return require_positive_dt(model_dt, "the model-stamped board_meta")
     raise ValueError(
         "dt could not be resolved — not given explicitly and not stamped in the "
         "model; re-generate the model (generation stamps dt) or pass dt"
@@ -90,27 +153,58 @@ def plan_apply_units(
     config snapshot with the calibration actually used. It is ``None`` for ``explicit``
     units, which have no base path and therefore no snapshot to stamp.
 
-    ``active_paths`` are indices into ``full_cfg.base_paths`` (None/empty -> all configured).
-    ``camera_pair`` is ``(cam1, cam2)`` for stereo (defaults ``[1, 2]``). ``camera`` is the mono
+    ``active_paths`` is a list of indices into ``full_cfg.base_paths``; None or an empty list
+    means every configured base path, and a scalar raises (``0`` would otherwise read as
+    "all"). ``camera_pair`` is ``(cam1, cam2)``, required for stereo. ``camera`` is the mono
     camera for an explicit single-unit run (defaults ``full_cfg.camera_numbers[0]``). ``explicit``
     forces ONE ad-hoc unit, bypassing config derivation — ``{"uncal", "out"}`` (mono) or
     ``{"uncal1", "uncal2", "out"}`` (stereo). ``model_type`` picks the record when several
     types coexist in the model dir (None -> the single one present, ambiguity raises).
-    A missing model fails loudly here (``load_*`` raises), before any job thread starts.
+    A missing model fails loudly here (``load_*`` raises), before any job thread starts;
+    for a config-derived mono plan the ``FileNotFoundError`` names the unmodelled camera
+    (every configured camera is applied, so each needs a model).
+
+    Every unit also carries ``cameras``: ``(cam,)`` for mono, ``(cam1, cam2)`` in record
+    order for stereo, so a caller can say which cameras the run covers.
+
+    Stereo ``uncal1`` / ``uncal2`` follow the RECORD's camera order (``rec.record_pair``),
+    not ``camera_pair``'s: the pair dir is shared by ``(1, 2)`` and ``(2, 1)``, and
+    ``reconstruct_stereo_run`` pairs ``uncal1`` with ``record.model1``, which is
+    ``record.cam1``'s model. Explicit ``uncal1`` / ``uncal2`` must therefore be the
+    record's cam1 / cam2 vectors; they are used as given and the unit label names that
+    order. The derived output folder stays ``Cam{a}_Cam{b}`` in ``camera_pair`` order,
+    where the downstream readers look for it; the 3C field it holds is in the shared
+    world frame, so the pair's order does not change its content.
     """
     base_paths = full_cfg.base_paths
     nfp = full_cfg.num_frame_pairs
+    if active_paths is not None and not isinstance(active_paths, (list, tuple)):
+        raise ValueError(
+            f"active_paths must be a list of base-path indices, got {active_paths!r}"
+        )
     base_indices = (
         [int(i) for i in active_paths] if active_paths else list(range(len(base_paths)))
     )
+    # A negative index would wrap to the last dataset and calibrate the wrong run.
+    bad = [i for i in base_indices if not 0 <= i < len(base_paths)]
+    if bad:
+        raise ValueError(
+            f"active_paths {bad} out of range: {len(base_paths)} base path(s) configured "
+            f"(valid indices 0..{len(base_paths) - 1})"
+        )
 
     units = []
     if stereo:
-        pair = camera_pair or [1, 2]
-        cam1, cam2 = int(pair[0]), int(pair[1])
+        if not camera_pair:
+            raise ValueError("camera_pair is required for a stereo apply")
+        pair = camera_pair
+        out_pair = (int(pair[0]), int(pair[1]))
         record = rec.load_stereo(
-            rec.stereo_model_dir_for_source(source, cam1, cam2), model_type=model_type
+            rec.stereo_model_dir_for_source(source, out_pair[0], out_pair[1], board),
+            model_type=model_type,
         )
+        # model1/model2 belong to record.cam1/cam2: read each camera's vectors in that order.
+        cam1, cam2 = rec.record_pair(record, out_pair)
         if explicit:
             return [
                 dict(
@@ -119,8 +213,9 @@ def plan_apply_units(
                     uncal1=Path(explicit["uncal1"]),
                     uncal2=Path(explicit["uncal2"]),
                     out=Path(explicit["out"]),
-                    label="manual",
+                    label=f"manual/Cam{cam1}_Cam{cam2}",
                     base=None,
+                    cameras=(cam1, cam2),
                 )
             ]
         for bi in base_indices:
@@ -134,10 +229,10 @@ def plan_apply_units(
             out = get_data_paths(
                 base,
                 nfp,
-                cam1,
+                out_pair[0],
                 type_name,
                 use_stereo=True,
-                stereo_camera_pair=(cam1, cam2),
+                stereo_camera_pair=out_pair,
             )["data_dir"]
             units.append(
                 dict(
@@ -146,8 +241,9 @@ def plan_apply_units(
                     uncal1=uncal1,
                     uncal2=uncal2,
                     out=out,
-                    label=f"{base.name}/Cam{cam1}_Cam{cam2}",
+                    label=f"{base.name}/Cam{out_pair[0]}_Cam{out_pair[1]}",
                     base=base,
+                    cameras=(cam1, cam2),
                 )
             )
     else:
@@ -166,16 +262,22 @@ def plan_apply_units(
                     out=Path(explicit["out"]),
                     label="manual",
                     base=None,
+                    cameras=(cam,),
                 )
             ]
         for bi in base_indices:
             base = base_paths[bi]
             for cam in full_cfg.camera_numbers:
-                record = rec.mono_record_for_camera(
-                    rec.mono_model_dir_for_source(source, cam, board),
-                    cam,
-                    model_type=model_type,
-                )
+                try:
+                    record = rec.mono_record_for_camera(
+                        rec.mono_model_dir_for_source(source, cam, board),
+                        cam,
+                        model_type=model_type,
+                    )
+                except FileNotFoundError as exc:
+                    raise FileNotFoundError(
+                        f"camera {cam} has no {board} model — generate it first ({exc})"
+                    ) from exc
                 uncal = get_data_paths(
                     base, nfp, cam, type_name, use_uncalibrated=True
                 )["data_dir"]
@@ -188,6 +290,7 @@ def plan_apply_units(
                         out=out,
                         label=f"{base.name}/Cam{cam}",
                         base=base,
+                        cameras=(int(cam),),
                     )
                 )
     return units
@@ -213,6 +316,35 @@ def active_method_name(board: str, stereo: bool) -> str:
     if not stereo or board.startswith("stereo_"):
         return board
     return f"stereo_{board}"
+
+
+def parse_active_method(active: Optional[str]) -> Tuple[str, bool]:
+    """Split a ``calibration.active`` id into ``(board, stereo)``.
+
+    The inverse of ``active_method_name``: ``"stereo_charuco"`` -> ``("charuco", True)``,
+    ``"scale_factor"`` -> ``("scale_factor", False)``. Calibration routes and CLI commands
+    use it when the request / command line names no board, so an active id is never used
+    verbatim as a board name.
+
+    Raises
+    ------
+    ValueError
+        ``active`` is missing/blank, or not one of ``CALIBRATION_ACTIVE_METHODS``.
+    """
+    allowed = ", ".join(CALIBRATION_ACTIVE_METHODS)
+    if active is None or not str(active).strip():
+        raise ValueError(
+            f"calibration.active is required in config.yaml (one of {allowed}) when "
+            "no board is given. Set it with the calibration tab's 'Set as Active' "
+            "button, or pass the board explicitly."
+        )
+    if active not in CALIBRATION_ACTIVE_METHODS:
+        raise ValueError(
+            f"calibration.active {active!r} is not a calibration method (one of {allowed})"
+        )
+    if active.startswith("stereo_"):
+        return active[len("stereo_") :], True
+    return active, False
 
 
 def build_applied_pointer(source, board: str, stereo: bool) -> Dict[str, object]:
@@ -284,11 +416,14 @@ def stamp_applied_calibration(base: Path, pointer: Dict[str, object]) -> Optiona
     return snapshot
 
 
-def stamp_unit(unit: Dict, pointer: Dict[str, object]) -> None:
-    """Stamp one apply unit's base path, swallowing failures.
+def stamp_unit(unit: Dict, pointer: Dict[str, object]) -> Optional[str]:
+    """Stamp one apply unit's base path; return a warning string if the stamp failed.
 
     The vectors are already on disk by the time this runs, so a provenance-write failure
-    must not fail the apply — it is logged with its traceback and the run continues.
+    must not fail the apply. It is logged with its traceback and returned as a one-line
+    warning naming the unit, so the caller can show it (the apply job's ``warnings``)
+    rather than only the server log knowing. Returns None when the stamp succeeded or
+    the unit has no base path to stamp.
     """
     base = unit.get("base")
     if base is None:
@@ -296,11 +431,16 @@ def stamp_unit(unit: Dict, pointer: Dict[str, object]) -> None:
             "apply unit %r has no base path (explicit dirs) — no config snapshot to stamp",
             unit.get("label"),
         )
-        return
+        return None
     try:
         stamp_applied_calibration(base, pointer)
-    except Exception:  # provenance is secondary to the vectors already written
+    except Exception as exc:  # provenance is secondary to the vectors already written
         logger.exception("failed to stamp applied calibration into %s", base)
+        return (
+            f"{unit.get('label')}: vectors written, but the calibration used was not "
+            f"recorded in the run's config snapshot under {base} ({exc})"
+        )
+    return None
 
 
 # .mat files in a PIV output dir that are NOT per-frame vector files. A vector glob
@@ -330,6 +470,40 @@ def _vector_files(uncal_dir: Path, vector_glob: str) -> List[Path]:
         if b.name not in _NON_VECTOR_MATS
         and not b.name.startswith(_NON_VECTOR_MAT_PREFIXES)
         and not b.name.startswith(".")
+    )
+
+
+def _require_vector_files(uncal_dir: Path, vector_glob: str) -> List[Path]:
+    """``_vector_files``, raising when the directory holds none.
+
+    A run with no vector files would write only ``coordinates.mat`` and report success
+    with zero frames — usually a wrong ``vector_glob`` or the wrong directory.
+    """
+    files = _vector_files(uncal_dir, vector_glob)
+    if not files:
+        raise FileNotFoundError(
+            f"no vector files matching {vector_glob!r} in {uncal_dir} — check the PIV "
+            "vector_format and that this is the uncalibrated output directory"
+        )
+    return files
+
+
+def _frame_set_mismatch(
+    only1: List[str], only2: List[str], dir1: Path, dir2: Path
+) -> ValueError:
+    """The error for two stereo cameras whose per-frame vector files differ."""
+
+    def describe(names: List[str], where: Path) -> str:
+        shown = ", ".join(names[:_MISMATCH_NAMES_SHOWN])
+        more = "" if len(names) <= _MISMATCH_NAMES_SHOWN else ", ..."
+        return f"{len(names)} frame(s) only in {where} ({shown}{more})"
+
+    parts = [describe(n, d) for n, d in ((only1, dir1), (only2, dir2)) if n]
+    return ValueError(
+        "stereo cameras have different frame sets: "
+        + "; ".join(parts)
+        + ". Every frame must exist for both cameras — re-run PIV for the missing frames "
+        "or remove the extras"
     )
 
 
@@ -430,6 +604,20 @@ def calibrate_ensemble_file(
     has_vel = ("ux" in names) and ("uy" in names)
     for i in range(er.shape[0]):
         if i not in coords_px:
+            # An empty pass (pass 0 in real runs) has no coordinates and nothing to
+            # calibrate. A filled one without coordinates would be written through as raw
+            # px under a calibrated name, so it raises.
+            filled = [
+                nm
+                for nm in (["ux"] if has_vel else [])
+                + [p + suf for suf in suffixes for p in ("UU", "VV", "UV")]
+                if _as2d(er[nm][i]).size
+            ]
+            if filled:
+                raise ValueError(
+                    f"{in_path.name}: ensemble pass {i} has data ({', '.join(filled)}) "
+                    f"but coordinates.mat has no pass {i} — cannot calibrate it"
+                )
             continue
         xpx, ypx = coords_px[i]
         coords = np.stack([xpx, ypx], axis=-1)
@@ -520,9 +708,7 @@ def _vectors_struct(
 # pickled into every task.
 
 
-def _mono_frame_task(
-    bmat_path: str, out_path: str, ctx: Optional[dict] = None
-) -> str:
+def _mono_frame_task(bmat_path: str, out_path: str, ctx: Optional[dict] = None) -> str:
     """Calibrate one vector .mat file. ``ctx`` defaults to the worker's payload."""
     c = ctx if ctx is not None else get_worker_payload()
     bmat = Path(bmat_path)
@@ -543,8 +729,12 @@ def _mono_frame_task(
     vecs = read_vectors(bmat)
     cal_vecs: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
     for i, (ux, uy, b) in vecs.items():
+        # read_vectors drops empty passes, so every pass here has vectors.
         if i not in c["coords_px"]:
-            continue
+            raise ValueError(
+                f"{bmat.name}: pass {i} has vectors but coordinates.mat has no pass {i} "
+                "— cannot calibrate it"
+            )
         xpx, ypx = c["coords_px"][i]
         coords_stack = np.stack([xpx, ypx], axis=-1)
         disp_stack = np.stack([ux, uy], axis=-1)
@@ -619,6 +809,7 @@ def _run_frame_tasks(
     tasks: List[tuple],
     ctx: dict,
     progress_cb: Optional[Callable[[int, int], None]],
+    cancel_event: Optional[threading.Event] = None,
 ) -> List[str]:
     """Fan per-frame apply tasks out over a process pool sized by the worker knob.
 
@@ -626,6 +817,15 @@ def _run_frame_tasks(
     spin-up cost, and the parent keeps ``ctx`` explicit rather than mutating module
     state (which two concurrent apply jobs would race on). Skipped frames (task
     returns None) still advance progress. Output paths return in name order.
+
+    ``cancel_event`` is checked before each inline frame and as each pooled frame
+    completes. Once set, frames not yet started are cancelled, frames already running
+    in the pool are waited for (so nothing is written after this returns), and
+    ``ApplyCancelled`` is raised carrying the frames that did complete.
+
+    A frame that raises stops the run the same way (queued frames cancelled, running
+    ones waited for) and ``ApplyFailed`` is raised carrying the frames written, with the
+    frame's exception chained.
     """
     total = len(tasks)
     written: List[str] = []
@@ -635,7 +835,12 @@ def _run_frame_tasks(
     max_workers = get_max_workers(total)
     if max_workers == 1:
         for t in tasks:
-            out = task_fn(*t, ctx=ctx)
+            if cancel_event is not None and cancel_event.is_set():
+                raise ApplyCancelled(sorted(written), done, total)
+            try:
+                out = task_fn(*t, ctx=ctx)
+            except Exception as exc:
+                raise ApplyFailed(exc, sorted(written), done, total) from exc
             if out is not None:
                 written.append(out)
             done += 1
@@ -648,13 +853,49 @@ def _run_frame_tasks(
         initargs=(pickle.dumps(ctx),),
     ) as executor:
         futures = [executor.submit(task_fn, *t) for t in tasks]
+        collected: set[Future] = set()
+
+        def _drain_running() -> None:
+            """After shutdown(cancel_futures): count frames that were already running.
+
+            Their exceptions are not re-raised: the run is already stopping for the
+            first failure, and these frames' outcomes are only bookkeeping.
+            """
+            nonlocal done
+            for f in futures:
+                if f in collected or f.cancelled():
+                    continue
+                if f.exception() is None and f.result() is not None:
+                    written.append(f.result())
+                done += 1
+
         for future in as_completed(futures):
-            out = future.result()
+            collected.add(future)
+            try:
+                out = future.result()
+            except Exception as exc:
+                executor.shutdown(wait=True, cancel_futures=True)
+                _drain_running()
+                raise ApplyFailed(exc, sorted(written), done, total) from exc
             if out is not None:
                 written.append(out)
             done += 1
             if progress_cb:
                 progress_cb(done, total)
+            if cancel_event is not None and cancel_event.is_set():
+                executor.shutdown(wait=True, cancel_futures=True)
+                # Frames already running when the cancel landed have now finished and
+                # written their output; count them. A failure among them still raises.
+                for f in futures:
+                    if f in collected or f.cancelled():
+                        continue
+                    out = f.result()
+                    if out is not None:
+                        written.append(out)
+                    done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+                raise ApplyCancelled(sorted(written), done, total)
     return sorted(written)
 
 
@@ -668,6 +909,7 @@ def calibrate_mono_run(
     tilt_y: float = 0.0,
     progress_cb: Optional[Callable[[int, int], None]] = None,
     vector_glob: str = "B*.mat",
+    cancel_event: Optional[threading.Event] = None,
 ) -> List[str]:
     """Apply a mono model to a whole run: coordinates.mat + every vector .mat.
 
@@ -675,9 +917,12 @@ def calibrate_mono_run(
     calibrated world-mm coordinates and m/s velocities to ``<out_dir>``. ``vector_glob``
     matches the per-frame vector files (default ``B*.mat``; PIV's ``vector_fmt`` may
     differ, e.g. ``[0-9]*.mat``). ``progress_cb(done, total)`` runs after each frame.
+    A set ``cancel_event`` stops the run between frames (see ``_run_frame_tasks``).
     """
     uncal_dir = Path(uncal_dir)
     out_dir = Path(out_dir)
+    # Listed before anything is written, so an empty run leaves no orphan coordinates.mat.
+    bmats = _require_vector_files(uncal_dir, vector_glob)
     out_dir.mkdir(parents=True, exist_ok=True)
     model = record.camera_model
     # Per-camera placement into the shared multi-camera rig frame (None == this camera
@@ -702,7 +947,6 @@ def calibrate_mono_run(
         do_compression=True,
     )
 
-    bmats = _vector_files(uncal_dir, vector_glob)
     ctx = {
         "model": model,
         "coords_px": coords_px,
@@ -713,7 +957,7 @@ def calibrate_mono_run(
         "tilt_y": tilt_y,
     }
     tasks = [(str(b), str(out_dir / b.name)) for b in bmats]
-    return _run_frame_tasks(_mono_frame_task, tasks, ctx, progress_cb)
+    return _run_frame_tasks(_mono_frame_task, tasks, ctx, progress_cb, cancel_event)
 
 
 def reconstruct_stereo_run(
@@ -729,19 +973,35 @@ def reconstruct_stereo_run(
     progress_cb: Optional[Callable[[int, int], None]] = None,
     vector_glob: str = "B*.mat",
     interpolator: str = "lanczos",
+    cancel_event: Optional[threading.Event] = None,
 ) -> List[str]:
     """3C reconstruction over a run: cam1 + cam2 uncalibrated -> stereo (U,V,W) m/s.
 
     Writes world coordinates (x,y mm) and 3C velocities (ux,uy,uz m/s) on a REGULAR
     world-mm grid spanning the two cameras' overlap (spacing = median world-space
     vector pitch — see ``regular_world_grid``) into ``out_dir``. Uses the final
-    populated pass unless ``pass_index`` set.
+    populated pass unless ``pass_index`` set. A set ``cancel_event`` stops the run
+    between frames (see ``_run_frame_tasks``); the frames already written keep their
+    ``coordinates.mat``.
     """
     from .stereo_model import regular_world_grid
 
     uncal_dir1 = Path(uncal_dir1)
     uncal_dir2 = Path(uncal_dir2)
     out_dir = Path(out_dir)
+
+    # Both cameras must hold the same frames: intersecting them would silently drop
+    # frames from the 3C output. Checked before any model work or write.
+    bmats1 = {b.name: b for b in _require_vector_files(uncal_dir1, vector_glob)}
+    bmats2 = {b.name: b for b in _require_vector_files(uncal_dir2, vector_glob)}
+    if set(bmats1) != set(bmats2):
+        raise _frame_set_mismatch(
+            sorted(set(bmats1) - set(bmats2)),
+            sorted(set(bmats2) - set(bmats1)),
+            uncal_dir1,
+            uncal_dir2,
+        )
+    common = sorted(bmats1)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     coords1 = read_coordinates(uncal_dir1 / "coordinates.mat")
@@ -767,9 +1027,6 @@ def reconstruct_stereo_run(
         tilt_y,
     )
 
-    bmats1 = {b.name: b for b in _vector_files(uncal_dir1, vector_glob)}
-    bmats2 = {b.name: b for b in _vector_files(uncal_dir2, vector_glob)}
-    common = sorted(set(bmats1) & set(bmats2))
     ctx = {
         "model1": record.model1,
         "model2": record.model2,
@@ -780,11 +1037,11 @@ def reconstruct_stereo_run(
         "dt": dt,
         "interpolator": interpolator,
     }
-    tasks = [(str(bmats1[name]), str(bmats2[name]), str(out_dir / name)) for name in common]
-    written = _run_frame_tasks(_stereo_frame_task, tasks, ctx, progress_cb)
-    # The regular world grid is frame-invariant — write coordinates once, and only if
-    # at least one frame actually reconstructed (no frames -> no output).
-    if written:
+    tasks = [
+        (str(bmats1[name]), str(bmats2[name]), str(out_dir / name)) for name in common
+    ]
+
+    def _write_coords() -> None:
         cs = _coords_struct({p: (gX, gY)}, p + 1)
         scipy.io.savemat(
             str(out_dir / "coordinates.mat"),
@@ -792,4 +1049,19 @@ def reconstruct_stereo_run(
             oned_as="row",
             do_compression=True,
         )
+
+    # The regular world grid is frame-invariant — write coordinates once, and only if
+    # at least one frame actually reconstructed (no frames -> no output). A cancelled
+    # run still gets them for the frames it left on disk, so that partial output is
+    # readable rather than orphaned vectors with no grid.
+    try:
+        written = _run_frame_tasks(
+            _stereo_frame_task, tasks, ctx, progress_cb, cancel_event
+        )
+    except ApplyCancelled as exc:
+        if exc.written:
+            _write_coords()
+        raise
+    if written:
+        _write_coords()
     return written

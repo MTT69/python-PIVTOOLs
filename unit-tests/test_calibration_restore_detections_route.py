@@ -22,21 +22,24 @@ are exercised against one another rather than against a hand-built sidecar.
 
 from __future__ import annotations
 
-import pivtools_gui.calibration.app.views as V
-from pivtools_gui.calibration import inputs_store as INP
-from pivtools_gui.calibration import record as rec
+# ruff: noqa: F811  (the imported ``env`` pytest fixture is re-bound by every test's parameter)
+from test_calibration_detect_views_routes import env  # noqa: F401  (pytest fixture)
 from test_calibration_detect_views_routes import (  # noqa: E402  (sibling-test reuse, as elsewhere)
     FMT,
     N_VIEWS,
     TILTS,
     _FakeDetector,
     _post_views,
-    env,
+    _uneven_counts,
 )
 from test_calibration_sidecar_resolve import (  # noqa: E402
     _clicks_from_detection,
     _detection,
 )
+
+import pivtools_gui.calibration.app.views as V
+from pivtools_gui.calibration import inputs_store as INP
+from pivtools_gui.calibration import record as rec
 
 
 def _restore(client, **extra):
@@ -80,7 +83,7 @@ def test_restore_missing_camera_reports_absent(env):
     persisted as ONE set under one det_key, and the solve expects both."""
     client, base, _params = env
     INP.save_inputs(
-        rec.stereo_model_dir_for_source(base, 1, 2),
+        rec.stereo_model_dir_for_source(base, 1, 2, "dotboard"),
         path_type="stereo",
         board_type="dotboard",
         detections={1: [_detection(t)[0] for t in TILTS]},
@@ -160,7 +163,9 @@ def test_restore_omits_failed_views_so_that_frame_blanks(env, monkeypatch):
     monkeypatch.setattr(
         V,
         "_detect_parallel",
-        lambda board, p, imgs, spacing_mm=None, on_done=None: [miss.detect(i) for i in imgs],
+        lambda board, p, imgs, spacing_mm=None, on_done=None: [
+            miss.detect(i) for i in imgs
+        ],
     )
     _post_views(client, camera=1)
     side = INP.load_inputs(rec.mono_model_dir_for_source(base, 1, "dotboard"))
@@ -238,6 +243,33 @@ def test_restore_goes_stale_on_a_detector_version_bump(env, monkeypatch):
     assert restored["by_camera"] is None
 
 
+def test_restore_goes_stale_when_zero_based_indexing_flips(env):
+    """The GUI's First Frame Number control flips image.zero_based_indexing; frame N
+    then reads a different file, so points detected under the old numbering must not
+    be drawn (or reused by Generate)."""
+    from pivtools_core import calibration_settings as cs
+
+    client, base, _params = env
+    _post_views(client, camera=1)
+    assert _restore(client, camera=1)["fresh"] is True
+
+    cs.save_settings(
+        base,
+        {
+            "image": {
+                "image_format": FMT,
+                "image_type": "standard",
+                "zero_based_indexing": True,
+            }
+        },
+    )
+    restored = _restore(client, camera=1)
+
+    assert restored["exists"] is True
+    assert restored["fresh"] is False
+    assert restored["by_camera"] is None
+
+
 def test_restore_without_board_geometry_reports_absent(env, monkeypatch):
     """No dot spacing entered yet is the routine first-visit state. Without
     geometry there is no det_key to compare, so there is nothing to restore --
@@ -288,3 +320,115 @@ def test_generate_after_restore_reuses_the_same_cached_detections(env):
     ).get_json()
 
     assert generated.get("detections_cached") is True, generated
+
+
+# ---------------------------------------------------------------------------
+# View count resolution
+# ---------------------------------------------------------------------------
+
+
+def test_restore_null_frame_total_auto_detects_count(env, monkeypatch):
+    """Blank n_views (``frame_total: null``) resolves exactly as detect_views does,
+    so the det_key matches and the stored set is restored."""
+    client, _base, _params = env
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
+    drawn = _post_views(client, camera=1, frame_total=None)
+    assert drawn["persisted"] is True
+
+    restored = _restore(client, camera=1, frame_total=None)
+
+    assert restored["exists"] is True and restored["fresh"] is True
+    assert restored["by_camera"] == drawn["by_camera"]
+    assert restored["frame_total"] == N_VIEWS
+    assert restored["frame_total_source"] == "files"
+
+
+def test_restore_auto_detect_failure_reports_error(env, monkeypatch):
+    """No det_key can be built without a view count: nothing is restored and the
+    reason is returned, not swallowed."""
+    client, _base, _params = env
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
+
+    def _boom(cam, cfg, src):
+        raise OSError("disk unplugged")
+
+    monkeypatch.setattr(V, "get_calibration_frame_count", _boom)
+
+    data = _restore(client, camera=1, frame_total=None)
+
+    assert data["exists"] is False
+    assert "disk unplugged" in data["error"]
+
+
+def test_restore_stereo_count_mismatch_reports_error(env, monkeypatch):
+    """A stereo pair whose cameras auto-count differently has no det_key: nothing is
+    restored, and the mismatch is returned rather than restoring under cam1's count."""
+    client, _base, _params = env
+    drawn = _post_views(client, stereo=True, camera_pair=[1, 2])
+    assert drawn["persisted"] is True
+    monkeypatch.setattr(
+        V,
+        "_settings_idx",
+        lambda idx: {"image": {"n_views": None, "zero_based_indexing": False}},
+    )
+    monkeypatch.setattr(V, "get_calibration_frame_count", _uneven_counts)
+
+    data = _restore(client, stereo=True, camera_pair=[1, 2], frame_total=None)
+
+    assert data["exists"] is False
+    assert f"camera 2 has {N_VIEWS - 1}" in data["error"]
+
+
+# ---------------------------------------------------------------------------
+# Corrupt sidecar: the error reaches the response, the file is never replaced
+# ---------------------------------------------------------------------------
+
+_CORRUPT_BYTES = b"not a MAT file" * 16
+
+
+def _backend_client():
+    """The calibration blueprint mounted as production mounts it: under ``/backend``
+    with the app's JSON error handlers, so an uncaught exception arrives as the
+    ``{"success": false, "error": ...}`` envelope the GUI reads."""
+    from flask import Flask
+
+    from pivtools_gui.errors import register_json_error_handlers
+
+    app = Flask(__name__)
+    register_json_error_handlers(app)
+    app.register_blueprint(V.calibration_bp, url_prefix="/backend")
+    return app.test_client()
+
+
+def test_corrupt_sidecar_reaches_restore_and_detect_responses(env):
+    """A truncated/garbage ``inputs.mat`` used to read as "no sidecar": restore
+    reported nothing stored, and the next Detect Dots overwrote the user's file.
+    Both routes must now say so and leave the bytes alone."""
+    _client, base, _params = env
+    path = INP.inputs_path(rec.mono_model_dir_for_source(base, 1, "dotboard"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_CORRUPT_BYTES)
+    client = _backend_client()
+    body = {
+        "source_path_idx": 0,
+        "board": "dotboard",
+        "image_format": FMT,
+        "frame_total": N_VIEWS,
+        "camera": 1,
+    }
+
+    for route in ("restore_detections", "detect_views"):
+        response = client.post(f"/backend/calibration/{route}", json=body)
+        data = response.get_json()
+        assert data["success"] is False, route
+        assert "inputs.mat unreadable" in data["error"], route
+        assert str(path) in data["error"], route
+        assert path.read_bytes() == _CORRUPT_BYTES, route

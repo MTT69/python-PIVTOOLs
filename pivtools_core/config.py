@@ -32,6 +32,25 @@ TOOL_ALLOWED_TYPE_NAMES = {
 # Legacy alias for backward compatibility
 TOOL_ALLOWED_ENDPOINTS = TOOL_ALLOWED_SOURCE_ENDPOINTS
 
+# Every ``calibration.active`` id: the GUI calibration tab ids its "Set as Active" buttons
+# write (gui/src/components/setup/Calibration.tsx). ``runio.parse_active_method`` maps each
+# to its (board, stereo) pair.
+CALIBRATION_ACTIVE_METHODS = (
+    "charuco",
+    "dotboard",
+    "scale_factor",
+    "stereo_charuco",
+    "stereo_dotboard",
+    "stereo_stepped",
+)
+
+# Appended to the unset/blank calibration-source errors so the user knows what the
+# folder is for (and that an image-less scale factor still needs it).
+_CALIBRATION_SOURCE_PURPOSE = (
+    "It is the folder that holds the calibration images and where calibration "
+    "models are saved (a scale factor without images needs only the folder)."
+)
+
 _CONFIG = None  # singleton cache
 _LOGGING_INITIALIZED = False  # Track if logging has been set up
 
@@ -62,111 +81,34 @@ class Config:
         # Store the config path for saving
         self._config_path = path if path is not None else self._get_config_path()
 
-        # Migrate old pairing keys to new stride-based model
-        self._migrate_pairing_config()
+        self._refuse_legacy_pairing_keys()
 
-    def _migrate_pairing_config(self):
-        """Migrate old pairing keys (time_resolved, zero_based_indexing, etc.)
-        to new stride-based model (start_index, frame_stride, pair_stride).
+    # Keys of the pre-stride pairing model. They are no longer read anywhere, so a
+    # config still carrying them would run with stride defaults the user never chose.
+    _LEGACY_PAIRING_KEYS = ("time_resolved", "pairing_mode")
 
-        Called on every load. Only runs if old keys exist and new keys don't.
-        Auto-saves the config after migration so it doesn't re-run.
+    def _refuse_legacy_pairing_keys(self) -> None:
+        """Fail loudly on a config written for the old pairing model.
+
+        Forward-only: there is no migration. The message names the keys present
+        and the stride keys that replace them so the file can be rewritten.
+
+        Raises
+        ------
+        ValueError
+            When ``images`` holds ``time_resolved`` or ``pairing_mode``.
         """
-        images = self.data.get("images", {})
-
-        # Only migrate if old keys exist and new keys don't
-        has_old = "time_resolved" in images or "pairing_mode" in images
-        has_new = "frame_stride" in images
-        if not has_old or has_new:
-            return
-
-        # Read old values BEFORE removing them (direct dict access, not properties)
-        old_time_resolved = images.get("time_resolved", False)
-        old_zero_based = images.get("zero_based_indexing", False)
-
-        # Determine image type from format (direct dict access, not property)
-        image_type_val = images.get("image_type")
-        if not image_type_val:
-            fmt_raw = images.get("image_format")
-            if fmt_raw:
-                fmt = fmt_raw[0] if isinstance(fmt_raw, (list, tuple)) else fmt_raw
-                fmt_lower = fmt.lower()
-                if ".cine" in fmt_lower:
-                    image_type_val = "cine"
-                elif ".set" in fmt_lower:
-                    image_type_val = "lavision_set"
-                elif ".im7" in fmt_lower or ".ims" in fmt_lower:
-                    image_type_val = "lavision_im7"
-                else:
-                    image_type_val = "standard"
-            else:
-                image_type_val = "standard"
-
-        # Determine format count for A/B detection
-        fmt_raw = images.get("image_format")
-        format_count = 1
-        if isinstance(fmt_raw, (list, tuple)):
-            format_count = len(fmt_raw)
-
-        # start_index: cine always 1 (reader handles FirstImageNo), others from zero_based
-        if image_type_val == "cine":
-            images["start_index"] = 1
-        else:
-            images["start_index"] = 0 if old_zero_based else 1
-
-        # Determine strides and preset
-        if format_count == 2:
-            # A/B format (separate A and B files)
-            images["frame_stride"] = 0
-            images["pair_stride"] = 1
-            images["pairing_preset"] = "ab_format"
-        elif image_type_val in ("lavision_set", "lavision_im7"):
-            if old_time_resolved:
-                images["frame_stride"] = 1
-                images["pair_stride"] = 1
-                images["pairing_preset"] = "time_resolved"
-            else:
-                images["frame_stride"] = 0
-                images["pair_stride"] = 1
-                images["pairing_preset"] = "pre_paired"
-        elif image_type_val == "cine":
-            if old_time_resolved:
-                images["frame_stride"] = 1
-                images["pair_stride"] = 1
-                images["pairing_preset"] = "time_resolved"
-            else:
-                images["frame_stride"] = 1
-                images["pair_stride"] = 2
-                images["pairing_preset"] = "skip_frames"
-        else:
-            # Standard format with single pattern
-            if old_time_resolved:
-                images["frame_stride"] = 1
-                images["pair_stride"] = 1
-                images["pairing_preset"] = "time_resolved"
-            else:
-                images["frame_stride"] = 1
-                images["pair_stride"] = 2
-                images["pairing_preset"] = "skip_frames"
-
-        # Remove old keys
-        images.pop("time_resolved", None)
-        images.pop("zero_based_indexing", None)
-        images.pop("pairing_mode", None)
-        images.pop("pairing_skip", None)
-        images.pop("num_frame_pairs", None)  # Was a dead key, now fully computed
-
-        logging.info(
-            "Migrated pairing config: start_index=%s, frame_stride=%s, "
-            "pair_stride=%s, preset=%s",
-            images["start_index"],
-            images["frame_stride"],
-            images["pair_stride"],
-            images["pairing_preset"],
-        )
-
-        # Auto-save so migration doesn't re-run
-        self.save()
+        images = self.data.get("images") or {}
+        legacy = [k for k in self._LEGACY_PAIRING_KEYS if k in images]
+        if legacy:
+            raise ValueError(
+                f"config.yaml images.{', images.'.join(legacy)} belong to the old "
+                "pairing model and are no longer read. Remove them and set "
+                "images.start_index, images.frame_stride and images.pair_stride "
+                "(time-resolved: frame_stride 1, pair_stride 1; skip-frames: "
+                "frame_stride 1, pair_stride 2; pre-paired/A-B: frame_stride 0, "
+                "pair_stride 1), or regenerate the file with `pivtools-cli init`."
+            )
 
     def save(self):
         """Save current config state to YAML file.
@@ -257,7 +199,12 @@ class Config:
     # The YAML calibration block is a pointer only. Everything else (image format,
     # board geometry, dt, global coordinates, ...) lives in the per-source
     # settings sidecar — see pivtools_core.calibration_settings.
-    _CALIBRATION_POINTER_KEYS = ("calibration_sources", "source", "source_idx", "active")
+    _CALIBRATION_POINTER_KEYS = (
+        "calibration_sources",
+        "source",
+        "source_idx",
+        "active",
+    )
 
     def _normalize_calibration_block(self):
         """Strip the calibration block to its pointer keys on save.
@@ -358,20 +305,20 @@ class Config:
         if raw is None:
             # Default
             if self.time_resolved:
-                return ("B%05d.tiff",)
+                return ("B%05d.tif",)
             else:
-                return ("B%05d_A.tiff", "B%05d_B.tiff")
+                return ("B%05d_A.tif", "B%05d_B.tif")
 
         if isinstance(raw, str):
-            return (raw,) if raw else ("B%05d_A.tiff", "B%05d_B.tiff")
+            return (raw,) if raw else ("B%05d_A.tif", "B%05d_B.tif")
         elif isinstance(raw, (list, tuple)):
             filtered = tuple(r for r in raw if r)
             if not filtered:
                 # Empty list/tuple — fall back to defaults
                 if self.time_resolved:
-                    return ("B%05d.tiff",)
+                    return ("B%05d.tif",)
                 else:
-                    return ("B%05d_A.tiff", "B%05d_B.tiff")
+                    return ("B%05d_A.tif", "B%05d_B.tif")
             return filtered
         else:
             raise ValueError(f"Invalid image_format type: {type(raw)}")
@@ -536,24 +483,44 @@ class Config:
     def is_stereo_setup(self) -> bool:
         """Return True if this is a stereo PIV setup.
 
-        Determined by calibration.active being 'stereo_dotboard' or 'stereo_charuco'.
+        Determined by calibration.active being one of the stereo methods the GUI's
+        "Set as Active" buttons write: 'stereo_dotboard', 'stereo_charuco' or
+        'stereo_stepped'.
 
         Returns
         -------
         bool
             True if stereo calibration is active
+
+        Raises
+        ------
+        ValueError
+            When ``calibration.active`` is missing, blank or not a known method id.
         """
         active = self.active_calibration_method
-        return active in ("stereo_dotboard", "stereo_charuco")
+        return active in ("stereo_dotboard", "stereo_charuco", "stereo_stepped")
 
     @property
     def camera_folders(self):
         return [self.get_camera_folder(n) for n in self.camera_numbers]
 
     @property
-    def num_images(self):
-        """Return the number of image files (not pairs)."""
-        return self.data.get("images", {}).get("num_images", 100)
+    def num_images(self) -> int:
+        """Return the number of image files (not pairs).
+
+        Raises
+        ------
+        ValueError
+            When ``images.num_images`` is present but null: an unset count has no
+            safe value, and every pair count downstream is derived from it.
+        """
+        value = self.data.get("images", {}).get("num_images", 100)
+        if value is None:
+            raise ValueError(
+                "images.num_images is required (the number of image files per "
+                "camera); it is null in config.yaml"
+            )
+        return value
 
     @property
     def num_loops(self) -> int:
@@ -1346,7 +1313,9 @@ class Config:
         sources = calib_block.get("calibration_sources", [])
         # str().strip(): a pasted path with a stray leading space reaches mkdir as
         # ' C:\...' and Windows rejects it (WinError 123, seen 2026-08-28).
-        return [Path(str(s).strip()) for s in sources if s is not None] if sources else []
+        return (
+            [Path(str(s).strip()) for s in sources if s is not None] if sources else []
+        )
 
     def get_calibration_source(self, source_path_idx: int = 0) -> Path:
         """Get calibration source path for the given index.
@@ -1372,8 +1341,7 @@ class Config:
         sources = self.calibration_sources
         if not sources:
             raise ValueError(
-                "calibration.calibration_sources not configured in config.yaml. "
-                "Please specify direct paths to calibration images."
+                f"calibration.calibration_sources is not set. {_CALIBRATION_SOURCE_PURPOSE}"
             )
         if source_path_idx >= len(sources):
             raise IndexError(
@@ -1387,20 +1355,43 @@ class Config:
         if source == Path():
             raise ValueError(
                 f"calibration.calibration_sources[{source_path_idx}] is empty. "
-                "Please specify the path to the calibration source."
+                f"{_CALIBRATION_SOURCE_PURPOSE}"
             )
         return source
 
     @property
-    def calibration(self):
-        """Return the full calibration block (dict) from config."""
-        return self.data.get("calibration", {})
+    def calibration(self) -> dict:
+        """Return the full calibration block (dict) from config.
+
+        A null block (``calibration:`` with no keys) reads as ``{}`` so callers
+        reach the designed "calibration.active is required" error instead of an
+        AttributeError on None.
+        """
+        return self.data.get("calibration") or {}
 
     @property
-    def active_calibration_method(self):
-        """Return the active calibration method name (e.g., 'dotboard', 'scale_factor')."""
-        cal = self.calibration
-        return cal.get("active", "scale_factor")
+    def active_calibration_method(self) -> str:
+        """Return ``calibration.active``, the applied calibration method's tab id.
+
+        Raises
+        ------
+        ValueError
+            When the key is missing, blank or not a known method id. It decides stereo vs mono for every
+            downstream tool, so no method is assumed (the CLI template always writes it).
+        """
+        active = (self.calibration or {}).get("active")
+        if active is None or not str(active).strip():
+            raise ValueError(
+                "calibration.active is required in config.yaml (one of "
+                f"{', '.join(CALIBRATION_ACTIVE_METHODS)}). Set it with the "
+                "calibration tab's 'Set as Active' button or edit the config."
+            )
+        if active not in CALIBRATION_ACTIVE_METHODS:
+            raise ValueError(
+                f"calibration.active {active!r} is not a calibration method (one of "
+                f"{', '.join(CALIBRATION_ACTIVE_METHODS)})."
+            )
+        return str(active)
 
     # --- Merging properties ---
     @property
@@ -2658,11 +2649,6 @@ class Config:
         return storage_dir / mask_filename
 
     @property
-    def zero_based_indexing(self):
-        """Backward-compatible: True when start_index == 0."""
-        return self.start_index == 0
-
-    @property
     def camera_subfolders(self):
         return self.data.get("paths", {}).get("camera_subfolders", [])
 
@@ -2887,43 +2873,24 @@ class Config:
         return self.transforms.get("source_endpoint", "regular")
 
     def get_camera_folder(self, camera_num: int) -> str:
-        """Get the subfolder name for a specific camera.
+        """Get the subfolder name for a specific camera's PIV images.
 
-        A single-camera setup (camera_count == 1) always resolves images at
-        the source root; camera_subfolders entries never apply to it.
-
-        Container formats (.cine, .set) don't use camera subfolders:
-        - .set: All cameras in one file
-        - .cine: Separate files per camera in source dir (uses %d in pattern)
-
-        IM7 depends on images_use_camera_subfolders:
-        - False (default): All cameras in one .im7 file, no subfolder
-        - True: Single-camera .im7 files in camera subfolders
+        Delegates to ``path_utils.camera_subfolder_name``, the one rule shared
+        with calibration images (``path_utils.calibration_camera_folder``):
+        containers (.set, .cine) never use a subfolder, IM7 uses one only when
+        ``images.use_camera_subfolders`` is True, a single-camera setup always
+        resolves at the source root, and otherwise an explicit
+        ``paths.camera_subfolders`` entry wins, else ``Cam{N}``.
         """
-        # SET and CINE never use camera subfolders
-        if self.image_type in ("lavision_set", "cine"):
-            return ""
+        from .image_handling.path_utils import camera_subfolder_name
 
-        # IM7: check images_use_camera_subfolders
-        if self.image_type == "lavision_im7":
-            if not self.images_use_camera_subfolders:
-                return ""  # Multi-camera file, no subfolder
-            # Fall through to use camera subfolders
-
-        # Single camera resolves at the source root — an explicit subfolder
-        # entry is stale state from a previous multi-camera session, never a
-        # valid override (the GUI hides subfolder inputs at count 1).
-        if self.camera_count == 1:
-            return ""
-
-        subfolders = self.camera_subfolders
-        # camera_num is 1-based
-        idx = camera_num - 1
-
-        if subfolders and idx < len(subfolders) and subfolders[idx]:
-            return subfolders[idx]
-
-        return f"Cam{camera_num}"
+        return camera_subfolder_name(
+            self.image_type,
+            camera_num,
+            self.camera_count,
+            use_camera_subfolders=self.images_use_camera_subfolders,
+            camera_subfolders=self.camera_subfolders,
+        )
 
     # ===================== ENDPOINT VALIDATION =====================
 

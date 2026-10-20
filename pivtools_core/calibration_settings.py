@@ -1,13 +1,19 @@
 """pivtools_core.calibration_settings — per-source calibration settings sidecar.
 
 One ``settings.yaml`` per calibration source, living in the same
-``<source>/calibration`` root as the model records, holding the pre-model
-form state that used to sit (and go stale) in ``config.yaml``:
+calibration root as the model records, holding the pre-model form state that
+used to sit (and go stale) in ``config.yaml``:
 
     <root>/settings.yaml        root = root_for_source(source)
 
+    directory source  <dir>                 -> <dir>/calibration
+    container file    <parent>/<stem>.set   -> <parent>/calibration/<stem>
+
+Every source owns its root exclusively: several containers in one folder never
+share settings, model records or ``inputs.mat``.
+
 The persisted YAML config keeps only the pointer (``calibration_sources``,
-``source``, ``source_idx``, ``active``); everything else about a calibration
+``source_idx``, ``active``); everything else about a calibration
 lives with the calibration data so it can never point at the wrong source.
 
 Contract
@@ -16,7 +22,7 @@ Contract
   missing them is stale/unset and ``load_settings`` raises. Board geometry
   and ``rig.dt`` are required at *generate* time and enforced there.
 - Detector-tuning knobs (``k_neighbors``, ``marker_ratio``, ``min_corners``,
-  ``fix_k2``, ``interpolator``, ``start_index``, ...) have their defaults
+  ``fix_k2``, ``interpolator``, ``zero_based_indexing``, ...) have their defaults
   applied here and nowhere else — this file replaces the old three-layer
   (CLI template / Config property / frontend fallback) default system.
 - Writes are partial deep-merges: callers send only the block they own and
@@ -46,15 +52,33 @@ SETTINGS_FILENAME = "settings.yaml"
 PathLike = Union[str, Path]
 
 
+# Single-file container formats whose frames all live inside one file. This is
+# the single place to register such a format: a source with one of these
+# suffixes (case-insensitive) is a FILE and gets its own per-stem calibration
+# root; every other path is a directory source.
+CONTAINER_SUFFIXES = frozenset({".set", ".cine"})
+
+CALIBRATION_DIRNAME = "calibration"
+
+
+def _is_container(source: Path) -> bool:
+    """True when ``source`` names a single-file container (by suffix, no disk access)."""
+    return source.suffix.lower() in CONTAINER_SUFFIXES
+
+
 def root_for_source(source: PathLike) -> Path:
     """Calibration-output root for an explicit source path.
 
-    Directory sources -> ``<source>/calibration``. Container-file sources
-    (``.set``/``.cine``) -> ``<source>.parent/calibration``.
+    Container-file sources (suffix in ``CONTAINER_SUFFIXES``, case-insensitive)
+    -> ``<parent>/calibration/<stem>``, so containers sharing a folder never
+    share a root. Everything else is a directory source -> ``<source>/calibration``
+    (a dot in a directory name, e.g. ``2026.10.17``, does not make it a file).
+    Pure path arithmetic: the source need not exist yet.
     """
     source = Path(source)
-    base = source.parent if source.suffix else source
-    return base / "calibration"
+    if _is_container(source):
+        return source.parent / CALIBRATION_DIRNAME / source.stem
+    return source / CALIBRATION_DIRNAME
 
 
 def settings_path(source: PathLike) -> Path:
@@ -74,8 +98,12 @@ _DEFAULTS: Dict[str, Any] = {
         "image_format": None,  # REQUIRED — no default, missing => raise
         "image_type": None,  # REQUIRED — standard | cine | lavision_set | lavision_im7
         "n_views": None,  # optional; frame-count auto-detect is the fallback
-        "start_index": 1,
+        # Refused for container types (.set/.cine): the reader numbers entries.
         "zero_based_indexing": False,
+        # IM7 ONLY: True = one single-camera .im7 per Cam{N} folder. Standard
+        # formats always use Cam{N} (or camera_subfolders) at camera_count > 1
+        # and containers never use a subfolder — the PIV rule,
+        # path_utils.camera_subfolder_name.
         "use_camera_subfolders": False,
         "camera_subfolders": [],
     },
@@ -87,9 +115,9 @@ _DEFAULTS: Dict[str, Any] = {
         "interpolator": "lanczos",
         "piv_type": "instantaneous",
     },
-    # use_release_object is deliberately NOT templated: its default is
-    # context-dependent (stereo True, mono False) and a stored value would
-    # override both. It is honoured when a user sets it explicitly.
+    # use_release_object is deliberately NOT templated: an absent key reads
+    # False for mono and stereo alike (fit_knobs below, shared by the GUI
+    # routes and the CLI). It is honoured when a user sets it explicitly.
     "fit": {
         "distortion_model": "standard",
         "fix_aspect_ratio": True,
@@ -146,6 +174,11 @@ _DEFAULTS: Dict[str, Any] = {
         },
         "scale_factor": {
             "px_per_mm": None,
+            # GUI "Use calibration images" toggle. False = image-less mode: the
+            # uniform pixel->mm map is typed in numerically (origin pixel, px/mm)
+            # and generate skips the proof figure. A form knob, never read by
+            # generate/apply (the request carries ``use_image`` explicitly).
+            "use_images": True,
         },
     },
 }
@@ -154,6 +187,30 @@ _DEFAULTS: Dict[str, Any] = {
 def default_settings() -> Dict[str, Any]:
     """A fresh deep copy of the defaults template."""
     return copy.deepcopy(_DEFAULTS)
+
+
+def fit_knobs(settings: Dict[str, Any], board: str) -> Dict[str, Any]:
+    """The calibrator fit knobs for ``board``, read from a settings dict.
+
+    The single reader shared by the GUI generate routes and the calibration CLI,
+    so a sidecar calibrates identically through either. ``distortion_model``,
+    ``fix_aspect_ratio`` and ``use_release_object`` come from the ``fit`` block,
+    ``fix_k2`` from ``methods.<board>``. The two untemplated knobs
+    (``use_release_object``, ``fix_k2``) read False when absent, for mono and
+    stereo alike.
+
+    Returns plain values (``distortion_model`` is the string id); callers wrap
+    it in their ``DistortionModel`` and apply per-call overrides (a CLI flag, a
+    request field) on top.
+    """
+    fit = settings.get("fit") or {}
+    method = (settings.get("methods") or {}).get(board) or {}
+    return {
+        "distortion_model": str(fit.get("distortion_model", "standard")),
+        "fix_aspect_ratio": bool(fit.get("fix_aspect_ratio", True)),
+        "fix_k2": bool(method.get("fix_k2", False)),
+        "use_release_object": bool(fit.get("use_release_object", False)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +237,7 @@ def _missing_message(source: Path, path: Path) -> str:
         f"No calibration settings for source '{source}' (expected {path}). "
         "Open this source in the GUI Calibration tab (which seeds and saves "
         "settings) or run 'pivtools-cli init-settings "
-        f"--source \"{source}\"' and fill in the required fields."
+        f'--source "{source}"\' and fill in the required fields.'
     )
 
 

@@ -99,7 +99,10 @@ def stereo_render(tmp_path_factory):
     cp2 = compose_stereo_poses(cp1, Rs, Ts)
     generate_charuco_images(d / "ch1", cam, cp1, W, H)
     generate_charuco_images(d / "ch2", cam, cp2, W, H)
-    load = lambda p: [cv2.imread(str(f), 0) for f in sorted(p.glob("calib*.png"))]
+
+    def load(p):
+        return [cv2.imread(str(f), 0) for f in sorted(p.glob("calib*.png"))]
+
     return {
         "cam": cam,
         "R_stereo": Rs,
@@ -166,7 +169,10 @@ def test_world_frame_orthogonal(charuco_planar):
     d0 = det.detect(imgs[0])
     ids = d0.point_ids.tolist()
     cols = CHARUCO.interior_cols
-    px = lambda cid: d0.image_points[ids.index(cid)]
+
+    def px(cid):
+        return d0.image_points[ids.index(cid)]
+
     clicks = {"origin": px(0), "x_axis": px(1), "y_axis": px(cols)}
     wf = WF.resolve_world_frame(d0.grid_indices, d0.image_points, clicks)
     w = WF.apply_world_frame(d0.grid_indices, CHARUCO.square_size_mm, wf)
@@ -192,8 +198,11 @@ def test_world_frame_orthogonal(charuco_planar):
 )
 def test_world_frame_every_sign_and_swap(x_gi, y_gi, swap, sx, sy):
     """Every click direction resolves to the documented sign/swap and maps the +X dot
-    to +x, the +Y dot to +y (until 2026-08-26 only the (+,+, no swap) case was tested)."""
-    wf = WF.resolve_world_frame_from_grid((3, 3), (3 + x_gi[0], 3 + x_gi[1]), (3 + y_gi[0], 3 + y_gi[1]))
+    to +x, the +Y dot to +y (until 2026-08-26 only the (+,+, no swap) case was tested).
+    """
+    wf = WF.resolve_world_frame_from_grid(
+        (3, 3), (3 + x_gi[0], 3 + x_gi[1]), (3 + y_gi[0], 3 + y_gi[1])
+    )
     assert (wf.swap_axes, wf.col_sign, wf.row_sign) == (swap, sx, sy)
     gi = np.array([[3, 3], [3 + x_gi[0], 3 + x_gi[1]], [3 + y_gi[0], 3 + y_gi[1]]])
     w = WF.apply_world_frame(gi, 10.0, wf)
@@ -293,6 +302,157 @@ def test_stereo_origin_mm_reaches_cam2(stereo_render):
     d_world = np.array([[50.0], [-20.0], [0.0]])
     expected_t1 = base.model1.t - base.model1.R @ d_world
     np.testing.assert_allclose(shifted.model1.t, expected_t1, atol=1e-2)
+
+
+# ---------------------------------------------------------------------------
+# Stereo dotboard: camera 2 sees a different extent of the board (Design A)
+# ---------------------------------------------------------------------------
+
+_DOT_COLS, _DOT_ROWS = 14, 10
+_DOT_SPACING_MM = 6.0
+# Camera 2 misses the board's first columns: its grid walk starts there, so its indices
+# are re-zeroed (grid_detection.py re-bases the BFS walk on the dots it found).
+_CAM2_CLIP_COLS = 3
+# The physical dots both cameras pick as origin / +X / +Y (full-board col, row).
+_PICK_DOTS = {"origin": (5, 2), "x_axis": (9, 2), "y_axis": (5, 6)}
+
+
+class _NoDetect:
+    """Detector stand-in: the test hands run_stereo its detections, so nothing detects."""
+
+    def detect(self, img):  # pragma: no cover - must never be called
+        raise AssertionError("run_stereo was handed detections; it must not re-detect")
+
+
+def _clipped_dotboard_pair(n_views: int = 6):
+    """Synthetic dotboard detections for a stereo pair whose camera 2 is clipped.
+
+    Exact projections (no image rendering, so no aliasing): cam1 sees every dot, cam2
+    sees columns >= ``_CAM2_CLIP_COLS`` with its grid indices re-zeroed, as a real
+    clipped detection would report them. Returns per-camera DetectionResult lists, the
+    image size, the ground-truth (R_stereo, T_stereo mm), and the full-board pixel
+    position of every dot in each camera's datum view (view 0).
+    """
+    from pivtools_gui.calibration.detection.base import DetectionResult
+
+    W, H = 1600, 1200
+    K = make_camera_matrix(W, H)
+    sp_m = _DOT_SPACING_MM / 1000.0
+    cols, rows = np.meshgrid(np.arange(_DOT_COLS), np.arange(_DOT_ROWS))
+    gi_full = np.column_stack([cols.ravel(), rows.ravel()]).astype(np.int64)
+    obj_m = np.column_stack(
+        [gi_full[:, 0] * sp_m, gi_full[:, 1] * sp_m, np.zeros(len(gi_full))]
+    )
+    width_m = (_DOT_COLS - 1) * sp_m
+    centre = np.array([width_m / 2, (_DOT_ROWS - 1) * sp_m / 2, 0.0])
+    # Fill kept low so the 50 mm baseline + 5 deg yaw keeps camera 2 inside the frame.
+    poses1 = make_poses(n_views, centre, K[0, 0], W, width_m, (0.3, 0.25))
+    Rs, Ts = make_stereo_transform()
+    poses2 = compose_stereo_poses(poses1, Rs, Ts)
+
+    keep2 = gi_full[:, 0] >= _CAM2_CLIP_COLS
+    gi_clip = gi_full[keep2] - np.array([_CAM2_CLIP_COLS, 0])
+    det1, det2, datum_px = [], [], {}
+    for v, ((rv1, tv1), (rv2, tv2)) in enumerate(zip(poses1, poses2)):
+        p1, _ = cv2.projectPoints(obj_m, rv1, tv1, K, np.zeros(5))
+        p2, _ = cv2.projectPoints(obj_m, rv2, tv2, K, np.zeros(5))
+        p1, p2 = p1.reshape(-1, 2), p2.reshape(-1, 2)
+        assert (p1 > 0).all() and (p1[:, 0] < W).all() and (p1[:, 1] < H).all()
+        assert (p2 > 0).all() and (p2[:, 0] < W).all() and (p2[:, 1] < H).all()
+        det1.append(
+            DetectionResult(
+                success=True,
+                board_type="dotboard",
+                image_points=p1,
+                board_local_points=np.column_stack(
+                    [gi_full * _DOT_SPACING_MM, np.zeros(len(gi_full))]
+                ),
+                grid_indices=gi_full,
+                spacing_mm=_DOT_SPACING_MM,
+            )
+        )
+        det2.append(
+            DetectionResult(
+                success=True,
+                board_type="dotboard",
+                image_points=p2[keep2],
+                board_local_points=np.column_stack(
+                    [gi_clip * _DOT_SPACING_MM, np.zeros(len(gi_clip))]
+                ),
+                grid_indices=gi_clip,
+                spacing_mm=_DOT_SPACING_MM,
+            )
+        )
+        if v == 0:
+            datum_px = {1: p1, 2: p2}
+    return det1, det2, (W, H), (Rs, Ts.reshape(3) * 1000.0), gi_full, datum_px
+
+
+def _picks(gi_full, px):
+    """Pixel clicks on the ``_PICK_DOTS`` physical dots, from one camera's datum view."""
+    out = {}
+    for role, (c, r) in _PICK_DOTS.items():
+        i = int(np.flatnonzero((gi_full[:, 0] == c) & (gi_full[:, 1] == r))[0])
+        out[role] = np.asarray(px[i], dtype=float)
+    return out
+
+
+def test_stereo_dotboard_clipped_cam2_requires_clicks2():
+    """A clipped camera 2 re-zeroes its dot indices, so camera 1's frame cannot label it.
+
+    Without ``clicks2`` the solve must refuse naming camera 2 (until 2026-10-19 it silently
+    reused camera 1's frame and corresponded dots ``_CAM2_CLIP_COLS`` columns apart). With
+    picks on the same physical dots in both cameras the pair recovers the rig exactly.
+    """
+    det1, det2, (W, H), (R_gt, T_gt_mm), gi_full, datum_px = _clipped_dotboard_pair()
+    imgs = [np.zeros((H, W), np.uint8)] * len(det1)
+    sc = StereoCalibrator(_NoDetect(), "dotboard")
+    clicks1 = _picks(gi_full, datum_px[1])
+
+    with pytest.raises(ValueError, match="camera 2"):
+        sc.run_stereo(
+            imgs,
+            imgs,
+            1,
+            2,
+            clicks=clicks1,
+            spacing_mm=_DOT_SPACING_MM,
+            det1=det1,
+            det2=det2,
+        )
+
+    rec = sc.run_stereo(
+        imgs,
+        imgs,
+        1,
+        2,
+        clicks=clicks1,
+        clicks2=_picks(gi_full, datum_px[2]),
+        spacing_mm=_DOT_SPACING_MM,
+        det1=det1,
+        det2=det2,
+    )
+    # Exact projections: correctly labelled dots correspond to ~0.005 px. Mislabelled
+    # dots (3 columns apart) would sit tens of pixels off.
+    assert rec.board_meta["stereo_rms_px"] < 0.05
+    assert rec.board_meta["n_stereo_views"] == len(det1)
+    ang = np.degrees(
+        np.arccos(np.clip((np.trace(rec.R_stereo @ R_gt.T) - 1) / 2, -1, 1))
+    )
+    assert ang < 0.05
+    # 1 mm as in test_charuco_stereo_recovery: the residual (~0.3 mm in z) is camera 2's
+    # focal length fitted 0.1 % off from its clipped board, not the correspondence.
+    np.testing.assert_allclose(np.asarray(rec.T_stereo).reshape(3), T_gt_mm, atol=1.0)
+
+
+def test_stereo_correspondence_refuses_unequal_view_counts():
+    """Views pair by index; a shorter camera-2 list must raise, not truncate (zip)."""
+    from pivtools_gui.calibration.stereo_model import _stereo_correspondence
+
+    det1, det2, *_ = _clipped_dotboard_pair(n_views=4)
+    wf = WF.resolve_world_frame(det1[0].grid_indices, det1[0].image_points, None)
+    with pytest.raises(ValueError, match="4 views and camera 2 has 3"):
+        _stereo_correspondence(det1, det2[:3], wf, wf, _DOT_SPACING_MM)
 
 
 # ---------------------------------------------------------------------------
@@ -434,9 +594,7 @@ def test_apply_mono_parallel_pool(tmp_path, monkeypatch):
         ps["ux"][0] = np.full(X.shape, float(k + 1), np.float64)
         ps["uy"][0] = np.full(X.shape, -2.0, np.float64)
         ps["b_mask"][0] = np.ones(X.shape, bool)
-        scipy.io.savemat(
-            str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row"
-        )
+        scipy.io.savemat(str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row")
 
     progress = []
     written = runio.calibrate_mono_run(
@@ -480,9 +638,7 @@ def test_apply_mono_worker_failure_raises(tmp_path, monkeypatch):
         ps["ux"][0] = np.full(X.shape, 3.0, np.float64)
         ps["uy"][0] = np.full(X.shape, -2.0, np.float64)
         ps["b_mask"][0] = np.ones(X.shape, bool)
-        scipy.io.savemat(
-            str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row"
-        )
+        scipy.io.savemat(str(ud / f"B{k+1:05d}.mat"), {"piv_result": ps}, oned_as="row")
     (ud / "B00004.mat").write_bytes(b"this is not a mat file")
 
     with pytest.raises(Exception):

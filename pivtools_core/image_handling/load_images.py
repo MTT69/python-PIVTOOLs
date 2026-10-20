@@ -260,6 +260,18 @@ def _written(ret: np.ndarray, out: Optional[np.ndarray]) -> np.ndarray:
     return ret
 
 
+def is_colour_pair(pair: np.ndarray) -> bool:
+    """True when a ``read_pair`` result carries colour channels.
+
+    ``read_pair`` returns a ``(2, H, W)`` grayscale stack; a colour source
+    arrives as ``(2, H, W, C)`` with ``C`` of 3 or 4. The old test
+    ``ndim > 2 and shape[-1] > 1`` matched every grayscale stack (its last axis
+    is the image width), so the Setup tab announced a colour conversion on
+    single-channel data.
+    """
+    return pair.ndim == 4 and pair.shape[-1] in (3, 4)
+
+
 def read_pair(
     idx: int,
     camera_path: Path,
@@ -396,8 +408,12 @@ def read_pair(
                 return np.stack([frame_a, frame_b], axis=0)
 
             slot_a, slot_b = out[0:1], out[1:2]
-            _written(read_im7_camera(im7_file_a, cam_no, fpc, frames=1, out=slot_a), slot_a)
-            _written(read_im7_camera(im7_file_b, cam_no, fpc, frames=1, out=slot_b), slot_b)
+            _written(
+                read_im7_camera(im7_file_a, cam_no, fpc, frames=1, out=slot_a), slot_a
+            )
+            _written(
+                read_im7_camera(im7_file_b, cam_no, fpc, frames=1, out=slot_b), slot_b
+            )
             return out
         else:
             # Non-time-resolved: each file contains A+B pair

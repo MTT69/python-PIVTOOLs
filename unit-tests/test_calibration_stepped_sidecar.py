@@ -48,14 +48,16 @@ def test_sequence_sidecar_round_trip(tmp_path):
     params = SteppedBoardSpec()
     sv._save_sequence_sidecar(tmp_path, _entry(params))
 
-    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2)
+    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2, "stepped")
     assert (model_dir / "inputs.mat").is_file()
 
     side = try_load_inputs(model_dir)
     assert side is not None
 
     # det_key is stable and recomputable from the same inputs (gates reuse).
-    assert side.det_key == sv._stepped_det_key([1, 2], [1, 2, 3], 1, None, None, params)
+    assert side.det_key == sv._stepped_det_key(
+        [1, 2], [1, 2, 3], 1, None, None, params, zero_based=False
+    )
 
     # Sequence descriptor persisted so a later session regenerates from the file alone.
     seq = side.coords["sequence"]
@@ -72,18 +74,24 @@ def test_sequence_sidecar_round_trip(tmp_path):
 
 def test_det_key_invalidates_on_frame_change():
     params = SteppedBoardSpec()
-    base = sv._stepped_det_key([1, 2], [1, 2, 3], 1, None, None, params)
-    moved_window = sv._stepped_det_key([1, 2], [1, 2, 4], 1, None, None, params)
-    moved_datum = sv._stepped_det_key([1, 2], [1, 2, 3], 2, None, None, params)
-    assert base != moved_window
-    assert base != moved_datum
+
+    def key(frames, datum, zero_based=False):
+        return sv._stepped_det_key(
+            [1, 2], frames, datum, None, None, params, zero_based=zero_based
+        )
+
+    base = key([1, 2, 3], 1)
+    assert base != key([1, 2, 4], 1)
+    assert base != key([1, 2, 3], 2)
+    # Flipping 0/1 indexing reads different files for the same frame numbers.
+    assert base != key([1, 2, 3], 1, zero_based=True)
 
 
 def test_coords_spec_merges_with_sequence(tmp_path):
     """The clicks block persists and merges with the sequence descriptor (no clobber)."""
     params = SteppedBoardSpec()
     sv._save_sequence_sidecar(tmp_path, _entry(params))
-    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2)
+    model_dir = rec.stereo_model_dir_for_source(tmp_path, 1, 2, "stepped")
 
     specs = {
         1: (

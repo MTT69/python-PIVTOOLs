@@ -2,6 +2,7 @@
 Pytest configuration for PIVTOOLs unit tests.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -40,3 +41,26 @@ def output_dir():
     d = Path(__file__).resolve().parent / "test_output"
     d.mkdir(exist_ok=True)
     return d
+
+
+# Env var naming the external calibration data volume, and its default mount.
+REAL_CALIBRATION_DATA_ENV = "PIVTOOLS_CAL_DATA"
+REAL_CALIBRATION_DATA_DEFAULT = "/Volumes/DATA/calibration_check"
+
+
+@pytest.fixture(scope="session")
+def real_calibration_data() -> Path:
+    """Root of the external real-calibration data set (read-only), or skip.
+
+    The location is ``$PIVTOOLS_CAL_DATA`` (default ``/Volumes/DATA/calibration_check``).
+    Tests using it must never write into it; copy what they need to ``tmp_path``.
+    """
+    root = Path(
+        os.environ.get(REAL_CALIBRATION_DATA_ENV, REAL_CALIBRATION_DATA_DEFAULT)
+    )
+    if not root.is_dir():
+        pytest.skip(
+            f"real calibration data not found: {root} "
+            f"(set {REAL_CALIBRATION_DATA_ENV} to its location)"
+        )
+    return root

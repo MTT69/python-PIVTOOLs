@@ -109,6 +109,35 @@ def world_to_plane_correction(
     return z_offset, float(tilt_x), float(tilt_y)
 
 
+def cumulative_sheet(
+    R_tot: np.ndarray, t_tot: np.ndarray
+) -> Tuple[float, float, float]:
+    """Sheet ``(z_offset, tilt_x, tilt_y)`` of a composed NEW->OLD rigid map.
+
+    After several bakes the current world frame relates to the original (clicked)
+    frame by ``X_orig = R_tot @ X_cur + t_tot``. The current Z=0 plane in original
+    coords has unit normal ``n = R_tot[:, 2]`` and passes through ``t_tot``, so it is
+    the plane ``n . (X - t_tot) = 0``. Writing it as
+    ``Z = z_offset + X*tan(tilt_y) + Y*tan(tilt_x)``:
+
+        tilt_y   = atan2(-n_x, n_z)
+        tilt_x   = atan2(-n_y, n_z)
+        z_offset = (n . t_tot) / n_z        # Z at X = Y = 0
+
+    The tilt formulas are those of :func:`world_to_plane_correction`. The z_offset
+    is NOT ``t_tot[2]``: a composed map carries an in-plane translation, so ``t_tot``
+    is some point of the sheet, not the one above the origin. For a single bake
+    (``t_tot = (0, 0, z_offset)``) both coincide and the input is reproduced.
+    """
+    R = np.asarray(R_tot, dtype=np.float64).reshape(3, 3)
+    t = np.asarray(t_tot, dtype=np.float64).reshape(3)
+    normal = R[:, 2]
+    tilt_y = math.atan2(-normal[0], normal[2])
+    tilt_x = math.atan2(-normal[1], normal[2])
+    z_offset = float(np.dot(normal, t) / normal[2])
+    return z_offset, float(tilt_x), float(tilt_y)
+
+
 def rebake_pose(
     R: np.ndarray, t: np.ndarray, R_corr: np.ndarray, t_corr: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:

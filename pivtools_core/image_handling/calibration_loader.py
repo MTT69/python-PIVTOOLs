@@ -21,7 +21,7 @@ import os
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 import numpy as np
 
@@ -29,12 +29,19 @@ from ..calibration_settings import default_settings, try_load_settings
 from ..config import Config
 from .load_images import read_single_frame
 from .path_utils import (
+    _glob_images,
     build_calibration_camera_path,
+    cine_extension_mismatch,
     format_to_glob,
     infer_image_type,
     resolve_file_path,
     validate_images_generic,
 )
+from .readers.cine_reader import get_cine_frame_count
+
+# Import from the concrete submodule: get_set_entry_count is NOT re-exported from
+# the .readers package (see path_utils' .set validation branch).
+from .readers.set_reader import get_set_entry_count
 
 # ---------------------------------------------------------------------------
 # Decoded-frame cache
@@ -89,6 +96,9 @@ from .path_utils import (
 # ---------------------------------------------------------------------------
 
 _FRAME_CACHE_MAX_ENTRIES = 64
+
+# Single-file containers: entries are numbered by the reader, never by filename.
+_CONTAINER_TYPES = ("lavision_set", "cine")
 
 
 def _frame_cache_budget_bytes() -> int:
@@ -150,7 +160,11 @@ def _frame_stamp(file_path: Path, image_type: str) -> Tuple:
     """
     st = file_path.stat()
     if image_type == "lavision_set":
-        return (st.st_mtime_ns, st.st_size, file_path.with_suffix("").stat().st_mtime_ns)
+        return (
+            st.st_mtime_ns,
+            st.st_size,
+            file_path.with_suffix("").stat().st_mtime_ns,
+        )
     return (st.st_mtime_ns, st.st_size)
 
 
@@ -243,8 +257,7 @@ def _frame_cache_put(key: Tuple, stamp: Tuple, arr: np.ndarray) -> None:
         _frame_cache_bytes += arr.nbytes
         # Never evict the entry just inserted: the caller is about to use it.
         while len(_frame_cache) > 1 and (
-            _frame_cache_bytes > budget
-            or len(_frame_cache) > _FRAME_CACHE_MAX_ENTRIES
+            _frame_cache_bytes > budget or len(_frame_cache) > _FRAME_CACHE_MAX_ENTRIES
         ):
             _, (_, evicted) = _frame_cache.popitem(last=False)
             _frame_cache_bytes -= evicted.nbytes
@@ -434,7 +447,22 @@ def read_calibration_frame_at(
     would only retain dead arrays after that list is dropped.
 
     A cached array is shared between callers. Copy it before writing.
+
+    Raises
+    ------
+    ValueError
+        ``zero_based_indexing`` is True for a container (``.set`` / ``.cine``).
+        Container entries are numbered by the reader (``.set`` from 1, ``.cine``
+        through its ``FirstImageNo``), not by filenames, so the flag has nothing
+        to shift; refusing it keeps a 0/1 setting from being silently ignored.
     """
+    if zero_based_indexing and image_type in _CONTAINER_TYPES:
+        raise ValueError(
+            f"image.zero_based_indexing is set, but {image_type} calibration "
+            "sources are containers whose entries the reader numbers itself "
+            "(there are no numbered files to shift). Set the First Frame "
+            "Number back to 1 (image.zero_based_indexing: false) for this source."
+        )
     # Pure path arithmetic (no I/O), so building the cache key below is free.
     file_path = resolve_file_path(
         camera_path=camera_path,
@@ -593,7 +621,7 @@ def validate_calibration_images(
     dict
         Validation result with keys:
         - valid: bool - Overall validation result
-        - found_count: int or 'container' - Number of files found
+        - found_count: int - Number of files (or container entries/frames) found
         - expected_count: int - Expected number of files
         - camera_path: str - Path to camera directory
         - first_image_preview: str - Base64 PNG of first image (if valid)
@@ -610,10 +638,24 @@ def validate_calibration_images(
     )
     fmt = image["image_format"]
     cal_image_type = image["image_type"]
-    expected_count = int(image.get("n_views") or 1)
     camera_path = build_calibration_camera_path(
         source, image, camera, config.camera_count
     )
+    if image.get("n_views"):
+        expected_count = int(image["n_views"])
+    elif cal_image_type in ("standard", "lavision_im7"):
+        # Blank n_views: detection reads start..start+count-1 using the file count
+        # (get_calibration_frame_count), so validate that same range. Checking only
+        # the first file would pass files numbered from 0 with a 1-based start.
+        # A missing camera directory globs to nothing and gets expected 1; the
+        # generic validator then reports "Camera path does not exist" with the
+        # subfolder suggestion, which is the message the user needs (not an
+        # "expected_count is required" internal).
+        expected_count = max(len(_glob_images(camera_path, format_to_glob(fmt))), 1)
+    else:
+        # Containers with blank n_views: the generic validator reads the real entry
+        # count itself and has no user count to hold it to.
+        expected_count = None
 
     # Create a frame reader function for preview generation
     def read_frame(idx: int) -> np.ndarray:
@@ -638,12 +680,27 @@ def validate_calibration_images(
     )
 
 
+class FrameCount(NamedTuple):
+    """A calibration view count and where it was read from.
+
+    ``source`` is ``"files"`` (glob over standard/IM7 images), ``".set index"``
+    (LaVision ``.set`` entry count) or ``".cine header"`` (Phantom ``ImageCount``).
+    Carried to the GUI so the user sees whether the number came from the images
+    or from a setting.
+    """
+
+    n: int
+    source: str
+
+
 def get_calibration_frame_count(
     camera: int, config: Config, source_path_idx: int = 0
-) -> int:
-    """Auto-detect number of calibration images from directory.
+) -> FrameCount:
+    """Count one camera's calibration views from the images themselves.
 
-    Counts matching files or returns container frame count.
+    Never guesses: the sidecar ``n_views`` is not consulted (a user-set count is
+    honoured upstream by the caller), and every failure raises naming what was
+    looked at instead of returning a fallback or ``0``.
 
     Parameters
     ----------
@@ -656,8 +713,16 @@ def get_calibration_frame_count(
 
     Returns
     -------
-    int
-        Number of calibration images found
+    FrameCount
+        The view count (always > 0) and its source label.
+
+    Raises
+    ------
+    FileNotFoundError
+        The camera path (directory, or the ``.set`` file itself) does not exist.
+    ValueError
+        No images match the format, the ``.cine`` file is missing, a container
+        reader fails (chained), or a container reports zero frames.
     """
     # Image sourcing comes from the source's settings sidecar.
     source, image = _resolve_image_settings(config, source_path_idx)
@@ -667,37 +732,49 @@ def get_calibration_frame_count(
 
     image_type = image["image_type"]
     fmt = image["image_format"]
-    stored_count = int(image.get("n_views") or 1)
 
     if not camera_path.exists():
-        return 0
+        raise FileNotFoundError(
+            f"calibration image path for camera {camera} does not exist: {camera_path}"
+        )
 
     if image_type == "lavision_set":
-        # For .set files, we would need to read the file to get count
-        # Return the stored count as fallback
-        return stored_count
+        # For .set sources camera_path IS the .set file. n_entries is the number of
+        # images per Frame stream, i.e. views per camera.
+        try:
+            n = get_set_entry_count(camera_path)
+        except Exception as exc:
+            raise ValueError(
+                f"could not read the entry count of {camera_path}: {exc}"
+            ) from exc
+        found = FrameCount(int(n), ".set index")
+        where = str(camera_path)
 
     elif image_type == "cine":
-        # Get frame count from .cine file
+        cine_path = camera_path / (fmt % camera if "%" in fmt else fmt)
+        if not cine_path.is_file():
+            raise ValueError(f"cine file for camera {camera} not found: {cine_path}")
+        mismatch = cine_extension_mismatch(cine_path)
+        if mismatch is not None:
+            raise ValueError(mismatch)
         try:
-            from .readers.cine_reader import get_cine_frame_count
-
-            if "%" in fmt:
-                cine_filename = fmt % camera
-            else:
-                cine_filename = fmt
-            cine_path = camera_path / cine_filename
-            if cine_path.exists():
-                return get_cine_frame_count(str(cine_path))
-        except Exception:
-            pass
-        return stored_count
-
-    elif image_type == "lavision_im7":
-        pattern = format_to_glob(fmt)
-        return len(list(camera_path.glob(pattern)))
+            n = get_cine_frame_count(str(cine_path))
+        except Exception as exc:
+            raise ValueError(
+                f"could not read the frame count of {cine_path}: {exc}"
+            ) from exc
+        found = FrameCount(int(n), ".cine header")
+        where = str(cine_path)
 
     else:
-        # Standard formats
+        # Standard formats and IM7 both count matching files.
         pattern = format_to_glob(fmt)
-        return len(list(camera_path.glob(pattern)))
+        found = FrameCount(len(_glob_images(camera_path, pattern)), "files")
+        where = f"'{pattern}' in {camera_path}"
+
+    if found.n <= 0:
+        raise ValueError(
+            f"no calibration images for camera {camera}: {found.source} "
+            f"reports 0 for {where}"
+        )
+    return found

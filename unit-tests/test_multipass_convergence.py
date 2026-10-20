@@ -129,6 +129,8 @@ def _run_ensemble_piv(fit_method):
 
     # Config: 3-pass ensemble — 32 std, 16 single, 16 single
     config_dict = {
+        # Required by Config (no default method); these planar runs are uncalibrated.
+        "calibration": {"active": "scale_factor"},
         "paths": {
             "source_paths": [str(source_dir)],
             "base_paths": [str(base_path)],
@@ -293,6 +295,8 @@ def instantaneous_workspace():
 
     # Config: 3-pass instantaneous
     config_dict = {
+        # Required by Config (no default method); these planar runs are uncalibrated.
+        "calibration": {"active": "scale_factor"},
         "paths": {
             "source_paths": [str(source_dir)],
             "base_paths": [str(base_path)],

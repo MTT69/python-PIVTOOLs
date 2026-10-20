@@ -471,19 +471,26 @@ def _resolve_view(
 
 
 def _detection(detections_by_cam: dict, cam: int, view: int) -> DetectionResult:
-    """Fetch a detection with clear ValueErrors for missing/out-of-range/failed views."""
+    """Fetch a detection with clear ValueErrors for missing/out-of-range/failed views.
+
+    ``view`` is the 0-based list index; messages print it as the 1-based frame number
+    the GUI shows (``view + 1``). ``cam`` is already the 1-based camera number.
+    """
     if cam not in detections_by_cam:
         raise ValueError(f"global_grid: camera {cam} not in detections")
     views = detections_by_cam[cam]
     if not (0 <= view < len(views)):
         raise ValueError(
-            f"global_grid: view {view} out of range for camera {cam} (has {len(views)} views)"
+            f"global_grid: camera {cam} frame {view + 1} out of range "
+            f"(camera {cam} has {len(views)} frames)"
         )
     det = views[view]
     if not det.success:
-        raise ValueError(f"global_grid: view ({cam},{view}) failed detection")
+        raise ValueError(f"global_grid: camera {cam} frame {view + 1} failed detection")
     if det.grid_indices is None or det.n == 0:
-        raise ValueError(f"global_grid: view ({cam},{view}) has no grid indices")
+        raise ValueError(
+            f"global_grid: camera {cam} frame {view + 1} has no grid indices"
+        )
     return det
 
 
@@ -583,7 +590,7 @@ def resolve_global_grid(
         for a in list(pending):
             if (a.camera, a.view) == datum_key:
                 raise ValueError(
-                    f"global_grid: anchor ({a.camera},{a.view}) duplicates the datum view"
+                    f"global_grid: anchor camera {a.camera} frame {a.view + 1} duplicates the datum view"
                 )
             det = _detection(detections_by_cam, a.camera, a.view)
             det_gate = SNAP_FRACTION * _local_spacing_px(det.image_points)
@@ -593,10 +600,13 @@ def resolve_global_grid(
             for c in a.correspondences:
                 if c.same_as != "origin" and tuple(c.same_as) == (a.camera, a.view):
                     raise ValueError(
-                        f"global_grid: anchor ({a.camera},{a.view}) references itself"
+                        f"global_grid: anchor camera {a.camera} frame {a.view + 1} references itself"
                     )
                 i_click = _snap(
-                    det.image_points, c.pixel, det_gate, f"anchor ({a.camera},{a.view})"
+                    det.image_points,
+                    c.pixel,
+                    det_gate,
+                    f"anchor camera {a.camera} frame {a.view + 1}",
                 )
                 local_idx = np.asarray(det.grid_indices[i_click], dtype=np.int64)
                 if c.same_as == "origin":
@@ -612,7 +622,7 @@ def resolve_global_grid(
                         rdet.image_points,
                         c.ref_pixel,
                         ref_gate,
-                        f"ref dot in {ref_key}",
+                        f"ref dot in camera {ref_key[0]} frame {ref_key[1] + 1}",
                     )
                     g = tuple(int(x) for x in global_index[ref_key][j])
                 corr.append((local_idx, g))
@@ -635,7 +645,9 @@ def resolve_global_grid(
         if not progressed:
             stuck = [(p.camera, p.view) for p in pending]
             raise ValueError(
-                f"global_grid: anchors {stuck} are not connected to the datum through any "
+                f"global_grid: anchors "
+                f"{', '.join(f'camera {c} frame {v + 1}' for c, v in stuck)} "
+                f"are not connected to the datum through any "
                 f"resolved view (broken overlap chain, or a self/forward reference)"
             )
 
@@ -648,7 +660,10 @@ def resolve_global_grid(
         det_gate = SNAP_FRACTION * _local_spacing_px(det.image_points)
         for c in a.correspondences:
             i_click = _snap(
-                det.image_points, c.pixel, det_gate, f"recheck ({a.camera},{a.view})"
+                det.image_points,
+                c.pixel,
+                det_gate,
+                f"recheck camera {a.camera} frame {a.view + 1}",
             )
             got = tuple(int(x) for x in global_index[(a.camera, a.view)][i_click])
             if c.same_as == "origin":
@@ -657,11 +672,16 @@ def resolve_global_grid(
                 rk = (int(c.same_as[0]), int(c.same_as[1]))
                 rdet = detections_by_cam[rk[0]][rk[1]]
                 ref_gate = SNAP_FRACTION * _local_spacing_px(rdet.image_points)
-                j = _snap(rdet.image_points, c.ref_pixel, ref_gate, f"recheck ref {rk}")
+                j = _snap(
+                    rdet.image_points,
+                    c.ref_pixel,
+                    ref_gate,
+                    f"recheck ref camera {rk[0]} frame {rk[1] + 1}",
+                )
                 want = tuple(int(x) for x in global_index[rk][j])
             if got != want:
                 raise ValueError(
-                    f"global_grid: inconsistent links at ({a.camera},{a.view}) — a dot resolves "
+                    f"global_grid: inconsistent links at camera {a.camera} frame {a.view + 1} — a dot resolves "
                     f"to {got} but a correspondence requires {want}"
                 )
 
@@ -754,7 +774,7 @@ def resolve_global_grid_partial(
             try:
                 if (a.camera, a.view) == datum_key:
                     raise ValueError(
-                        f"global_grid: anchor ({a.camera},{a.view}) duplicates the datum view"
+                        f"global_grid: anchor camera {a.camera} frame {a.view + 1} duplicates the datum view"
                     )
                 det = _detection(detections_by_cam, a.camera, a.view)
                 det_gate = SNAP_FRACTION * _local_spacing_px(det.image_points)
@@ -763,13 +783,13 @@ def resolve_global_grid_partial(
                 for c in a.correspondences:
                     if c.same_as != "origin" and tuple(c.same_as) == (a.camera, a.view):
                         raise ValueError(
-                            f"global_grid: anchor ({a.camera},{a.view}) references itself"
+                            f"global_grid: anchor camera {a.camera} frame {a.view + 1} references itself"
                         )
                     i_click = _snap(
                         det.image_points,
                         c.pixel,
                         det_gate,
-                        f"anchor ({a.camera},{a.view})",
+                        f"anchor camera {a.camera} frame {a.view + 1}",
                     )
                     local_idx = np.asarray(det.grid_indices[i_click], dtype=np.int64)
                     if c.same_as == "origin":
@@ -785,7 +805,7 @@ def resolve_global_grid_partial(
                             rdet.image_points,
                             c.ref_pixel,
                             ref_gate,
-                            f"ref dot in {ref_key}",
+                            f"ref dot in camera {ref_key[0]} frame {ref_key[1] + 1}",
                         )
                         g = tuple(int(x) for x in global_index[ref_key][j])
                     corr.append((local_idx, g))
@@ -839,7 +859,7 @@ def resolve_global_grid_partial(
                     det.image_points,
                     c.pixel,
                     det_gate,
-                    f"recheck ({a.camera},{a.view})",
+                    f"recheck camera {a.camera} frame {a.view + 1}",
                 )
                 got = tuple(int(x) for x in global_index[(a.camera, a.view)][i_click])
                 if c.same_as == "origin":
@@ -851,12 +871,15 @@ def resolve_global_grid_partial(
                     rdet = detections_by_cam[rk[0]][rk[1]]
                     ref_gate = SNAP_FRACTION * _local_spacing_px(rdet.image_points)
                     j = _snap(
-                        rdet.image_points, c.ref_pixel, ref_gate, f"recheck ref {rk}"
+                        rdet.image_points,
+                        c.ref_pixel,
+                        ref_gate,
+                        f"recheck ref camera {rk[0]} frame {rk[1] + 1}",
                     )
                     want = tuple(int(x) for x in global_index[rk][j])
                 if got != want:
                     raise ValueError(
-                        f"global_grid: inconsistent links at ({a.camera},{a.view}) — a dot "
+                        f"global_grid: inconsistent links at camera {a.camera} frame {a.view + 1} — a dot "
                         f"resolves to {got} but a correspondence requires {want}"
                     )
         except ValueError as exc:
@@ -887,7 +910,7 @@ def resolve_global_grid_partial(
                         (
                             a.camera,
                             a.view,
-                            f"global_grid: depends on view {rk}, which was dropped",
+                            f"global_grid: depends on camera {rk[0]} frame {rk[1] + 1}, which was dropped",
                         )
                     )
                     changed = True
@@ -946,7 +969,10 @@ def first_view_orientation_candidates(
     for c in anchor.correspondences:
         try:
             i_click = _snap(
-                det.image_points, c.pixel, det_gate, f"anchor ({camera},{view})"
+                det.image_points,
+                c.pixel,
+                det_gate,
+                f"anchor camera {camera} frame {view + 1}",
             )
             local_idx = np.asarray(det.grid_indices[i_click], dtype=np.int64)
             if c.same_as == "origin":
@@ -960,7 +986,10 @@ def first_view_orientation_candidates(
                 rdet = _detection(detections_by_cam, ref_key[0], ref_key[1])
                 ref_gate = SNAP_FRACTION * _local_spacing_px(rdet.image_points)
                 j = _snap(
-                    rdet.image_points, c.ref_pixel, ref_gate, f"ref dot in {ref_key}"
+                    rdet.image_points,
+                    c.ref_pixel,
+                    ref_gate,
+                    f"ref dot in camera {ref_key[0]} frame {ref_key[1] + 1}",
                 )
                 g = tuple(int(x) for x in resolved[ref_key][j])
             corr.append((local_idx, g))

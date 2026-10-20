@@ -21,7 +21,11 @@ import cv2
 import numpy as np
 import pytest
 
-from pivtools_cli.synthetic_calibration_common import make_camera_matrix
+from pivtools_cli.synthetic_calibration_common import (
+    adaptive_dot_radii,
+    make_camera_matrix,
+    render_dots,
+)
 from pivtools_gui.calibration.camera_model import CameraModel
 from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedParams
 from pivtools_gui.calibration.detection.stepped_levels import SteppedBoardSpec
@@ -77,17 +81,7 @@ def _render_pose(rvec, K, fill=0.62):
     dist = np.zeros(5)
     proj = cv2.projectPoints(allpts, rvec, tvec, K, dist)[0].reshape(-1, 2)
 
-    from scipy.spatial import cKDTree
-
-    tree = cKDTree(proj)
-    nn = tree.query(proj, k=2)[0][:, 1]
-    radii = np.maximum(np.round(0.22 * nn).astype(int), 2)
-
-    img = np.zeros((H, W), np.uint8)
-    for (cx, cy), rad in zip(proj, radii):
-        ix, iy = int(round(cx)), int(round(cy))
-        if 0 <= ix < W and 0 <= iy < H:
-            cv2.circle(img, (ix, iy), int(rad), 255, -1)
+    img = render_dots(proj, adaptive_dot_radii(proj, 0.22, 2.0), (W, H))
     return img, proj
 
 
