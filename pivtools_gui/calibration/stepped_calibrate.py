@@ -12,7 +12,9 @@ carries one ``(R, t, K, dist)`` covering both surfaces (invariant 4).
 
 The canonical math (``compute_z_and_offsets``, ``build_object_points``,
 ``fit_pinhole``, ``assign_absolute_grid_indices``) is ported unchanged from the
-orphaned v1 ``calibration_stepped.stepped_calibration_production``; the level
+orphaned v1 ``calibration_stepped.stepped_calibration_production``, with one
+deliberate change: ``fit_pinhole`` always enforces fx == fy (DaVis convention,
+square pixels) instead of v1's free-vs-fixed aspect comparison. The level
 separation / stitch geometry lives in ``detection.stepped_levels``. Output is the
 unified ``CameraModel`` + ``WorldFrame`` + ``MonoRecord``.
 
@@ -357,7 +359,6 @@ def fit_pinhole(
     obj_views: list,
     img_views: list,
     image_size: Tuple[int, int],
-    fix_aspect: bool = False,
     fix_k2: bool = False,
 ) -> Tuple[float, np.ndarray, np.ndarray, list, list]:
     """Fit OpenCV pinhole model using multiple views of 3D object points.
@@ -372,6 +373,9 @@ def fit_pinhole(
       2. Refine with all views using true 3D coordinates (both z-levels). The stepped
          board's two-Z non-coplanarity breaks the fx-tz ridge the coplanar init
          cannot resolve alone.
+
+    fx == fy enforced (DaVis convention, square pixels): ``CALIB_FIX_ASPECT_RATIO`` in
+    both stages, matching the planar, stereo and joint paths.
 
     Returns (rms, K, dist, rvecs, tvecs).
     """
@@ -393,9 +397,7 @@ def fit_pinhole(
         init_objs.append(obj_z0)
         init_imgs.append(img[mask].reshape(-1, 1, 2).astype(np.float32))
 
-    init_flags = cv2.CALIB_FIX_K3
-    if fix_aspect:
-        init_flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    init_flags = cv2.CALIB_FIX_K3 | cv2.CALIB_FIX_ASPECT_RATIO
     if fix_k2:
         init_flags |= cv2.CALIB_FIX_K2
 
@@ -407,9 +409,9 @@ def fit_pinhole(
     obj_list = [obj.astype(np.float32) for obj in obj_views]
     img_list = [img.reshape(-1, 1, 2).astype(np.float32) for img in img_views]
 
-    flags = cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_K3
-    if fix_aspect:
-        flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    flags = (
+        cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_K3 | cv2.CALIB_FIX_ASPECT_RATIO
+    )
     if fix_k2:
         flags |= cv2.CALIB_FIX_K2
 
@@ -424,7 +426,6 @@ def fit_pinhole_single_view(
     obj_views: list,
     img_views: list,
     image_size: Tuple[int, int],
-    fix_aspect: bool = False,
     fix_k2: bool = False,
 ) -> Tuple[float, np.ndarray, np.ndarray, list, list]:
     """Fit an OpenCV pinhole from FEWER than three stepped views.
@@ -445,6 +446,9 @@ def fit_pinhole_single_view(
     pin k2 at 0 (``CALIB_FIX_K2``) — recovers DaVis-matching geometry from a single plate. >=3
     views constrain k2 directly and remain preferable.
 
+    fx == fy enforced (DaVis convention, square pixels): ``CALIB_FIX_ASPECT_RATIO`` holds
+    the seed ratio, and the seed has fx == fy.
+
     Returns (rms, K, dist, rvecs, tvecs), matching :func:`fit_pinhole`.
     """
     W, H = image_size
@@ -458,9 +462,9 @@ def fit_pinhole_single_view(
     obj_list = [obj.astype(np.float32) for obj in obj_views]
     img_list = [img.reshape(-1, 1, 2).astype(np.float32) for img in img_views]
 
-    flags = cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_K3
-    if fix_aspect:
-        flags |= cv2.CALIB_FIX_ASPECT_RATIO
+    flags = (
+        cv2.CALIB_USE_INTRINSIC_GUESS | cv2.CALIB_FIX_K3 | cv2.CALIB_FIX_ASPECT_RATIO
+    )
     if fix_k2:
         flags |= cv2.CALIB_FIX_K2
 
@@ -616,6 +620,7 @@ def _calibrate_stepped_mono_poly3d(
     datum_index: int,
     figure_dir: Optional[Path],
     figure_prefix: str,
+    n_images: int,
 ) -> MonoRecord:
     """Fit a single-view 3D polynomial (world->image) on the datum view's two planes.
 
@@ -649,7 +654,9 @@ def _calibrate_stepped_mono_poly3d(
         "level_offset_mm": float(board.level_offset_mm),
         "clicked_level": str(clicked_level),
         "model_type": "polynomial3d",
-        "n_views": 1,
+        # Image count, not the single datum view the poly fit uses: the GUI compares this
+        # with the configured number of images ("settings changed" banner).
+        "n_views": int(n_images),
         "geometry": geometry_meta("stepped", board, model_type="polynomial3d"),
     }
     if figure_dir is not None:
@@ -841,6 +848,7 @@ def calibrate_stepped_mono(
             datum_index=datum_index,
             figure_dir=figure_dir,
             figure_prefix=figure_prefix,
+            n_images=len(detections),
         )
     if model_type != "pinhole":
         raise ValueError(
@@ -896,7 +904,7 @@ def calibrate_stepped_mono(
             "calibrate_stepped_mono: no usable poses for the intrinsic fit"
         )
 
-    # ---- Pinhole intrinsic fit (free + fixed aspect, keep lower RMS) ----
+    # ---- Pinhole intrinsic fit (fx == fy enforced, DaVis convention, square pixels) ----
     # >=3 poses -> multi-view Zhang init (best-conditioned). Fewer -> single-view 3D-object
     # fit: the stepped board's two Z-levels make even one view non-coplanar, enough to
     # recover K + distortion + pose (as DaVis' un-bundled PinholeOpenCV does from one
@@ -909,23 +917,9 @@ def calibrate_stepped_mono(
             f"single-view 3D-object fit; >=3 board positions give a better-constrained "
             f"distortion fit (use more views where you can)."
         )
-    rms_free, K_free, dist_free, rvecs_free, tvecs_free = _fit(
-        pose_obj_views, pose_img_views, W_H, fix_aspect=False, fix_k2=fix_k2
+    rms, K, dist, rvecs, tvecs = _fit(
+        pose_obj_views, pose_img_views, W_H, fix_k2=fix_k2
     )
-    rms_fixed, K_fixed, dist_fixed, rvecs_fixed, tvecs_fixed = _fit(
-        pose_obj_views, pose_img_views, W_H, fix_aspect=True, fix_k2=fix_k2
-    )
-
-    if rms_fixed <= rms_free * 1.05:
-        rms, K, dist, rvecs, tvecs = (
-            rms_fixed,
-            K_fixed,
-            dist_fixed,
-            rvecs_fixed,
-            tvecs_fixed,
-        )
-    else:
-        rms, K, dist, rvecs, tvecs = rms_free, K_free, dist_free, rvecs_free, tvecs_free
 
     # ---- Datum pose in the world frame (SQPNP, both levels non-coplanar) ----
     R, t = fit_pose(datum_obj, datum_img, K, dist, planar=False)
@@ -960,7 +954,9 @@ def calibrate_stepped_mono(
         "board_thickness_mm": float(board.board_thickness_mm),
         "level_offset_mm": float(board.level_offset_mm),
         "clicked_level": str(clicked_level),
-        "n_views": int(len(pose_obj_views)),
+        # Image count (dense detection list), not the usable pose count: the GUI compares
+        # this with the configured number of images. Usable poses are in per_view_rms.
+        "n_views": int(len(detections)),
         "geometry": geometry_meta("stepped", board, model_type="pinhole"),
     }
 

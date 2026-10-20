@@ -155,12 +155,16 @@ class Calibrator:
                 geometry_meta(self.board_type, det_params, model_type=self.model_type),
             )
         meta["view_diagnostics"] = view_diagnostics_summary(detections)
+        # n_views is the configured image count (every view, failed ones included: the
+        # detection list is dense), not the number the fit used. The GUI compares it with
+        # the form's image count and settings_seed copies it into image.n_views, so the
+        # solved count here would read as a settings change whenever a view fails.
+        meta.setdefault("n_views", len(detections))
 
         if self.model_type == "polynomial":
             # Single-plane fit: only the datum view, no intrinsics/pose. The world
             # frame is baked into the coefficients via world_pts.
             model = fit_polynomial(datum.image_points, world_pts, image_size)
-            meta.setdefault("n_views", 1)
             per_view = [float(np.hypot(model.rms_x_mm, model.rms_y_mm))]
             if figure_dir is not None:
                 from . import figures
@@ -216,7 +220,6 @@ class Calibrator:
             distortion_model=self.distortion_model,
             rms=rms,
         )
-        meta.setdefault("n_views", len(used))
 
         if figure_dir is not None:
             # Drawn while detections + per-view poses are live; never persisted to the

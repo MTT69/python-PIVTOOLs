@@ -120,17 +120,48 @@ def find_largest_grid_component(
 # Photometric flat-field blob detection
 # ---------------------------------------------------------------------------
 
+# Flat-field closing window = this many dot diameters (bridges a dot with margin).
+_CLOSE_WINDOW_PER_DIAM = 2.5
+# Image-relative dot-diameter estimate: 1.3 % of the long side.
+_DOT_DIAM_FRACTION = 0.013
+# Fixed dot-diameter estimate run alongside the image-relative one. Neither rule alone
+# serves every board measured (2026-10-18 / 2026-10-20):
+#   * capped at 70 (``min``): a floor instead forced a 175 px window on small images,
+#     which averaged out steep illumination and lost ~30 % of dots on ramp-lit synthetic
+#     boards (2600 px long side, est 33);
+#   * floored at 70 (``max``): Merle camera 3 views 3-4 (2560x1664, ~75 px dots beside a
+#     QR code and bright pipe clutter) find no grid with the 33 px estimate -- the small
+#     window passes many small clutter fragments, the circular-contour median area falls
+#     to 600-850 px^2 and the 3x-median band of ``_extract_blob_centers`` rejects the
+#     ~4400 px^2 dots. With 70 px the median sits on the dots and all of them survive.
+# Both windows run (x both polarities) and the grid pipeline keeps the candidate with the
+# largest final, outlier-gated grid. The two coincide from ~5400 px long side up.
+_DOT_DIAM_ANCHOR_PX = 70
+
+
+def _candidate_dot_diameters(shape: Tuple[int, ...]) -> List[int]:
+    """Dot-diameter estimates (px) to run the flat field with, for an image ``shape``.
+
+    The set ``{min(70, est), max(70, est)}`` with ``est = int(0.013 * long side)``,
+    ordered image-relative estimate first: on a tie between candidates the
+    earlier one wins, which keeps the pre-2026-10-20 single-window result wherever
+    the extra window does no better.
+    """
+    est = int(max(shape[:2]) * _DOT_DIAM_FRACTION)
+    return [est] if est == _DOT_DIAM_ANCHOR_PX else [est, _DOT_DIAM_ANCHOR_PX]
+
 
 def _photometric_flat_field(
     img_f32: np.ndarray,
-    invert: bool = False,
+    invert: bool,
+    dot_diam_est: int,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Photometric flat-fielding via downsampled morphological division.
 
     Works in float32 throughout to preserve the full sensor dynamic range.
-    Kernel sized to ~2x dot diameter (not image percentage) so it correctly
-    bridges dots without smearing dark-board regions where a bright surround
-    steals all contrast in 8-bit.
+    The background is a morphological close at ``_CLOSE_WINDOW_PER_DIAM`` x the
+    dot diameter (not an image percentage), so it bridges dots without smearing
+    dark-board regions where a bright surround steals all contrast in 8-bit.
 
     Parameters
     ----------
@@ -138,6 +169,9 @@ def _photometric_flat_field(
         Grayscale float32 input image (native sensor values).
     invert : bool
         If True, invert polarity (for light-on-dark dots).
+    dot_diam_est : int
+        Dot diameter estimate in pixels that sizes the closing window; one entry
+        of :func:`_candidate_dot_diameters`.
 
     Returns
     -------
@@ -150,13 +184,7 @@ def _photometric_flat_field(
     if invert:
         work_img = work_img.max() - work_img
 
-    # Morphological close at ~2.5x dot diameter to estimate local background.
-    # Dot diameter estimated as 1.3% of the long side, capped at 70 px (the cap
-    # binds from ~5400 px up). A floor here instead of a cap forces a 175 px
-    # kernel on small images, which averages out steep illumination and lost
-    # ~30% of dots on uneven-lit synthetic boards (2026-10-18).
-    dot_diam_est = min(70, int(max(work_img.shape) * 0.013))
-    k_size = int(dot_diam_est * 2.5) | 1
+    k_size = int(dot_diam_est * _CLOSE_WINDOW_PER_DIAM) | 1
     scale = 0.25
     small_img = cv2.resize(
         work_img, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA
@@ -261,6 +289,11 @@ def _extract_blob_centers(thresh: np.ndarray) -> Tuple[np.ndarray, int]:
     return np.array(valid_centers, dtype=np.float32), n_border_dropped
 
 
+def _image_mode(candidate: Dict[str, Any]) -> str:
+    """Polarity label of a blob candidate, as reported in ``info['image_mode']``."""
+    return "inverted" if candidate["invert"] else "original"
+
+
 def detect_dotboard_blobs(
     gray_uint8: np.ndarray,
     mask: Optional[np.ndarray] = None,
@@ -269,8 +302,11 @@ def detect_dotboard_blobs(
     """Detect dotboard blobs using photometric flat-fielding and ellipse fitting.
 
     Works in float32 throughout to preserve the full sensor dynamic range.
-    Auto-polarity: tries both dark-on-light and light-on-dark, returns
-    both results so the caller can select by grid quality (not just blob count).
+    Runs every candidate closing window (:func:`_candidate_dot_diameters`) x both
+    polarities (dark-on-light and light-on-dark) and returns all of them, so
+    ``detect_grid_automatic`` can select by final grid quality. The returned
+    ``centers`` are the candidate with the most blobs (first on a tie), which is
+    what the stepped detector consumes directly.
 
     Parameters
     ----------
@@ -285,12 +321,14 @@ def detect_dotboard_blobs(
     Returns
     -------
     centers : ndarray, shape (N, 2)
-        Detected blob centers (from best polarity by count).
+        Detected blob centers of the most-blobs candidate.
         Empty (0, 2) array if detection failed.
     info : dict
-        Diagnostic metadata: ``flat_field``, ``thresh``, ``image_mode``,
-        ``n_blobs_detected``, ``n_border_dropped``, and ``_polarity_results`` (list of per-polarity
-        results for grid-quality selection by ``detect_grid_automatic``).
+        Diagnostic metadata of that candidate: ``flat_field``, ``thresh``,
+        ``image_mode``, ``kernel_px`` (its dot-diameter estimate),
+        ``n_blobs_detected``, ``n_border_dropped``; plus ``_candidates``, the list of
+        every (kernel x polarity) result for grid-quality selection by
+        ``detect_grid_automatic``.
     """
     info: Dict[str, Any] = {}
 
@@ -301,36 +339,41 @@ def detect_dotboard_blobs(
         if len(valid_pixels) > 0:
             work[mask == 0] = float(np.mean(valid_pixels))
 
-    # Try both polarities
-    polarity_results = []
-    for invert in [False, True]:
-        ff, thresh = _photometric_flat_field(work, invert=invert)
-        centers, n_border_dropped = _extract_blob_centers(thresh)
-        polarity_results.append(
-            {
-                "centers": centers,
-                "flat_field": ff,
-                "thresh": thresh,
-                "invert": invert,
-                "n_blobs": len(centers),
-                "n_border_dropped": n_border_dropped,
-            }
-        )
+    candidates = []
+    for kernel_px in _candidate_dot_diameters(work.shape):
+        for invert in (False, True):
+            ff, thresh = _photometric_flat_field(work, invert, kernel_px)
+            centers, n_border_dropped = _extract_blob_centers(thresh)
+            candidates.append(
+                {
+                    "centers": centers,
+                    "flat_field": ff,
+                    "thresh": thresh,
+                    "invert": invert,
+                    "kernel_px": kernel_px,
+                    "n_blobs": len(centers),
+                    "n_border_dropped": n_border_dropped,
+                }
+            )
 
-    # Default selection: most blobs (overridden by detect_grid_automatic)
-    best = max(polarity_results, key=lambda r: r["n_blobs"])
+    # Default selection: most blobs, first on a tie (overridden by detect_grid_automatic)
+    best = max(candidates, key=lambda r: r["n_blobs"])
     centers = best["centers"]
     info["flat_field"] = best["flat_field"]
     info["thresh"] = best["thresh"]
-    info["image_mode"] = "inverted" if best["invert"] else "original"
+    info["image_mode"] = _image_mode(best)
+    info["kernel_px"] = best["kernel_px"]
     info["n_blobs_detected"] = len(centers)
     info["n_border_dropped"] = best["n_border_dropped"]
-    info["_polarity_results"] = polarity_results
+    info["_candidates"] = candidates
 
     logger.debug(
-        f"Flat-field blob detection: {polarity_results[0]['n_blobs']} original, "
-        f"{polarity_results[1]['n_blobs']} inverted → default {info['image_mode']} "
-        f"({len(centers)} blobs)"
+        "Flat-field blob detection: "
+        + ", ".join(
+            f"{c['n_blobs']} ({_image_mode(c)}, {c['kernel_px']} px)"
+            for c in candidates
+        )
+        + f" -> default {info['image_mode']} {info['kernel_px']} px ({len(centers)} blobs)"
     )
 
     if len(centers) < 9:
@@ -590,6 +633,24 @@ def _bfs_grid_walk_dict(
 
 
 # ---------------------------------------------------------------------------
+# Deferred logging for candidate grading
+# ---------------------------------------------------------------------------
+
+# (loguru level name, message). detect_grid_automatic finishes a grid for every blob
+# candidate but uses one; the rescue / outlier-gate messages of the losers describe dots
+# that are never used, so they are collected here and only the winner's are emitted.
+LogNote = Tuple[str, str]
+
+
+def _log_or_defer(notes: Optional[List[LogNote]], level: str, message: str) -> None:
+    """Log ``message`` at ``level`` now, or append it to ``notes`` when grading a candidate."""
+    if notes is None:
+        logger.opt(depth=1).log(level, message)
+    else:
+        notes.append((level, message))
+
+
+# ---------------------------------------------------------------------------
 # Template-matching rescue for missing interior dots
 # ---------------------------------------------------------------------------
 
@@ -599,6 +660,7 @@ def _rescue_missing_dots(
     centers: np.ndarray,
     flat_field: np.ndarray,
     median_spacing: float,
+    notes: Optional[List[LogNote]] = None,
 ) -> Tuple[Dict[Tuple[int, int], int], list, list]:
     """Rescue missing interior dots via local homography + template matching.
 
@@ -617,6 +679,9 @@ def _rescue_missing_dots(
         Flat-field image for template matching.
     median_spacing : float
         Median dot spacing in pixels.
+    notes : list, optional
+        When given, the summary log line is appended here instead of logged
+        (see :func:`_log_or_defer`).
 
     Returns
     -------
@@ -730,7 +795,11 @@ def _rescue_missing_dots(
 
     n_rescued = len(rescued_nodes)
     if n_rescued > 0:
-        logger.info(f"Template rescue: {n_rescued} missing interior dot(s) recovered")
+        _log_or_defer(
+            notes,
+            "INFO",
+            f"Template rescue: {n_rescued} missing interior dot(s) recovered",
+        )
 
     return rescued_grid, rescued_centers, rescued_nodes
 
@@ -782,7 +851,10 @@ _OUTLIER_FIT_MIN_DOTS = 20
 #        (was a RANSAC homography, which amputated the periphery of distorted views).
 #   2 -- 2026-10-18 (5425572): the flat-field dot-diameter estimate is capped, not floored,
 #        which changes the blob kernel and therefore the points on large/defocused dots.
-DETECTOR_VERSION = 2
+#   3 -- 2026-10-20: two flat-field windows (the image-relative estimate and the 70 px
+#        anchor) x both polarities, every candidate finished through RANSAC / rescue /
+#        outlier gate, winner = largest final grid (was: largest BFS grid, one window).
+DETECTOR_VERSION = 3
 
 
 def _grid_model_points(params: np.ndarray, src: np.ndarray, scale: float) -> np.ndarray:
@@ -810,6 +882,7 @@ def _drop_grid_outliers(
     grid: Dict[Tuple[int, int], int],
     centers,
     residual_threshold: float = _OUTLIER_RESIDUAL_PX,
+    notes: Optional[List[LogNote]] = None,
 ) -> Tuple[Dict[Tuple[int, int], int], list]:
     """Drop dots that disagree with the radial-aware grid model by more than the threshold.
 
@@ -834,6 +907,9 @@ def _drop_grid_outliers(
         Center positions (unchanged; kept for call-site symmetry with the rescue step).
     residual_threshold : float
         Max residual in pixels to keep a dot.
+    notes : list, optional
+        When given, WARNING lines are appended here instead of logged
+        (see :func:`_log_or_defer`).
     """
     grid_keys = list(grid.keys())
     src = np.array(grid_keys, dtype=np.float64)
@@ -862,10 +938,12 @@ def _drop_grid_outliers(
                 max_nfev=_OUTLIER_FIT_MAX_NFEV,
             )
             if not fit.success:
-                logger.warning(
+                _log_or_defer(
+                    notes,
+                    "WARNING",
                     f"Grid outlier check: radial-aware grid fit did not converge in round "
                     f"{fit_round} ({fit.message}); gating on the "
-                    f"{'plain homography' if fit_round == 1 else 'previous round'} instead."
+                    f"{'plain homography' if fit_round == 1 else 'previous round'} instead.",
                 )
                 break
             round_residuals = np.linalg.norm(
@@ -876,10 +954,12 @@ def _drop_grid_outliers(
                 # A model that rejects most of the board is not one to refit on or gate
                 # with: keep the residuals of the previous round (plain homography for
                 # round 1) and say so.
-                logger.warning(
+                _log_or_defer(
+                    notes,
+                    "WARNING",
                     f"Grid outlier check: radial-aware grid fit round {fit_round} kept fewer "
                     f"than {_OUTLIER_FIT_MIN_DOTS} of {len(src)} dots; gating on the "
-                    f"{'plain homography' if fit_round == 1 else 'previous round'} instead."
+                    f"{'plain homography' if fit_round == 1 else 'previous round'} instead.",
                 )
                 break
             params = fit.x
@@ -899,12 +979,236 @@ def _drop_grid_outliers(
 
     dropped = [grid_keys[i] for i in range(len(grid_keys)) if outlier_mask[i]]
     pruned = {k: v for k, v in grid.items() if k not in set(dropped)}
-    logger.warning(
+    _log_or_defer(
+        notes,
+        "WARNING",
         f"Grid outlier check: dropped {len(dropped)} dot(s) more than {residual_threshold:g} px "
         f"from the radial-aware grid fit (max {residuals[outlier_mask].max():.1f} px). "
-        f"A reflection seam, or droplets / occlusion on the board."
+        f"A reflection seam, or droplets / occlusion on the board.",
     )
     return pruned, dropped
+
+
+# ---------------------------------------------------------------------------
+# Main orchestrator
+# ---------------------------------------------------------------------------
+
+
+def _assemble_bfs_grid(
+    centers: np.ndarray, k_neighbors: int
+) -> Optional[Tuple[Dict[Tuple[int, int], int], float]]:
+    """Direction histogram + reciprocal BFS walk on one blob candidate.
+
+    Returns ``(grid_dict, spacing_px)`` or None when the candidate has fewer than 16
+    blobs, no grid directions, or the walk raises.
+    """
+    if len(centers) < 16:
+        return None
+    tree = cKDTree(centers)
+    nn_dists, _ = tree.query(centers, k=2)
+    spacing_px = float(np.median(nn_dists[:, 1]))
+
+    dir_result = _find_grid_directions(centers, spacing_px, k=k_neighbors)
+    if dir_result is None:
+        return None
+    v1, v2 = dir_result
+    try:
+        grid_dict = _bfs_grid_walk_dict(centers, v1, v2, tree)
+    except Exception as e:
+        logger.debug(f"BFS grid walk failed for blob candidate: {e}")
+        return None
+    return grid_dict, spacing_px
+
+
+def _finish_grid(
+    grid_dict: Dict[Tuple[int, int], int],
+    centers: np.ndarray,
+    flat_field: np.ndarray,
+    spacing_px: float,
+) -> Dict[str, Any]:
+    """Post-BFS stages for one candidate: RANSAC, rescue, outlier gate, connectivity.
+
+    RANSAC homography validation -> template-matching rescue -> radial-aware outlier
+    gate -> orphan pruning -> index normalisation -> largest connected component. The
+    rescue / gate log lines are deferred into ``result['notes']`` (the caller emits
+    the winner's only).
+
+    Returns
+    -------
+    dict
+        Always ``n_final`` (0 on failure), ``notes`` and the stage counters reached
+        (``ransac_threshold``, ``ransac_n_rejected``, ``n_outliers_dropped``,
+        ``n_components_found``, ``component_sizes``). On failure ``error``; on success
+        ``centers`` (N, 2) float32, ``grid_indices`` (N, 2) int32 zeroed at (0, 0),
+        ``rescued_mask`` (N,) bool, ``H`` (the RANSAC homography) and ``n_rescued``.
+    """
+    notes: List[LogNote] = []
+    result: Dict[str, Any] = {"n_final": 0, "notes": notes}
+
+    # RANSAC homography validation
+    grid_keys = list(grid_dict.keys())
+    src_pts = np.array(grid_keys, dtype=np.float32)
+    dst_pts = np.array([centers[grid_dict[k]] for k in grid_keys], dtype=np.float32)
+    ransac_thresh = 0.15 * spacing_px
+    result["ransac_threshold"] = float(ransac_thresh)
+    H_matrix, inlier_mask = cv2.findHomography(
+        src_pts,
+        dst_pts,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=ransac_thresh,
+        maxIters=2000,
+        confidence=0.995,
+    )
+    if H_matrix is None:
+        result["error"] = "RANSAC homography failed"
+        return result
+    inlier_mask = inlier_mask.flatten().astype(bool)
+    validated_grid = {
+        k: grid_dict[k] for k, inlier in zip(grid_keys, inlier_mask) if inlier
+    }
+    n_rejected = int(np.sum(~inlier_mask))
+    if n_rejected > 0:
+        logger.debug(
+            f"RANSAC rejected {n_rejected} outliers, kept {len(validated_grid)}"
+        )
+    result["ransac_n_rejected"] = n_rejected
+    if len(validated_grid) < 9:
+        result["error"] = f"RANSAC left only {len(validated_grid)} inliers (need >= 9)"
+        return result
+
+    # Template-matching rescue for missing interior dots
+    validated_grid, rescued_centers, rescued_nodes = _rescue_missing_dots(
+        validated_grid, centers, flat_field, spacing_px, notes=notes
+    )
+
+    # Grid smoothness check -- drop dots that disagree with the radial-aware grid fit
+    validated_grid, dropped_nodes = _drop_grid_outliers(
+        validated_grid, rescued_centers, notes=notes
+    )
+    result["n_outliers_dropped"] = len(dropped_nodes)
+
+    # Prune orphaned points
+    validated_grid = _filter_connected_dict(validated_grid)
+
+    grid_keys_final = list(validated_grid.keys())
+    final_centers = np.array(
+        [rescued_centers[validated_grid[k]] for k in grid_keys_final],
+        dtype=np.float32,
+    ).reshape(-1, 2)
+    grid_indices = np.array(grid_keys_final, dtype=np.int32).reshape(-1, 2)
+
+    # Provenance mask: rescued (template-matched) points, named in the pre-normalization
+    # key frame -- the same frame as grid_keys_final (the index shift below rewrites the
+    # ndarray, not the dict keys). A rescued node dropped by the gate is simply absent.
+    rescued_set = set(rescued_nodes)
+    rescued_mask = np.array([k in rescued_set for k in grid_keys_final], dtype=bool)
+
+    # Normalize so minimum index is (0, 0)
+    if len(grid_indices) > 0:
+        grid_indices[:, 0] -= grid_indices[:, 0].min()
+        grid_indices[:, 1] -= grid_indices[:, 1].min()
+
+    # Largest connected component (filter reflections)
+    if len(final_centers) >= 9:
+        comp_mask, n_comp, comp_sizes = find_largest_grid_component(grid_indices)
+        if n_comp > 1:
+            n_island = int(np.sum(~comp_mask))
+            final_centers = final_centers[comp_mask]
+            rescued_mask = rescued_mask[comp_mask]
+            grid_indices = grid_indices[comp_mask]
+            grid_indices[:, 0] -= grid_indices[:, 0].min()
+            grid_indices[:, 1] -= grid_indices[:, 1].min()
+            logger.debug(f"Removed {n_island} island points ({n_comp} components → 1)")
+        result["n_components_found"] = n_comp
+        result["component_sizes"] = comp_sizes.tolist()
+
+    if len(final_centers) < 9:
+        result["error"] = f"Final grid has only {len(final_centers)} points (need >= 9)"
+        return result
+
+    result.update(
+        centers=final_centers,
+        grid_indices=grid_indices,
+        rescued_mask=rescued_mask,
+        H=H_matrix,
+        n_rescued=int(np.count_nonzero(rescued_mask)),
+        n_final=len(final_centers),
+    )
+    return result
+
+
+def _grid_from_candidates(
+    candidates: List[Dict[str, Any]], k_neighbors: int
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Grade every blob candidate by its final grid and pick the winner.
+
+    Each candidate (an entry of ``detect_dotboard_blobs``' ``_candidates``) whose BFS
+    grid has >= 9 points is finished through :func:`_finish_grid`. The winner is the
+    largest FINAL (RANSAC-validated, outlier-gated, connected) grid; ties go to fewer
+    rescued (template-matched) points, then to the earlier candidate. Selecting by
+    the BFS grid instead lets a fragment set that walks a big but incoherent lattice
+    beat the real board, which the gate then cuts down.
+
+    Returns
+    -------
+    winner : dict or None
+        The winning candidate.
+    finished : dict or None
+        Its :func:`_finish_grid` result; when no candidate succeeds, the result of the
+        largest-BFS candidate that reached the finishing stages (for its ``error``), or
+        None if none did.
+    summaries : list of dict
+        ``{kernel_px, invert, n_blobs, n_bfs, n_final}`` per candidate, in order.
+    """
+    summaries: List[Dict[str, Any]] = []
+    winner = finished_winner = None
+    largest_failed: Optional[Tuple[int, Dict[str, Any]]] = None
+    for cand in candidates:
+        summary = {
+            "kernel_px": int(cand["kernel_px"]),
+            "invert": bool(cand["invert"]),
+            "n_blobs": int(cand["n_blobs"]),
+            "n_bfs": 0,
+            "n_final": 0,
+        }
+        summaries.append(summary)
+        label = f"{cand['kernel_px']} px {_image_mode(cand)}"
+        assembled = _assemble_bfs_grid(cand["centers"], k_neighbors)
+        if assembled is None:
+            logger.debug(
+                f"Grid candidate {label}: {cand['n_blobs']} blobs, no BFS grid"
+            )
+            continue
+        grid_dict, spacing_px = assembled
+        summary["n_bfs"] = len(grid_dict)
+        if len(grid_dict) < 9:
+            logger.debug(
+                f"Grid candidate {label}: {cand['n_blobs']} blobs, BFS {len(grid_dict)} (< 9)"
+            )
+            continue
+        finished = _finish_grid(
+            grid_dict, cand["centers"], cand["flat_field"], spacing_px
+        )
+        finished["spacing_px"] = spacing_px
+        summary["n_final"] = finished["n_final"]
+        logger.debug(
+            f"Grid candidate {label}: {cand['n_blobs']} blobs, BFS {len(grid_dict)}, "
+            f"final {finished['n_final']}"
+            + (f" ({finished['error']})" if "error" in finished else "")
+        )
+        if "error" in finished:
+            if largest_failed is None or len(grid_dict) > largest_failed[0]:
+                largest_failed = (len(grid_dict), finished)
+            continue
+        if finished_winner is None or (
+            finished["n_final"],
+            -finished["n_rescued"],
+        ) > (finished_winner["n_final"], -finished_winner["n_rescued"]):
+            winner, finished_winner = cand, finished
+
+    if finished_winner is None and largest_failed is not None:
+        return None, largest_failed[1], summaries
+    return winner, finished_winner, summaries
 
 
 # ---------------------------------------------------------------------------
@@ -921,10 +1225,11 @@ def detect_grid_automatic(
 ) -> Tuple[bool, Optional[Dict[str, Any]], Dict[str, Any]]:
     """Automatically detect a dotboard grid from an image.
 
-    Full pipeline: photometric flat-fielding → contour/ellipse blob detection →
-    direction histogram → reciprocal BFS grid assembly → RANSAC homography →
-    template-matching rescue → radial-aware outlier gate → connected component
-    filtering.
+    Full pipeline: photometric flat-fielding (two closing windows x two polarities)
+    → contour/ellipse blob detection → per candidate: direction histogram →
+    reciprocal BFS grid assembly → RANSAC homography → template-matching rescue →
+    radial-aware outlier gate → connected component filtering; the candidate with
+    the largest final grid wins (see :func:`_grid_from_candidates`).
 
     Parameters
     ----------
@@ -949,7 +1254,9 @@ def detect_grid_automatic(
         point: True = template-rescued, not a measured blob centroid),
         ``n_cols``, ``n_rows``, ``spacing_px``, ``angle_deg``, ``grid_spacing_mm``.
     info : dict
-        Detection metadata and diagnostics.
+        Detection metadata and diagnostics, including the winner's ``kernel_px``
+        and ``image_mode`` and ``candidates``: one
+        ``{kernel_px, invert, n_blobs, n_bfs, n_final}`` summary per candidate.
     """
     gray = to_grayscale_2d(img)
 
@@ -958,159 +1265,50 @@ def detect_grid_automatic(
 
     info: Dict[str, Any] = {"method": "automatic_grid_detection"}
 
-    # Step 1: Blob detection — try both polarities, select by grid quality
-    # (not just blob count). More raw blobs doesn't help if grid assembly fails.
+    # Step 1: blob candidates (closing window x polarity), graded by final grid quality
+    # -- more raw blobs, or a bigger BFS walk, does not help if the gate cuts it down.
     _, blob_info = detect_dotboard_blobs(gray, mask=None)  # mask already applied
-    polarity_results = blob_info.get("_polarity_results", [])
+    winner, finished, summaries = _grid_from_candidates(
+        blob_info["_candidates"], k_neighbors
+    )
+    info["candidates"] = summaries
 
-    best_grid = None
-    best_centers = None
-    best_flat_field = None
-    best_spacing = None
-    best_polarity_info = {}
-
-    for pr in polarity_results:
-        ctrs = pr["centers"]
-        if len(ctrs) < 16:
-            continue
-
-        # Estimate spacing for this polarity
-        pr_tree = cKDTree(ctrs)
-        pr_nn_dists, _ = pr_tree.query(ctrs, k=2)
-        pr_spacing = float(np.median(pr_nn_dists[:, 1]))
-
-        # Try to build a grid
-        dir_result = _find_grid_directions(ctrs, pr_spacing, k=k_neighbors)
-        if dir_result is None:
-            continue
-        v1, v2 = dir_result
-
-        try:
-            grid_dict = _bfs_grid_walk_dict(ctrs, v1, v2, pr_tree)
-        except Exception as e:
-            logger.debug(f"BFS grid walk failed for polarity candidate: {e}")
-            continue
-
-        if best_grid is None or len(grid_dict) > len(best_grid):
-            best_grid = grid_dict
-            best_centers = ctrs
-            best_flat_field = pr["flat_field"]
-            best_spacing = pr_spacing
-            best_polarity_info = {
-                "image_mode": "inverted" if pr["invert"] else "original",
-                "n_blobs_detected": pr["n_blobs"],
-                "n_border_dropped": pr["n_border_dropped"],
-            }
-
-    if best_grid is None or len(best_grid) < 9:
-        info["error"] = "Grid assembly failed on both polarities"
+    if winner is None:
+        if finished is None:
+            info["error"] = (
+                f"Grid assembly failed on all {len(summaries)} blob candidates "
+                "(closing window x polarity)"
+            )
+        else:
+            info.update(
+                {k: v for k, v in finished.items() if k not in ("notes", "n_final")}
+            )
         return False, None, info
 
-    grid_dict = best_grid
-    centers = best_centers
-    flat_field = best_flat_field
-    spacing_px = best_spacing
-    info.update(best_polarity_info)
-    info["flat_field"] = flat_field
-    info["spacing_px"] = spacing_px
+    for level, message in finished["notes"]:
+        logger.log(level, message)
 
-    cKDTree(centers)
-    n_bfs = len(grid_dict)
-    logger.debug(
-        f"BFS found {n_bfs} of {len(centers)} blobs ({info.get('image_mode', '?')} polarity)"
-    )
-
-    # Step 2: RANSAC homography validation
-    grid_keys = list(grid_dict.keys())
-    src_pts = np.array(grid_keys, dtype=np.float32)
-    dst_pts = np.array([centers[grid_dict[k]] for k in grid_keys], dtype=np.float32)
-
-    ransac_thresh = 0.15 * spacing_px
-    info["ransac_threshold"] = float(ransac_thresh)
-    H_matrix, inlier_mask = cv2.findHomography(
-        src_pts,
-        dst_pts,
-        method=cv2.RANSAC,
-        ransacReprojThreshold=ransac_thresh,
-        maxIters=2000,
-        confidence=0.995,
-    )
-    if H_matrix is None:
-        info["error"] = "RANSAC homography failed"
-        return False, None, info
-
-    inlier_mask = inlier_mask.flatten().astype(bool)
-    validated_grid = {
-        k: grid_dict[k] for k, inlier in zip(grid_keys, inlier_mask) if inlier
-    }
-    n_rejected = int(np.sum(~inlier_mask))
-    if n_rejected > 0:
-        logger.debug(
-            f"RANSAC rejected {n_rejected} outliers, kept {len(validated_grid)}"
-        )
-    info["ransac_n_rejected"] = n_rejected
-
-    if len(validated_grid) < 9:
-        info["error"] = f"RANSAC left only {len(validated_grid)} inliers (need >= 9)"
-        return False, None, info
-
-    # Step 3: Template-matching rescue for missing interior dots
-    validated_grid, rescued_centers, rescued_nodes = _rescue_missing_dots(
-        validated_grid,
-        centers,
-        flat_field,
-        spacing_px,
-    )
-
-    # Step 4: Grid smoothness check — drop dots that disagree with the radial-aware grid fit
-    validated_grid, dropped_nodes = _drop_grid_outliers(validated_grid, rescued_centers)
-    info["n_outliers_dropped"] = len(dropped_nodes)
-
-    # Step 5: Prune orphaned points
-    validated_grid = _filter_connected_dict(validated_grid)
-
-    # Step 6: Convert dict grid to ndarray format
-    all_centers_list = rescued_centers
-    grid_keys_final = list(validated_grid.keys())
-    grid_center_indices = [validated_grid[k] for k in grid_keys_final]
-
-    final_centers = np.array(
-        [all_centers_list[i] for i in grid_center_indices],
-        dtype=np.float32,
-    )
-    grid_indices = np.array(grid_keys_final, dtype=np.int32)
-
-    # Provenance mask: rescued (template-matched) points, named in the pre-normalization
-    # key frame — the same frame as grid_keys_final (the index shift below rewrites the
-    # ndarray, not the dict keys). A rescued node dropped in Step 4 is simply absent.
+    final_centers = finished["centers"]
+    grid_indices = finished["grid_indices"]
+    rescued_mask = finished["rescued_mask"]
     # Nothing is model-predicted any more, so synthetic == rescued.
-    rescued_set = set(rescued_nodes)
-    rescued_mask = np.array([k in rescued_set for k in grid_keys_final], dtype=bool)
     synthetic_mask = rescued_mask.copy()
-
-    # Normalize so minimum index is (0, 0)
-    if len(grid_indices) > 0:
-        grid_indices[:, 0] -= grid_indices[:, 0].min()
-        grid_indices[:, 1] -= grid_indices[:, 1].min()
-
-    # Step 9: Largest connected component (filter reflections)
-    if len(final_centers) >= 9:
-        comp_mask, n_comp, comp_sizes = find_largest_grid_component(grid_indices)
-        if n_comp > 1:
-            n_island = int(np.sum(~comp_mask))
-            final_centers = final_centers[comp_mask]
-            rescued_mask = rescued_mask[comp_mask]
-            synthetic_mask = synthetic_mask[comp_mask]
-            grid_indices = grid_indices[comp_mask]
-            grid_indices[:, 0] -= grid_indices[:, 0].min()
-            grid_indices[:, 1] -= grid_indices[:, 1].min()
-            logger.debug(f"Removed {n_island} island points ({n_comp} components → 1)")
-        info["n_components_found"] = n_comp
-        info["component_sizes"] = comp_sizes.tolist()
-
-    if len(final_centers) < 9:
-        info["error"] = f"Final grid has only {len(final_centers)} points (need >= 9)"
-        return False, None, info
+    spacing_px = finished["spacing_px"]
+    H_matrix = finished["H"]
+    info.update(
+        image_mode=_image_mode(winner),
+        kernel_px=int(winner["kernel_px"]),
+        n_blobs_detected=int(winner["n_blobs"]),
+        n_border_dropped=int(winner["n_border_dropped"]),
+        flat_field=winner["flat_field"],
+        spacing_px=spacing_px,
+        ransac_threshold=finished["ransac_threshold"],
+        ransac_n_rejected=finished["ransac_n_rejected"],
+        n_outliers_dropped=finished["n_outliers_dropped"],
+    )
+    if "n_components_found" in finished:
+        info["n_components_found"] = finished["n_components_found"]
+        info["component_sizes"] = finished["component_sizes"]
 
     # Re-fit clean homography from final points
     H_clean, _ = cv2.findHomography(
@@ -1152,10 +1350,10 @@ def detect_grid_automatic(
         )
         logger.warning(info["warning"])
 
-    # The provenance masks are filtered in lockstep with the points (Step 9). A
-    # future edit that trims one array but forgets a mask desyncs the figure and
-    # the persisted diagnostics silently — fail loudly instead. A raise (not an
-    # assert) so the guard survives `python -O`.
+    # The provenance masks are filtered in lockstep with the points. A future edit
+    # that trims one array but forgets a mask desyncs the figure and the persisted
+    # diagnostics silently — fail loudly instead. A raise (not an assert) so the
+    # guard survives `python -O`.
     n_final = len(final_centers)
     if not (
         len(grid_indices) == n_final
@@ -1165,7 +1363,7 @@ def detect_grid_automatic(
         raise RuntimeError("synthetic/provenance mask desynced from final grid points")
 
     # Counts are survivors-in-the-final-grid, not operations attempted: a rescued dot
-    # pruned as an orphan or island above is gone from both the mask and these numbers,
+    # pruned as an orphan or island is gone from both the mask and these numbers,
     # so the figure and the persisted diagnostics agree.
     info["n_rescued"] = int(np.count_nonzero(rescued_mask))
     info["n_synthetic"] = int(np.count_nonzero(synthetic_mask))
@@ -1182,6 +1380,8 @@ def detect_grid_automatic(
     }
 
     logger.info(
-        f"Grid detection SUCCESS: {n_cols}x{n_rows} grid with {len(final_centers)} points"
+        f"Grid detection SUCCESS: {n_cols}x{n_rows} grid with {n_final} points "
+        f"(winner {info['kernel_px']} px window, {info['image_mode']}; "
+        f"{len(summaries)} candidates)"
     )
     return True, grid_data, info

@@ -8,6 +8,7 @@ frame count are mocked there). What is pinned:
   single-level included), so the returned indices match the metadata it reports;
 - generate merges the picks per camera key, refuses a live sequence whose sidecar was
   re-detected elsewhere, and a mono generate solves the camera it was asked for;
+- a reloaded pinhole stereo model keeps ``stereo_config`` (the Geometry row);
 - detect counts the frames when ``num_frames`` is absent and refuses more than exist;
 - a read-only detect keeps the previous stamp and the later save says why it failed;
 - ``inputs/save`` always explains ``saved: false`` and rejects a malformed camera block;
@@ -20,6 +21,7 @@ from __future__ import annotations
 # ruff: noqa: F811  (imported pytest fixtures are re-bound by every test's parameter)
 import numpy as np
 import pytest
+from flask import Flask
 from test_calibration_stepped_routes import (  # noqa: F401  (fixtures); noqa: E402  (sibling-test reuse)
     FRAMES,
     _detect,
@@ -32,6 +34,7 @@ from test_calibration_stepped_routes import (  # noqa: F401  (fixtures); noqa: E
 )
 
 import pivtools_gui.calibration.app.stepped_views as sv
+import pivtools_gui.calibration.app.views as V
 from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration.detection.stepped_levels import (
     SteppedBoardSpec,
@@ -153,6 +156,42 @@ def test_generate_refuses_a_live_sequence_redetected_elsewhere(client, scene):
 
     assert r.status_code == 409, r.get_json()
     assert "re-detected" in r.get_json()["error"]
+
+
+def test_reloaded_pinhole_stereo_model_keeps_stereo_config(
+    client, scene, tmp_path, monkeypatch
+):
+    """generate -> GET /calibration/model: the pinhole stereo summary carries
+    ``stereo_config`` (the stepped results card's Geometry row), as the polynomial
+    branch already does."""
+    sid, _ = _detect(client, [1, 2])
+    r = _generate(client, scene, sid, (1, 2), True)
+    done = _wait(
+        client, f"/calibration/stepped/generate_model/status/{r.get_json()['job_id']}"
+    )
+    assert done["status"] == "completed", done
+    assert done["stereo_config"] == "same_side"
+
+    monkeypatch.setattr(V, "get_config", sv.get_config)
+    app = Flask(__name__)
+    app.register_blueprint(V.calibration_bp)
+    body = (
+        app.test_client()
+        .get(
+            "/calibration/model",
+            query_string={
+                "source_path_idx": 0,
+                "board": "stepped",
+                "stereo": "1",
+                "camera_pair": "1,2",
+            },
+        )
+        .get_json()
+    )
+
+    assert body["exists"] is True, body
+    assert body["model_type"] == "pinhole"
+    assert body["stereo_config"] == done["stereo_config"]
 
 
 def test_mono_generate_solves_the_requested_camera(client, scene):

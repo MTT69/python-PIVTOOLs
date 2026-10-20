@@ -260,6 +260,9 @@ def _load_one(
         int(source_idx),
         image_format=image_format,
         image_type=image_type,
+        # Native bit depth for detection (the stepped detector scales to uint8 by
+        # peak itself); matches the CLI and the flat/joint routes.
+        normalize_uint8=False,
     )
 
 

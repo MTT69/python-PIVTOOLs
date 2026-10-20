@@ -123,8 +123,16 @@ def client(scene, tmp_path, monkeypatch):
     )
 
     def _fake_read(
-        frame, camera, config, source_idx, image_format=None, image_type=None
+        frame,
+        camera,
+        config,
+        source_idx,
+        image_format=None,
+        image_type=None,
+        normalize_uint8=True,
     ):
+        # Detection routes read native depth (normalize_uint8=False); the scene is
+        # already uint8 so the flag changes nothing here.
         return scene["images"][int(camera)][int(frame) - 1]
 
     monkeypatch.setattr(sv, "read_calibration_image", _fake_read)

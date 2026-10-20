@@ -404,11 +404,13 @@ def _load_one(
 ) -> np.ndarray:
     """Load one calibration frame (any format) via the app-wide reader.
 
-    ``normalize_uint8`` defaults True because detection (OpenCV) needs an 8-bit
-    array. Display endpoints that drive the auto-contrast slider must pass
-    ``normalize_uint8=False`` so the native bit depth reaches
-    ``get_display_contrast_stats`` — collapsing a 12/16-bit frame to uint8 first
-    makes that function short-circuit to a dead [0, 100] window.
+    Detection callers pass ``normalize_uint8=False``: the dotboard detector works in
+    float32 and the ChArUco / stepped detectors scale to uint8 themselves, so the
+    native 12/16-bit frame is what they must see (the CLI already does this; an
+    8-bit min-max collapse of a retro-reflective board lost 89 of 129 dots,
+    2026-10-20). The display endpoints that drive the auto-contrast slider also
+    need the native depth so ``get_display_contrast_stats`` sees the real range.
+    The uint8 default remains for the 8-bit preview routes.
     """
     return read_calibration_image(
         int(frame),
@@ -429,7 +431,9 @@ def _load_views(
     image_type: Optional[str],
 ) -> List[np.ndarray]:
     return [
-        _load_one(camera, k + 1, source_idx, image_format, image_type)
+        _load_one(
+            camera, k + 1, source_idx, image_format, image_type, normalize_uint8=False
+        )
         for k in range(int(frame_total))
     ]
 
@@ -941,7 +945,12 @@ def detect_datum():
     frame = _datum_frame(data.get)
     try:
         img = _load_one(
-            camera, frame, source_idx, data.get("image_format"), data.get("image_type")
+            camera,
+            frame,
+            source_idx,
+            data.get("image_format"),
+            data.get("image_type"),
+            normalize_uint8=False,
         )
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
@@ -1053,7 +1062,7 @@ def frame_json():
     try:
         # Display path: keep native bit depth so get_display_contrast_stats and
         # numpy_to_base64 see the real dynamic range (sqrt + percentile window),
-        # matching the PIV viewer. Detection routes still load uint8 for OpenCV.
+        # matching the PIV viewer. Detection routes load native depth too.
         img = _load_one(
             camera,
             idx,
@@ -1121,7 +1130,12 @@ def detect_frame():
     frame_count, frame_count_error = _frame_count_or_error(camera, source_idx)
     try:
         img = _load_one(
-            camera, frame, source_idx, data.get("image_format"), data.get("image_type")
+            camera,
+            frame,
+            source_idx,
+            data.get("image_format"),
+            data.get("image_type"),
+            normalize_uint8=False,
         )
     except (FileNotFoundError, ValueError, IndexError) as exc:
         return (
@@ -1232,7 +1246,14 @@ def detect_views():
         width = height = 0
         for frame in range(1, frame_total + 1):
             try:
-                img = _load_one(camera, frame, source_idx, image_format, image_type)
+                img = _load_one(
+                    camera,
+                    frame,
+                    source_idx,
+                    image_format,
+                    image_type,
+                    normalize_uint8=False,
+                )
             except (FileNotFoundError, ValueError, IndexError) as exc:
                 unloadable.append(f"cam{camera} frame {frame}: {exc}")
                 continue
@@ -2207,6 +2228,7 @@ def load_model():
                     "baseline_mm": float(np.linalg.norm(r.T_stereo)),
                     "stereo_rms_px": _finite_or_none(r.board_meta.get("stereo_rms_px")),
                     "method": stereo_method,
+                    "stereo_config": r.board_meta.get("stereo_config"),
                 }
             )
         return jsonify(common)

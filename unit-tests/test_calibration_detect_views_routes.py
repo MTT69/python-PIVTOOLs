@@ -87,7 +87,9 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(
         V,
         "_load_one",
-        lambda cam, frame, src, fmt=None, typ=None: _frame_image(frame, cam),
+        lambda cam, frame, src, fmt=None, typ=None, normalize_uint8=True: _frame_image(
+            frame, cam
+        ),
     )
     monkeypatch.setattr(
         V,
@@ -222,7 +224,7 @@ def test_detect_views_unloadable_view_is_not_persisted(env, monkeypatch):
         det_key="previous-complete-set",
     )
 
-    def _load(cam, frame, src, fmt=None, typ=None):
+    def _load(cam, frame, src, fmt=None, typ=None, normalize_uint8=True):
         if frame == 2:
             raise FileNotFoundError("cal_002.tif")
         return _frame_image(frame)

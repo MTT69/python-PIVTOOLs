@@ -386,7 +386,8 @@ class StereoCalibrator:
 
         meta = dict(board_meta or {})
         meta.setdefault("spacing_mm", float(sp))
-        # Carry cam1's view count so the stereo record (and the model GET) report n_views.
+        # Carry cam1's configured view count (equal to cam2's: views pair by index) so the
+        # stereo record (and the model GET) report n_views.
         meta.setdefault("n_views", rec1.board_meta.get("n_views"))
         # Carry the board geometry stamped into cam1's mono record so the stereo model is
         # self-describing too (both cameras share the one board).

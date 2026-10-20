@@ -18,7 +18,7 @@ and the board detector mocked (the ``env`` fixture of the ``detect_views`` suite
 - The generate write-back merges coords under the sidecar lock: a pick committed while
   the model was solving is never overwritten with the stale read.
 - ``_joint_detect``: a read-only sidecar write is reported, a ValueError raises.
-- ``DETECTOR_VERSION`` 2: detections cached by detector 1 are stale.
+- ``DETECTOR_VERSION`` 3: detections cached by an older detector are stale.
 """
 
 from __future__ import annotations
@@ -373,7 +373,7 @@ def test_cached_resolve_with_figures_and_missing_image_raises(env, monkeypatch):
         coords=c1,
     )
 
-    def _load(cam, frame, src, fmt=None, typ=None):
+    def _load(cam, frame, src, fmt=None, typ=None, normalize_uint8=True):
         if frame == 2:
             raise FileNotFoundError("calibration image not found: cal_002.tif")
         return _frame_image(frame, cam)
@@ -573,14 +573,14 @@ def test_joint_detect_persisted_reports_none(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# DETECTOR_VERSION 2
+# DETECTOR_VERSION 3
 # ---------------------------------------------------------------------------
 
 
 def test_detections_from_detector_version_1_are_stale(env, monkeypatch):
-    """The 5425572 kernel change returns different points: a v1 sidecar must not be reused."""
+    """The two-window detector (v3) returns different points: a v1 sidecar must not be reused."""
     client, _base, _params = env
-    assert GD.DETECTOR_VERSION == 2
+    assert GD.DETECTOR_VERSION == 3
     monkeypatch.setattr(INP, "DETECTOR_VERSION", 1)
     _post_views(client, camera=1)
     monkeypatch.setattr(INP, "DETECTOR_VERSION", GD.DETECTOR_VERSION)

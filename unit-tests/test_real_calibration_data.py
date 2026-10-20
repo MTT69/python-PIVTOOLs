@@ -205,3 +205,98 @@ def test_merle_joint_model_and_sidecar_load(real_calibration_data):
     assert inputs.image_size_by_cam == {
         c: tuple(joint.models[c].image_size) for c in MERLE_CAMERAS
     }
+
+
+# ---------------------------------------------------------------------------
+# Dot-board detector on native-depth frames (DETECTOR_VERSION 3, 2026-10-20)
+# ---------------------------------------------------------------------------
+
+# A detected point "matches" a DaVis mark within this distance (dots are 15-21 mm apart,
+# hundreds of pixels, so a nearest point this close is the same dot).
+MATCH_RADIUS_PX = 2.0
+
+MERLE_CAM3_FOLDER = "merle/Calibration/camera3"
+MERLE_NUM_CAMERAS = 3
+MERLE_SPACING_MM = 21.2
+# Views 1-4 of camera 3 (view 5 is a board sliver beside the QR code, unsolved and out
+# of scope). Views 3 and 4 (~75 px dots beside bright pipe clutter) found NO grid with
+# the single 33 px flat-field window of DETECTOR_VERSION 2; measured 2026-10-20 on the
+# two-window detector: 51/54, 32/32, 27/27, 20/20 marks within 2 px. View 1 is 51/54 = 94.4 %
+# under both detector versions (the 3 unmatched marks are not found by either), so the
+# floor sits just below it rather than at 95 %.
+MERLE_CAM3_VIEWS = (1, 2, 3, 4)
+MERLE_MIN_MATCHED_FRACTION = 0.94
+
+JOHN_FOLDER = "john retro/camera1"
+JOHN_NUM_CAMERAS = 1
+JOHN_SPACING_MM = 15.0
+# Measured 2026-10-20: 113 of 129 DaVis marks within 2 px, median 0.64 px. The 16 missed
+# are dark rows (a lighting limit), not targeted.
+JOHN_MIN_MATCHED = 110
+JOHN_MAX_MEDIAN_PX = 1.0
+
+
+def _read_im7_native(folder: Path, camera: int, frame: int, num_cameras: int):
+    """One ``.im7`` frame at native bit depth (``normalize_uint8=False``).
+
+    The detector works in float32 on the sensor values; an 8-bit normalised frame tests a
+    different input (John: 24 of 129 marks on uint8 against 113 native).
+    """
+    return read_calibration_frame_at(
+        folder,
+        camera,
+        frame,
+        IM7_FORMAT,
+        IM7_TYPE,
+        num_cameras=num_cameras,
+        use_camera_subfolders=True,
+        use_cache=False,
+        normalize_uint8=False,
+    )
+
+
+def _matched(detected: np.ndarray, davis: np.ndarray) -> np.ndarray:
+    """Distance from every DaVis mark to its nearest detected point (px)."""
+    return cKDTree(np.asarray(detected).reshape(-1, 2)).query(davis)[0]
+
+
+@pytest.mark.parametrize("view", MERLE_CAM3_VIEWS)
+def test_merle_camera3_dotboard_matches_davis_marks(real_calibration_data, view):
+    folder = real_calibration_data / MERLE_CAM3_FOLDER
+    image = _read_im7_native(folder, 3, view, MERLE_NUM_CAMERAS)
+
+    result = DotboardDetector(DotboardParams(dot_spacing_mm=MERLE_SPACING_MM)).detect(
+        image
+    )
+
+    assert result.success, result.diagnostics.get("error")
+    davis = _davis_marks(folder / "MarkPositionTable.xml", 3, view)
+    dist = _matched(result.image_points, davis)
+    n_matched = int((dist < MATCH_RADIUS_PX).sum())
+    print(
+        f"\n[merle cam3 view{view}] {n_matched}/{len(davis)} within "
+        f"{MATCH_RADIUS_PX:g} px, window {result.diagnostics.get('kernel_px')} px "
+        f"{result.diagnostics.get('image_mode')}"
+    )
+    assert n_matched / len(davis) >= MERLE_MIN_MATCHED_FRACTION
+
+
+def test_john_dotboard_matches_davis_marks(real_calibration_data):
+    folder = real_calibration_data / JOHN_FOLDER
+    image = _read_im7_native(folder, 1, 1, JOHN_NUM_CAMERAS)
+
+    result = DotboardDetector(DotboardParams(dot_spacing_mm=JOHN_SPACING_MM)).detect(
+        image
+    )
+
+    assert result.success, result.diagnostics.get("error")
+    davis = _davis_marks(folder / "MarkPositionTable.xml", 1, 1)
+    dist = _matched(result.image_points, davis)
+    within = dist < MATCH_RADIUS_PX
+    print(
+        f"\n[john] {int(within.sum())}/{len(davis)} within {MATCH_RADIUS_PX:g} px, "
+        f"median {np.median(dist[within]):.2f} px, window "
+        f"{result.diagnostics.get('kernel_px')} px"
+    )
+    assert int(within.sum()) >= JOHN_MIN_MATCHED
+    assert np.median(dist[within]) < JOHN_MAX_MEDIAN_PX
