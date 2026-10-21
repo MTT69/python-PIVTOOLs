@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from scipy.io import loadmat, savemat
+from scipy.io.matlab import MatReadError
 
 # Canonical home is pivtools_core (the settings sidecar and image loaders need
 # it without importing pivtools_gui); re-exported here for existing callers.
@@ -703,6 +704,17 @@ def save_mono(record: MonoRecord, model_dir: Path) -> Path:
     return path
 
 
+def _loadmat_record(path: Path) -> dict:
+    """``loadmat`` for a record file; a truncated or non-MAT file raises ``ValueError``
+    naming the file (scipy's ``MatReadError`` is not a ``ValueError``, and the routes
+    translate ``ValueError`` into a visible error — never a 500 or a silent "no model").
+    """
+    try:
+        return loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    except (MatReadError, ValueError) as exc:
+        raise ValueError(f"{path} is not a readable calibration record: {exc}") from exc
+
+
 def load_mono(path: Path, model_type: Optional[str] = None) -> MonoRecord:
     """Load a mono record. ``path`` is the file or its model dir; for a dir the
     per-type resolver picks the file (``model_type`` required only when several
@@ -712,7 +724,7 @@ def load_mono(path: Path, model_type: Optional[str] = None) -> MonoRecord:
         path = resolve_mono_path(path, model_type)
     if not path.exists():
         raise FileNotFoundError(f"calibration model not found: {path}")
-    mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    mat = _loadmat_record(path)
     if "model_type" not in mat:
         raise ValueError(
             f"{path} has no model_type tag — not a PIVTOOLs per-type record"
@@ -788,7 +800,7 @@ def load_stereo(path: Path, model_type: Optional[str] = None) -> StereoRecord:
         path = resolve_stereo_path(path, model_type)
     if not path.exists():
         raise FileNotFoundError(f"calibration stereo model not found: {path}")
-    mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    mat = _loadmat_record(path)
     if "model_type" not in mat:
         raise ValueError(
             f"{path} has no model_type tag — not a PIVTOOLs per-type stereo record"
@@ -917,7 +929,7 @@ def load_joint(path: Path, model_type: Optional[str] = None) -> JointRecord:
         path = resolve_joint_path(path, model_type)
     if not path.exists():
         raise FileNotFoundError(f"calibration joint model not found: {path}")
-    mat = loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    mat = _loadmat_record(path)
     if "model_type" not in mat:
         raise ValueError(f"{path} has no model_type tag — not a PIVTOOLs joint record")
     tag = str(_scalar(mat["model_type"]))

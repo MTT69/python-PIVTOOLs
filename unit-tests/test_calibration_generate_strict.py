@@ -698,6 +698,56 @@ def test_joint_generate_reports_excluded_views(tmp_path, monkeypatch):
     assert model["excluded_views"] == [[cam, view + 1]]
 
 
+def _poly_model(client) -> dict:
+    return client.get(
+        "/calibration/joint/model",
+        query_string={
+            "source_path_idx": 0,
+            "board": "charuco",
+            "model_type": "polynomial",
+            "cameras": "1,2,3",
+        },
+    ).get_json()
+
+
+def test_joint_model_polynomial_reports_missing_and_unreadable_cameras(
+    tmp_path, monkeypatch
+):
+    """A polynomial joint model is one record per camera: a camera with no record is listed
+    in ``missing_cameras`` (partial model, still shown); a record that exists but cannot be
+    read is an error naming the camera — never silently dropped."""
+    import shutil
+
+    from pivtools_gui.calibration import record as REC
+
+    client, body = _joint_route(tmp_path, monkeypatch)
+    body["model_type"] = "polynomial"
+    resp = client.post("/calibration/joint/generate", json=body).get_json()
+    assert resp["success"] is True, resp
+    status = _wait_joint(client, resp["job_id"])
+    assert status["status"] == "completed", status
+
+    model = _poly_model(client)
+    assert model["exists"] is True, model
+    assert model["cameras"] == [1, 2, 3]
+    assert model["missing_cameras"] == []
+
+    source = V._source_path(0)
+    shutil.rmtree(REC.mono_model_dir_for_source(source, 3, "charuco"))
+    model = _poly_model(client)
+    assert model["exists"] is True, model
+    assert model["cameras"] == [1, 2]
+    assert model["missing_cameras"] == [3]
+
+    path = REC.resolve_mono_path(
+        REC.mono_model_dir_for_source(source, 2, "charuco"), "polynomial"
+    )
+    path.write_bytes(b"not a mat file")
+    model = _poly_model(client)
+    assert model["exists"] is False
+    assert "camera 2" in model["error"]
+
+
 def test_joint_model_without_excluded_views_is_stale(tmp_path, monkeypatch):
     """A joint record lacking board_meta.excluded_views is reported stale, naming the field."""
     client, body = _joint_route(tmp_path, monkeypatch)

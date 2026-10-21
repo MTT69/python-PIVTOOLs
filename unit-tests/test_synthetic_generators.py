@@ -112,7 +112,37 @@ STEPPED_KEYS = {
     "levels",
     "image_width",
     "image_height",
+    "thickness_mm",
 }
+
+# Pre-thickness (2026-10-21) same_side cam 2 pixels for the default 3-pose set
+# (seed 42, 1.3 MP), poses x peak dots (0, 220, 440, 441, 840).  Pins that adding
+# the plate thickness left the same_side render untouched.
+SAME_SIDE_CAM2_REF_IDX = [0, 220, 440, 441, 840]
+SAME_SIDE_CAM2_REF_PX = [
+    [
+        [203.532662041, 72.109028928],
+        [638.041613063, 510.0],
+        [1113.171893984, 988.828478927],
+        [220.432953553, 90.245582501],
+        [1090.542180321, 967.225962088],
+    ],
+    [
+        [214.332750927, 24.831968811],
+        [637.973400916, 509.640237082],
+        [1065.681597988, 999.103347749],
+        [231.555689282, 46.435547475],
+        [1046.116651603, 978.624795023],
+    ],
+    [
+        [213.685353425, 1.614080998],
+        [637.525532313, 509.718388778],
+        [1042.03766492, 994.652020284],
+        [232.335998496, 24.646652813],
+        [1024.91198353, 974.7660977],
+    ],
+]
+REF_PX_TOL = 1e-8  # the reference is rounded to 1e-9 px
 
 
 @pytest.mark.parametrize("dot_mm", STEPPED_DOT_CASES)
@@ -184,9 +214,11 @@ def test_stepped_stereo_ground_truth_is_self_consistent(tmp_path, config):
         "R_stereo",
         "T_stereo",
         "fiducials_px_cam2",
+        "points_mm_cam2",
     } <= set(gt.files)
     K = gt["camera_matrix"]
-    pts = gt["points_mm"]
+    # Each camera projects the 3-D set it renders (transmission cam 2: back face).
+    pts1, pts2 = gt["points_mm"], gt["points_mm_cam2"]
     # cam2 pose == R_stereo . cam1 pose + T_stereo, and projections match the images' truth
     for i in range(3):
         R1 = cv2.Rodrigues(gt["rvecs_cam1"][i])[0]
@@ -197,10 +229,25 @@ def test_stepped_stereo_ground_truth_is_self_consistent(tmp_path, config):
             gt["R_stereo"] @ gt["tvecs_cam1"][i] + gt["T_stereo"].ravel(),
             atol=1e-9,
         )
+        px1 = cv2.projectPoints(
+            pts1, gt["rvecs_cam1"][i], gt["tvecs_cam1"][i], K, np.zeros(5)
+        )[0].reshape(-1, 2)
+        assert np.allclose(px1, gt["points_px_cam1"][i], atol=1e-9)
         px2 = cv2.projectPoints(
-            pts, gt["rvecs_cam2"][i], gt["tvecs_cam2"][i], K, np.zeros(5)
+            pts2, gt["rvecs_cam2"][i], gt["tvecs_cam2"][i], K, np.zeros(5)
         )[0].reshape(-1, 2)
         assert np.allclose(px2, gt["points_px_cam2"][i], atol=1e-9)
+    if config == "same_side":
+        assert np.array_equal(pts2, pts1)
+        np.testing.assert_allclose(
+            gt["points_px_cam2"][:, SAME_SIDE_CAM2_REF_IDX],
+            SAME_SIDE_CAM2_REF_PX,
+            rtol=0,
+            atol=REF_PX_TOL,
+        )
+    else:
+        assert float(gt["thickness_mm"]) == gstep.STEPPED_THICKNESS_MM
+        assert not np.array_equal(pts2, pts1)
     # Symmetric rig: each camera takes half the included angle theta about Y.
     half = np.radians(gstep.DEFAULT_STEREO_ANGLE_DEG) / 2.0
     R1 = cv2.Rodrigues(gt["rvecs_cam1"][0])[0]
@@ -297,6 +344,109 @@ def test_stepped_transmission_recovery_on_both_cameras(tmp_path):
             )
             print(f"stepped transmission cam{cam} pose {i}: recovery {frac:.4f}")
             assert frac >= CLEAN_RECOVERY, f"cam{cam} pose {i}: {frac:.3f}"
+
+
+def _stepped_stereo_gt(out, config: str, thickness_mm: float) -> dict:
+    """One-pose stereo set at ``thickness_mm``; returns the loaded ground truth."""
+    gstep.main(
+        [
+            "--out",
+            str(out),
+            "--n-poses",
+            "1",
+            "--cameras",
+            "2",
+            "--stereo-config",
+            config,
+            "--thickness-mm",
+            str(thickness_mm),
+        ]
+    )
+    return dict(np.load(out / "stepped_ground_truth.npz"))
+
+
+RIG_KEYS = (
+    "R_stereo",
+    "T_stereo",
+    "rvecs_cam1",
+    "tvecs_cam1",
+    "rvecs_cam2",
+    "tvecs_cam2",
+)
+
+
+def test_stepped_transmission_back_face_matches_calibrator_model(tmp_path):
+    """Transmission cam 2 renders the back face of a plate ``thickness_mm`` thick.
+
+    The back face is the front set translated by -(T - step) along the board
+    normal, so its peak lattice sits at z = -(T - step) and its trough lattice
+    at z = -T: the front peak plane and the back outer plane are T apart and the
+    z values are exactly the production ``compute_z_and_offsets`` transmission
+    model (cam 1 clicks the z = 0 'peak', cam 2 its datum lattice 'trough', the
+    P6 label convention).  The rig is untouched: thickness moves dots, not
+    cameras, so R_stereo / T_stereo and every pose are bitwise equal to the
+    zero-thickness (T = step) set, and cam 1 does not change at all.
+    """
+    from pivtools_gui.calibration.detection.stepped_levels import SteppedBoardSpec
+    from pivtools_gui.calibration.stepped_calibrate import compute_z_and_offsets
+
+    step = gstep.STEPPED_STEP_MM
+    thick = gstep.STEPPED_THICKNESS_MM
+    thin_gt = _stepped_stereo_gt(tmp_path / "thin", "transmission", step)
+    gt = _stepped_stereo_gt(tmp_path / "thick", "transmission", thick)
+    n_peak = int(np.prod(gstep.STEPPED_PEAK_SHAPE))
+
+    front, back = gt["points_mm"], gt["points_mm_cam2"]
+    assert np.array_equal(back[:, :2], front[:, :2])  # same (x, y) lattices
+    assert np.allclose(back[:, 2] - front[:, 2], -(thick - step), atol=1e-12)
+    # T = front peak plane (z = 0) to the back face's outermost plane (z = -T).
+    assert np.isclose(front[:n_peak, 2].max() - back[n_peak:, 2].min(), thick)
+
+    geo = compute_z_and_offsets(
+        "transmission",
+        "peak",
+        "trough",
+        SteppedBoardSpec(
+            dot_spacing_mm=float(gt["spacing_mm"]),
+            step_height_mm=step,
+            board_thickness_mm=thick,
+        ),
+    )
+    assert np.allclose(front[:n_peak, 2], geo["Cam1"]["z"]["peak"])
+    assert np.allclose(front[n_peak:, 2], geo["Cam1"]["z"]["trough"])
+    assert np.allclose(back[:n_peak, 2], geo["Cam2"]["z"]["trough"])  # datum lattice
+    assert np.allclose(back[n_peak:, 2], geo["Cam2"]["z"]["peak"])
+
+    for k in RIG_KEYS:
+        assert np.array_equal(gt[k], thin_gt[k]), k
+    for k in ("points_px_cam1", "visible_cam1", "fiducials_px_cam1", "levels"):
+        assert np.array_equal(gt[k], thin_gt[k]), k
+    assert not np.allclose(gt["points_px_cam2"], thin_gt["points_px_cam2"])
+    px2 = cv2.projectPoints(
+        back, gt["rvecs_cam2"][0], gt["tvecs_cam2"][0], gt["camera_matrix"], np.zeros(5)
+    )[0].reshape(-1, 2)
+    assert np.allclose(px2, gt["points_px_cam2"][0], atol=1e-9)
+    # Thin plate == the old single zero-thickness point set seen from both sides.
+    assert np.array_equal(thin_gt["points_mm_cam2"], thin_gt["points_mm"])
+
+
+def test_stepped_same_side_ignores_thickness(tmp_path):
+    """same_side renders the front face for both cameras whatever the thickness."""
+    thin = _stepped_stereo_gt(tmp_path / "thin", "same_side", gstep.STEPPED_STEP_MM)
+    thick = _stepped_stereo_gt(tmp_path / "thick", "same_side", 20.0)
+    for k in set(thin) - {"thickness_mm"}:
+        assert np.array_equal(thin[k], thick[k]), k
+
+
+def test_stepped_thickness_below_step_rejected(tmp_path):
+    with pytest.raises(ValueError, match="thickness_mm"):
+        gstep.generate(
+            tmp_path,
+            n_poses=1,
+            cameras=2,
+            stereo_config="transmission",
+            thickness_mm=gstep.STEPPED_STEP_MM - 0.5,
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -386,6 +386,10 @@ STEPPED_STEP_MM = 3.0
 STEPPED_DOT_DIAMETER_MM = 3.0
 STEPPED_PEAK_SHAPE = (21, 21)  # (cols, rows) of the z = 0 level
 STEPPED_TROUGH_SHAPE = (20, 20)  # (cols, rows) of the z = -step level
+# Plate thickness, front peak plane to back peak plane.  Matches the stepped
+# calibrator default (SteppedBoardSpec.board_thickness_mm) and the 309-15-3
+# plates used on Andre's and Zefanya's data.
+STEPPED_THICKNESS_MM = 14.8
 
 
 def stepped_board_points_mm(

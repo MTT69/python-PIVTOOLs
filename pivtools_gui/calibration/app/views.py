@@ -3721,12 +3721,28 @@ def joint_model():
         out = {}
         geom = None
         excluded: list = []
+        # A polynomial joint model is one per-camera record per configured camera. A camera
+        # with no record is reported (``missing_cameras``) rather than dropped so the results
+        # card can say the model is partial; a record that exists but cannot be read is an
+        # error naming the camera (strict reader — never shown as "no model").
+        missing: list = []
         for cam in cameras:
             mdir = rec.mono_model_dir_for_source(source, cam, board)
             try:
                 mono = rec.load_mono(mdir, "polynomial")
-            except (FileNotFoundError, ValueError):
+            except FileNotFoundError:
+                missing.append(int(cam))
                 continue
+            except (ValueError, OSError) as exc:
+                return (
+                    jsonify(
+                        {
+                            "exists": False,
+                            "error": f"polynomial record for camera {cam} unreadable: {exc}",
+                        }
+                    ),
+                    200,
+                )
             try:
                 excluded += rec.parse_excluded_views(
                     _require_meta(mono.board_meta, "excluded_views", str(mdir))
@@ -3749,6 +3765,7 @@ def joint_model():
                 "per_camera": out,
                 "geometry": geom,
                 "excluded_views": [[c, f] for c, f in sorted(excluded)],
+                "missing_cameras": missing,
             }
         )
 
