@@ -206,6 +206,13 @@ def render_dots(
     return img
 
 
+def centred_pose_depth(
+    fx: float, fit_px: float, board_width_3d: float, fill: float
+) -> float:
+    """Depth ``Z`` at which a frontal board ``board_width_3d`` wide spans ``fill * fit_px`` px."""
+    return fx * board_width_3d / (fill * fit_px)
+
+
 def make_centred_poses(
     n_views: int,
     board_centre_3d: np.ndarray,
@@ -218,15 +225,18 @@ def make_centred_poses(
 ) -> list:
     """Poses with the board centroid on the optical axis at a common depth.
 
-    View 0 is frontal.  Every view shares one depth ``Z`` (board width fills
-    ``fill * fit_px`` pixels when frontal) so a rig built from these poses has
-    a pose-independent ``T_stereo``.  Unlike ``make_poses`` the translation is
-    ``[0, 0, Z] - R @ centre`` so a tilted board stays centred.
+    View 0 is frontal in the board-centred rig frame (rvec = 0); a stereo rig
+    built with ``symmetric_stereo_rig`` then turns each camera by its half angle
+    about the centroid.  Every view shares one depth ``Z``
+    (``centred_pose_depth``: board width fills ``fill * fit_px`` pixels when
+    frontal) so the rig has a pose-independent ``T_stereo``.  Unlike
+    ``make_poses`` the translation is ``[0, 0, Z] - R @ centre`` so a tilted
+    board stays centred.
 
     Returns a list of ``(rvec, tvec)`` (float64, shape (3,)).
     """
     rng = np.random.default_rng(seed)
-    Z = fx * board_width_3d / (fill * fit_px)
+    Z = centred_pose_depth(fx, fit_px, board_width_3d, fill)
     poses = []
     for i in range(n_views):
         if i == 0:
@@ -245,24 +255,51 @@ def make_centred_poses(
     return poses
 
 
-def rig_from_centroid_rotation(R_stereo: np.ndarray, depth: float) -> np.ndarray:
-    """T_stereo for a camera 2 obtained by rotating cam 1 about the board centroid.
+def symmetric_stereo_rig(
+    poses_rig: list,
+    half_rotation: np.ndarray,
+    depth: float,
+    transmission: bool = False,
+) -> tuple:
+    """Two cameras turned symmetrically about the board centroid.
 
-    The centroid sits at ``[0, 0, depth]`` in the cam-1 frame, so
-    ``T = (I - R) @ [0, 0, depth]`` keeps it on cam 2's optical axis too.
+    ``poses_rig`` are board -> rig-frame poses from ``make_centred_poses``: the
+    rig frame is the frontal camera of view 0, with the board centroid at
+    ``P = [0, 0, depth]``.  Each camera ``k`` is the rig frame rotated by
+    ``Q_k`` about ``P``, so ``R_k = Q_k R`` and ``t_k = Q_k (t - P) + P``.
+
+        same_side     Q1 = half_rotation.T,  Q2 = half_rotation
+        transmission  Q1 = half_rotation.T,  Q2 = Ry(180 deg) @ half_rotation
+                      (camera 2 looks at the back face)
+
+    With ``half_rotation = Ry(theta / 2)`` the cameras sit at -theta/2 and
+    +theta/2 (same_side) or -theta/2 and 180 deg + theta/2 (transmission), and
+    the centroid stays on both optical axes.
+
+    ``R_stereo = R2 @ R1.T`` and ``T_stereo = t2 - R_stereo @ t1`` (cam 1 ->
+    cam 2) are taken from the view-0 pair; both are pose independent
+    (``R_stereo = Q2 Q1^T``, ``T_stereo = P - Q2 Q1^T P``) so every view obeys
+    ``R2 = R_stereo R1``, ``t2 = R_stereo t1 + T_stereo``.
+
+    Returns ``(poses_cam1, poses_cam2, R_stereo (3, 3), T_stereo (3,))``.
     """
-    return (np.eye(3) - R_stereo) @ np.array([0.0, 0.0, depth])
-
-
-def compose_second_camera(poses_cam1: list, R_stereo: np.ndarray, T_stereo) -> list:
-    """Cam-2 poses for a rigid rig: R2 = R_stereo R1, t2 = R_stereo t1 + T_stereo."""
-    T = np.asarray(T_stereo, np.float64).reshape(3)
-    out = []
-    for rvec1, tvec1 in poses_cam1:
-        R1, _ = cv2.Rodrigues(np.asarray(rvec1, np.float64))
-        rvec2, _ = cv2.Rodrigues(R_stereo @ R1)
-        out.append((rvec2.reshape(3), R_stereo @ np.asarray(tvec1).reshape(3) + T))
-    return out
+    Q1 = np.asarray(half_rotation, np.float64).T
+    Q2 = np.asarray(half_rotation, np.float64)
+    if transmission:
+        Q2 = cv2.Rodrigues(np.array([0.0, np.pi, 0.0]))[0] @ Q2
+    P = np.array([0.0, 0.0, float(depth)])
+    out1, out2 = [], []
+    for rvec, tvec in poses_rig:
+        R, _ = cv2.Rodrigues(np.asarray(rvec, np.float64))
+        t = np.asarray(tvec, np.float64).reshape(3)
+        for Q, out in ((Q1, out1), (Q2, out2)):
+            rvec_k, _ = cv2.Rodrigues(Q @ R)
+            out.append((rvec_k.reshape(3), Q @ (t - P) + P))
+    R1 = cv2.Rodrigues(out1[0][0])[0]
+    R2 = cv2.Rodrigues(out2[0][0])[0]
+    R_stereo = R2 @ R1.T
+    T_stereo = out2[0][1] - R_stereo @ out1[0][1]
+    return out1, out2, R_stereo, T_stereo
 
 
 def project_points(

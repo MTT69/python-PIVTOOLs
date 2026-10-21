@@ -974,7 +974,7 @@ def reconstruct_stereo_run(
     vector_glob: str = "B*.mat",
     interpolator: str = "lanczos",
     cancel_event: Optional[threading.Event] = None,
-) -> List[str]:
+) -> Tuple[List[str], int]:
     """3C reconstruction over a run: cam1 + cam2 uncalibrated -> stereo (U,V,W) m/s.
 
     Writes world coordinates (x,y mm) and 3C velocities (ux,uy,uz m/s) on a REGULAR
@@ -983,6 +983,10 @@ def reconstruct_stereo_run(
     populated pass unless ``pass_index`` set. A set ``cancel_event`` stops the run
     between frames (see ``_run_frame_tasks``); the frames already written keep their
     ``coordinates.mat``.
+
+    Returns ``(written, n_skipped)``: the output paths, and the number of frame pairs
+    skipped because the requested pass is absent from one or both cameras' vector files
+    (those frames are not written). Cancel/failure raise as described above.
     """
     from .stereo_model import regular_world_grid
 
@@ -1064,4 +1068,4 @@ def reconstruct_stereo_run(
         raise
     if written:
         _write_coords()
-    return written
+    return written, len(tasks) - len(written)

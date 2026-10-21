@@ -227,8 +227,8 @@ def _extract_blob_centers(thresh: np.ndarray) -> Tuple[np.ndarray, int]:
     (a dot cut by the frame edge has no measurable centre: ``fitEllipse`` on
     the truncated contour shifts inward by up to the clipped width, measured
     +/-2 px on 2026-08-28, under the outlier gate), filters the rest by
-    circularity (> 0.4) and area (0.15x–3.0x median), then fits a
-    least-squares ellipse to each surviving contour for sub-pixel accuracy.
+    circularity (> 0.4) and area (0.15x–3.0x median; there is no fixed
+    minimum area), then fits a least-squares ellipse to each surviving contour for sub-pixel accuracy.
 
     Parameters
     ----------
@@ -257,14 +257,14 @@ def _extract_blob_centers(thresh: np.ndarray) -> Tuple[np.ndarray, int]:
     if n_border_dropped:
         logger.debug(f"Dropped {n_border_dropped} blob(s) touching the image border")
 
-    # Geometric filtering: circularity + minimum area
+    # Geometric filtering: circularity
     circular_contours = []
     for cnt in interior_contours:
         if len(cnt) < 5:
             continue
         area = cv2.contourArea(cnt)
         perimeter = cv2.arcLength(cnt, True)
-        if perimeter == 0 or area < 50:
+        if perimeter == 0:
             continue
         circularity = 4 * np.pi * (area / (perimeter * perimeter))
         if circularity > 0.40:
@@ -854,7 +854,15 @@ _OUTLIER_FIT_MIN_DOTS = 20
 #   3 -- 2026-10-20: two flat-field windows (the image-relative estimate and the 70 px
 #        anchor) x both polarities, every candidate finished through RANSAC / rescue /
 #        outlier gate, winner = largest final grid (was: largest BFS grid, one window).
-DETECTOR_VERSION = 3
+#   4 -- 2026-10-21: fixed contourArea >= 50 floor removed. It dropped far-side dots of
+#        3 mm / 1.3 MP synthetic stepped boards (a frontal 9 px dot has contourArea
+#        ~51-60 and falls under 50 when foreshortened: 841 -> 618 blobs at 14.3 deg).
+#        On Merle cam3 v1-4 (2560x1664, ~4000 px^2 dots) and Andre x0_2 (5312x3352,
+#        ~2000 px^2) the 0.15x-median band rejects every contour the floor rejected,
+#        so the kept set is unchanged. On John (1248x1680, ~100 px^2 dots, band floor
+#        ~15 px^2) it admits 5 dim real dots of 19-50 px^2 (grid 118 -> 123, DaVis
+#        matches 113 -> 114; two of the five sit 2.3 and 3.3 px from the DaVis mark).
+DETECTOR_VERSION = 4
 
 
 def _grid_model_points(params: np.ndarray, src: np.ndarray, scale: float) -> np.ndarray:

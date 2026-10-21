@@ -18,13 +18,17 @@ and the board detector mocked (the ``env`` fixture of the ``detect_views`` suite
 - The generate write-back merges coords under the sidecar lock: a pick committed while
   the model was solving is never overwritten with the stale read.
 - ``_joint_detect``: a read-only sidecar write is reported, a ValueError raises.
-- ``DETECTOR_VERSION`` 3: detections cached by an older detector are stale.
+- ``DETECTOR_VERSION`` 4: detections cached by an older detector are stale.
 """
 
 from __future__ import annotations
 
 # ruff: noqa: F811  (the imported ``env`` pytest fixture is re-bound by every test's parameter)
+import time
+
+import numpy as np
 import pytest
+from flask import Flask
 from test_calibration_detect_views_routes import env  # noqa: F401  (pytest fixture)
 from test_calibration_detect_views_routes import (  # noqa: E402  (sibling-test reuse)
     FMT,
@@ -425,7 +429,7 @@ def test_generate_model_type_null_is_an_error(env):
 
 def test_detect_views_stereo_without_camera_pair_is_an_error(env, monkeypatch):
     client, _base, _params = env
-    monkeypatch.setattr(V, "_rig", lambda get: {})
+    monkeypatch.setattr(V, "_sidecar_rig", lambda get: {})
 
     r = client.post(
         "/calibration/detect_views",
@@ -444,7 +448,7 @@ def test_detect_views_stereo_without_camera_pair_is_an_error(env, monkeypatch):
 
 def test_generate_stereo_without_camera_pair_is_an_error(env, monkeypatch):
     client, _base, _params = env
-    monkeypatch.setattr(V, "_rig", lambda get: {})
+    monkeypatch.setattr(V, "_sidecar_rig", lambda get: {})
     c1, c2 = _pair_clicks()
 
     body = _gen(client, stereo=True, clicks=c1, clicks2=c2).get_json()
@@ -453,10 +457,32 @@ def test_generate_stereo_without_camera_pair_is_an_error(env, monkeypatch):
     assert "camera_pair is required" in body["error"]
 
 
+def test_stereo_pair_never_comes_from_the_defaults_template(env, monkeypatch):
+    """No sidecar + no request pair is an error even though the defaults template
+    carries ``rig.camera_pair = [1, 2]`` (P6: the pair must be a user choice)."""
+    client, _base, _params = env
+    monkeypatch.setattr(V, "_rig", lambda get: {"camera_pair": [1, 2]})
+    monkeypatch.setattr(V.cs, "try_load_settings", lambda source: None)
+
+    r = client.post(
+        "/calibration/detect_views",
+        json={
+            "source_path_idx": 0,
+            "board": "dotboard",
+            "image_format": FMT,
+            "frame_total": N_VIEWS,
+            "stereo": True,
+        },
+    )
+
+    assert r.status_code == 400
+    assert "no settings sidecar" in r.get_json()["error"]
+
+
 def test_restore_detections_stereo_rig_pair_is_used(env, monkeypatch):
     """The rig pair (not a literal [1, 2]) decides which sidecar is restored."""
     client, base, _params = env
-    monkeypatch.setattr(V, "_rig", lambda get: {"camera_pair": [2, 3]})
+    monkeypatch.setattr(V, "_sidecar_rig", lambda get: {"camera_pair": [2, 3]})
 
     r = client.post(
         "/calibration/restore_detections",
@@ -573,14 +599,131 @@ def test_joint_detect_persisted_reports_none(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# DETECTOR_VERSION 3
+# Joint generate / model: views excluded from the solve are reported
+# ---------------------------------------------------------------------------
+
+# The synthetic ChArUco rig of test_calibration_joint_charuco (corner ids link the cameras, so
+# no click spec is needed). (camera, 0-based view) whose detection fails in the route tests.
+_JOINT_FAILED_VIEW = (2, 3)
+_JOINT_WAIT_S = 120.0
+
+
+def _joint_route(tmp_path, monkeypatch):
+    """Real joint routes over the synthetic ChArUco rig with one failed view.
+
+    ``_joint_env`` supplies the source path and the per-(frame, camera) tagged images;
+    ``_detect_parallel`` is replaced to hand back the rig's detection for each tagged image.
+    Figure writing is stubbed (it is guarded and orthogonal to the reported fields).
+    """
+    from test_calibration_joint_charuco import _N_VIEWS as CH_VIEWS
+    from test_calibration_joint_charuco import SPACING as CH_SPACING
+    from test_calibration_joint_charuco import _dataset
+
+    from pivtools_gui.calibration import figures as FIG
+    from pivtools_gui.calibration.detection.base import DetectionResult
+
+    _joint_env(tmp_path, monkeypatch)
+    dets = _dataset(seed=3, flat=False)
+    cam, view = _JOINT_FAILED_VIEW
+    dets[cam][view] = DetectionResult(
+        success=False,
+        board_type="charuco",
+        image_points=np.empty((0, 2)),
+        board_local_points=np.empty((0, 3)),
+    )
+    monkeypatch.setattr(
+        V,
+        "_detect_parallel",
+        # _frame_image tags pixel (0,0) with the 1-based frame and (0,1) with the camera.
+        lambda board, p, imgs, spacing_mm=None, on_done=None: [
+            dets[int(i[0, 1])][int(i[0, 0]) - 1] for i in imgs
+        ],
+    )
+    monkeypatch.setattr(FIG, "write_joint_figures", lambda *a, **k: None)
+    app = Flask(__name__)
+    app.register_blueprint(V.calibration_bp)
+    body = {
+        "source_path_idx": 0,
+        "board": "charuco",
+        "model_type": "pinhole",
+        "cameras": [1, 2, 3],
+        "n_views": CH_VIEWS,
+        "image_format": FMT,
+        "datum_camera": 1,
+        "datum_view": 0,
+        "dt": 1.0,
+        "board_params": {
+            "squares_h": 15,
+            "squares_v": 10,
+            "square_size": CH_SPACING / 1000.0,
+        },
+    }
+    return app.test_client(), body
+
+
+def _wait_joint(client, job_id: str) -> dict:
+    deadline = time.time() + _JOINT_WAIT_S
+    while time.time() < deadline:
+        j = client.get(f"/calibration/joint/generate/status/{job_id}").get_json()
+        if j.get("status") in ("completed", "failed", "cancelled"):
+            return j
+        time.sleep(0.05)
+    raise AssertionError(f"joint job {job_id} did not finish within {_JOINT_WAIT_S}s")
+
+
+def _joint_model(client) -> dict:
+    return client.get(
+        "/calibration/joint/model",
+        query_string={
+            "source_path_idx": 0,
+            "board": "charuco",
+            "model_type": "pinhole",
+        },
+    ).get_json()
+
+
+def test_joint_generate_reports_excluded_views(tmp_path, monkeypatch):
+    """The failed view is reported 1-based in the completed job AND by joint_model after save."""
+    client, body = _joint_route(tmp_path, monkeypatch)
+    resp = client.post("/calibration/joint/generate", json=body).get_json()
+    assert resp["success"] is True, resp
+
+    status = _wait_joint(client, resp["job_id"])
+
+    assert status["status"] == "completed", status
+    cam, view = _JOINT_FAILED_VIEW
+    assert status["excluded_views"] == [[cam, view + 1]]
+    model = _joint_model(client)
+    assert model["exists"] is True, model
+    assert model["excluded_views"] == [[cam, view + 1]]
+
+
+def test_joint_model_without_excluded_views_is_stale(tmp_path, monkeypatch):
+    """A joint record lacking board_meta.excluded_views is reported stale, naming the field."""
+    client, body = _joint_route(tmp_path, monkeypatch)
+    resp = client.post("/calibration/joint/generate", json=body).get_json()
+    status = _wait_joint(client, resp["job_id"])
+    assert status["status"] == "completed", status
+    model_dir = rec.joint_model_dir_for_source(tmp_path, "charuco")
+    record = rec.load_joint(rec.resolve_joint_path(model_dir, "pinhole"))
+    record.board_meta.pop("excluded_views")
+    rec.save_joint(record, model_dir)
+
+    model = _joint_model(client)
+
+    assert model["exists"] is False
+    assert "excluded_views" in model["error"]
+
+
+# ---------------------------------------------------------------------------
+# DETECTOR_VERSION 4
 # ---------------------------------------------------------------------------
 
 
 def test_detections_from_detector_version_1_are_stale(env, monkeypatch):
-    """The two-window detector (v3) returns different points: a v1 sidecar must not be reused."""
+    """The current detector (v4) returns different points: a v1 sidecar must not be reused."""
     client, _base, _params = env
-    assert GD.DETECTOR_VERSION == 3
+    assert GD.DETECTOR_VERSION == 4
     monkeypatch.setattr(INP, "DETECTOR_VERSION", 1)
     _post_views(client, camera=1)
     monkeypatch.setattr(INP, "DETECTOR_VERSION", GD.DETECTOR_VERSION)

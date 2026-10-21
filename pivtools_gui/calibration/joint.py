@@ -511,13 +511,29 @@ class _JointBA:
             add(ci + 4, jc[:, 11])  # k2
             add(ci + 5, jc[:, 12])  # p1
             add(ci + 6, jc[:, 13])  # p2
-            d_rig = jc[:, :6] @ J_rig  # (2M, 6): d(proj)/d(rig rvec, tvec)
+            # NumPy 2.2.6 on arm64 Apple Accelerate raises spurious divide/invalid/overflow FP
+            # status flags on these finite matmuls (measured 2026-10-21 on the Merle joint solve:
+            # 300 jac calls, all warned, every product finite). Silence the flags, then check
+            # finiteness explicitly so a real non-finite product still fails loudly.
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                d_rig = jc[:, :6] @ J_rig  # (2M, 6): d(proj)/d(rig rvec, tvec)
+            if not np.isfinite(d_rig).all():
+                raise FloatingPointError(
+                    f"joint: non-finite rig Jacobian for camera {cam}"
+                )
             ri = self._rig_col(cam)
             for j in range(6):
                 add(ri + j, d_rig[:, j])
             bi = self._board_col(k[1])
             if bi is not None:  # the datum view's board pose is pinned, no columns
-                d_board = jc[:, :6] @ J_board  # (2M, 6): d(proj)/d(board rvec, tvec)
+                # Same spurious Accelerate FP flags as the rig product above.
+                # (2M, 6): d(proj)/d(board rvec, tvec)
+                with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                    d_board = jc[:, :6] @ J_board
+                if not np.isfinite(d_board).all():
+                    raise FloatingPointError(
+                        f"joint: non-finite board Jacobian for view {k}"
+                    )
                 for j in range(6):
                     add(bi + j, d_board[:, j])
 

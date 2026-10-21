@@ -23,19 +23,7 @@ from pivtools_gui.calibration.detection.stepped import SteppedDetector, SteppedP
 
 MATCH_TOL_PX = 1.0  # detected centre must lie this close to the true centre
 CLEAN_RECOVERY = 0.99
-# Stepped, spec 3 mm dots at 1.3 MP: the detector's 50 px^2 blob-area floor
-# (grid_detection._extract_blob_centers) sits at the far-side dot size of a tilted
-# view, so recovery falls to 0.88-0.98 (measured).  Recorded as a non-strict xfail
-# against the same 99 % bar; 4 mm dots clear the floor and pass.
-STEPPED_DOT_CASES = [
-    pytest.param(
-        3.0,
-        marks=pytest.mark.xfail(
-            reason="detector 50 px^2 blob-area floor at 1.3 MP", strict=False
-        ),
-    ),
-    4.0,
-]
+STEPPED_DOT_CASES = [3.0, 4.0]
 RAMP_RECOVERY = 0.95
 LONG_SIDE_PX = (2600, 6000)
 ASPECT_LONG = 1.5
@@ -120,6 +108,7 @@ STEPPED_KEYS = {
     "step_mm",
     "spacing_mm",
     "fiducials_px_cam1",
+    "fiducial_grid_index",
     "levels",
     "image_width",
     "image_height",
@@ -212,12 +201,73 @@ def test_stepped_stereo_ground_truth_is_self_consistent(tmp_path, config):
             pts, gt["rvecs_cam2"][i], gt["tvecs_cam2"][i], K, np.zeros(5)
         )[0].reshape(-1, 2)
         assert np.allclose(px2, gt["points_px_cam2"][i], atol=1e-9)
-    # which level faces each camera
+    # Symmetric rig: each camera takes half the included angle theta about Y.
+    half = np.radians(gstep.DEFAULT_STEREO_ANGLE_DEG) / 2.0
+    R1 = cv2.Rodrigues(gt["rvecs_cam1"][0])[0]
+    R2 = cv2.Rodrigues(gt["rvecs_cam2"][0])[0]
+    assert np.allclose(gt["rvecs_cam1"][0], [0.0, -half, 0.0], atol=1e-12)
+    if config == "same_side":
+        assert np.allclose(gt["rvecs_cam2"][0], [0.0, half, 0.0], atol=1e-12)
+    else:
+        Ry_back = cv2.Rodrigues(np.array([0.0, np.pi + half, 0.0]))[0]
+        assert np.allclose(R2, Ry_back, atol=1e-12)
+    # Optical axis of camera k in the board frame is row 3 of R_k.  Pose 0 has
+    # R_k = Ry(phi_k), so the axes differ by phi_2 - phi_1: theta (same_side) or
+    # 180 deg + theta, i.e. an unsigned angle of 180 deg - theta (transmission).
+    axis_deg = np.degrees(np.arccos(np.clip(R1[2] @ R2[2], -1.0, 1.0)))
+    expected_axis_deg = (
+        gstep.DEFAULT_STEREO_ANGLE_DEG
+        if config == "same_side"
+        else 180.0 - gstep.DEFAULT_STEREO_ANGLE_DEG
+    )
+    assert np.isclose(axis_deg, expected_axis_deg, atol=1e-9)
+    # Which level faces each camera.  Every camera of the symmetric rig is at most
+    # theta/2 + max_tilt (~16 deg) off the board normal, so the trough level
+    # (z = -step, the side the cameras view from) is nearer cam 1 and same_side
+    # cam 2 in every pose; transmission cam 2 views the back face, so the peak
+    # level is nearer.  Verified with gstep.nearer_level on these poses.
     expected_cam2 = 1 if config == "same_side" else 0
     assert (gt["levels"][:, 0] == 1).all()
     assert (gt["levels"][:, 1] == expected_cam2).all()
     for cam in (1, 2):
         assert len(list((tmp_path / f"cam{cam}").glob("calib*.png"))) == 3
+
+
+@pytest.mark.parametrize("config", gstep.STEREO_CONFIGS)
+def test_stepped_fiducials_visible_and_snappable(tmp_path, config):
+    """Each GT fiducial is wholly in frame and a click on it snaps to itself.
+
+    The GUI ``snap_fiducial`` route snaps a click to the nearest detected point
+    (``world_frame._snap``), so a detected centre within MATCH_TOL_PX of every
+    fiducial means the datum triple is clickable in both cameras.
+    """
+    gstep.main(
+        [
+            "--out",
+            str(tmp_path),
+            "--n-poses",
+            "1",
+            "--cameras",
+            "2",
+            "--stereo-config",
+            config,
+        ]
+    )
+    gt = np.load(tmp_path / "stepped_ground_truth.npz")
+    c, r = (int(v) for v in gt["fiducial_grid_index"])
+    cols = gstep.STEPPED_PEAK_SHAPE[0]
+    idx = [r * cols + c, r * cols + c + 1, (r + 1) * cols + c]
+    det = SteppedDetector(SteppedParams())
+    for cam in (1, 2):
+        fid = gt[f"fiducials_px_cam{cam}"]
+        assert fid.shape == (3, 2)
+        assert np.array_equal(fid, gt[f"points_px_cam{cam}"][0][idx])
+        assert gt[f"visible_cam{cam}"][0][idx].all()
+        res = det.detect(_read(tmp_path / f"cam{cam}" / "calib00001.png"))
+        assert res.success, res.diagnostics.get("error")
+        d, _ = cKDTree(res.image_points).query(fid)
+        print(f"stepped {config} cam{cam} fiducial {c, r}: snap distances {d}")
+        assert (d <= MATCH_TOL_PX).all(), f"cam{cam}: {d}"
 
 
 def test_stepped_transmission_recovery_on_both_cameras(tmp_path):

@@ -413,7 +413,7 @@ def test_scalar_active_paths_is_a_400(route, monkeypatch, bad):
 
 
 def test_stereo_apply_without_camera_pair_is_a_400(route, monkeypatch):
-    monkeypatch.setattr(V, "_rig", lambda get: {})
+    monkeypatch.setattr(V, "_sidecar_rig", lambda get: {})
     monkeypatch.setattr(
         V.c2runio,
         "plan_apply_units",
@@ -503,7 +503,7 @@ def test_stereo_summary_angle_is_the_optical_axis_angle(route, tmp_path):
 
 
 def test_stereo_summary_without_camera_pair_reports_error(route, monkeypatch):
-    monkeypatch.setattr(V, "_rig", lambda get: {})
+    monkeypatch.setattr(V, "_sidecar_rig", lambda get: {})
     body = route.get("/calibration/model?board=dotboard&stereo=1").get_json()
     assert body["exists"] is False
     assert "camera_pair is required" in body["error"]

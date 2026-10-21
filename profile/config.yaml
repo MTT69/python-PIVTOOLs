@@ -101,12 +101,11 @@ instantaneous_piv:
   save_compression: false
   image_warp_interpolation: cubic
 calibration:
-  active: scale_factor
-  piv_type: instantaneous
-  scale_factor:
-    dt: 0.0057553
-    px_per_mm: 13.653
-    source_path_idx: 0
+  # Pointer only. The bench does not read it, but Config.active_calibration_method requires `active` for the GUI code paths.
+  # former scale_factor dt=0.0057553 s, px_per_mm=13.653 (now lives in the source's settings sidecar)
+  calibration_sources: []
+  source_idx: 0
+  active: charuco
 filters: []
 masking:
   enabled: true
