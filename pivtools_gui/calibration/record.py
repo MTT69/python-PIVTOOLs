@@ -484,6 +484,40 @@ def _meta_from(obj) -> Dict[str, Any]:
     return out
 
 
+def format_excluded_views(excluded: Sequence[Tuple[int, int]]) -> str:
+    """``[(cam, frame), ...]`` -> ``"cam:frame,cam:frame"`` (``""`` when none).
+
+    The joint ``board_meta["excluded_views"]`` field. Stored as one string rather than an
+    (N, 2) array because ``squeeze_me`` would collapse an N <= 1 array to a different shape
+    on load; a string round-trips unchanged. Frames are 1-based, as the user sees them.
+    """
+    return ",".join(f"{int(c)}:{int(f)}" for c, f in excluded)
+
+
+def parse_excluded_views(value: Any) -> List[Tuple[int, int]]:
+    """Inverse of :func:`format_excluded_views`, from a value as ``_meta_from`` returns it.
+
+    ``savemat`` writes ``""`` as an empty char array, which loads back as a size-0 ``<U``
+    ndarray, so that form also means "none". Anything else that is not a well-formed
+    ``"cam:frame,..."`` string raises ``ValueError``.
+    """
+    if isinstance(value, np.ndarray) and value.dtype.kind == "U" and value.size == 0:
+        return []
+    if not isinstance(value, str):
+        raise ValueError(
+            f"excluded_views must be a 'cam:frame,...' string, got {type(value).__name__}"
+        )
+    if value == "":
+        return []
+    out: List[Tuple[int, int]] = []
+    for item in value.split(","):
+        cam, sep, frame = item.partition(":")
+        if not sep or not cam.strip().isdigit() or not frame.strip().isdigit():
+            raise ValueError(f"excluded_views: malformed entry {item!r} in {value!r}")
+        out.append((int(cam), int(frame)))
+    return out
+
+
 def geometry_meta(
     board: str,
     params: Any,

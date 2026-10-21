@@ -16,8 +16,11 @@ Illumination (``--illumination``) multiplies the image by a smooth field in
 [0.4, 1.0].  ``ramp`` rises linearly left to right, ``vignette`` falls with the
 square of the distance from the centre, ``none`` leaves the render untouched.
 
-Stereo (``--cameras 2``) builds camera 2 by rotating camera 1 about the board
-centroid by ``--stereo-angle-deg`` about Y.  ``--clip-cam2 PX`` then removes every
+Stereo (``--cameras 2``) is a symmetric same-side rig: camera 1 and camera 2 turn
+about the board centroid by -theta/2 and +theta/2 about Y, theta =
+``--stereo-angle-deg`` the included angle between them
+(``synthetic_calibration_common.symmetric_stereo_rig``; ``R_stereo = Ry(theta)``
+maps camera 1 to camera 2).  ``--clip-cam2 PX`` then removes every
 dot of camera 2 whose disc reaches left of column PX (a partially visible board
 in camera 2 only, so its grid indices re-zero at a different physical dot).
 
@@ -48,14 +51,14 @@ import numpy as np
 
 from pivtools_cli.synthetic_calibration_common import (
     adaptive_dot_radii,
-    compose_second_camera,
+    centred_pose_depth,
     fully_inside,
     make_camera_matrix,
     make_centred_poses,
     project_points,
     render_dots,
-    rig_from_centroid_rotation,
     save_overview_figure,
+    symmetric_stereo_rig,
 )
 
 DEFAULT_OUT_ROOT = (
@@ -66,7 +69,7 @@ ILLUMINATION_MIN = 0.4  # darkest point of the field
 ILLUMINATION_MAX = 1.0
 BOARD_FILL = 0.70  # frontal board width as a fraction of image width
 DEFAULT_MAX_TILT_RAD = 0.25  # ~14 deg
-DEFAULT_STEREO_ANGLE_DEG = 8.0
+DEFAULT_STEREO_ANGLE_DEG = 8.0  # included angle between the two cameras
 DOT_RADIUS_FRACTION = 0.22  # of the nearest-neighbour pixel distance
 MAX_MEGAPIXELS = 25.0
 ROW_CHUNK = 256  # rows per illumination multiply (bounds float memory)
@@ -148,10 +151,11 @@ def generate(
     K = make_camera_matrix(W, H)
     pts = board_points_m(cols, rows, spacing_mm)
     board_w = (cols - 1) * spacing_mm / 1000.0
-    poses1 = make_centred_poses(
+    fx = float(K[0, 0])
+    poses_rig = make_centred_poses(
         n_views,
         pts.mean(axis=0),
-        float(K[0, 0]),
+        fx,
         float(W),
         board_w,
         fill=BOARD_FILL,
@@ -170,12 +174,14 @@ def generate(
         "illumination": illumination,
         "clip_cam2_px": -1.0 if clip_cam2 is None else float(clip_cam2),
     }
-    poses_by_cam = {1: poses1}
+    poses_by_cam = {1: poses_rig}
     if cameras == 2:
-        R_stereo = cv2.Rodrigues(np.array([0.0, np.radians(stereo_angle_deg), 0.0]))[0]
-        depth = float(poses1[0][1][2] + pts.mean(axis=0)[2])  # pose 0 is frontal
-        T_stereo = rig_from_centroid_rotation(R_stereo, depth)
-        poses_by_cam[2] = compose_second_camera(poses1, R_stereo, T_stereo)
+        half = cv2.Rodrigues(np.array([0.0, np.radians(stereo_angle_deg) / 2.0, 0.0]))[
+            0
+        ]
+        poses_by_cam[1], poses_by_cam[2], R_stereo, T_stereo = symmetric_stereo_rig(
+            poses_rig, half, centred_pose_depth(fx, float(W), board_w, BOARD_FILL)
+        )
         gt["R_stereo"] = R_stereo
         gt["T_stereo"] = T_stereo.reshape(3, 1)
 
@@ -257,7 +263,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PX",
         help="camera 2 only: drop dots whose disc reaches left of column PX",
     )
-    p.add_argument("--stereo-angle-deg", type=float, default=DEFAULT_STEREO_ANGLE_DEG)
+    p.add_argument(
+        "--stereo-angle-deg",
+        type=float,
+        default=DEFAULT_STEREO_ANGLE_DEG,
+        help="included angle between the two cameras, deg (each turns by half "
+        "about the board centroid)",
+    )
     p.add_argument(
         "--max-tilt",
         type=float,

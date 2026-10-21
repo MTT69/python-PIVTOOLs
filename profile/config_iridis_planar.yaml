@@ -116,6 +116,11 @@ instantaneous_piv:
   save_mode: minimal
   save_compression: false
   image_warp_interpolation: lanczos
+calibration:
+  # Pointer only. The bench does not read it, but Config.active_calibration_method requires `active` for the GUI code paths.
+  calibration_sources: []
+  source_idx: 0
+  active: charuco
 filters:
 - type: time
 masking:

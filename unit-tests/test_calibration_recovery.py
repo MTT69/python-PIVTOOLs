@@ -692,7 +692,7 @@ def test_reconstruct_stereo_run_parallel(stereo_render, tmp_path, monkeypatch):
 
     od = tmp_path / "stereo_out"
     progress = []
-    written = runio.reconstruct_stereo_run(
+    written, n_skipped = runio.reconstruct_stereo_run(
         rec,
         tmp_path / "u1",
         tmp_path / "u2",
@@ -702,6 +702,7 @@ def test_reconstruct_stereo_run_parallel(stereo_render, tmp_path, monkeypatch):
     )
 
     assert len(written) == n_frames
+    assert n_skipped == 0
     assert progress == [(k + 1, n_frames) for k in range(n_frames)]
     assert (od / "coordinates.mat").exists()
     bb = scipy.io.loadmat(str(od / "B00001.mat"), squeeze_me=True)["piv_result"]
@@ -710,6 +711,54 @@ def test_reconstruct_stereo_run_parallel(stereo_render, tmp_path, monkeypatch):
             bb[comp].tolist() if bb[comp].dtype == object else bb[comp], dtype=float
         )
         assert np.nanmax(np.abs(arr)) < 1e-6
+
+
+def test_reconstruct_stereo_run_reports_skipped_frames(tmp_path):
+    """A frame pair whose reconstructed pass is empty in one camera is skipped and COUNTED.
+
+    The pass reconstructed is the final populated one of coordinates.mat (pass 2 of the
+    fixture layout). Camera 2's frame 3 is rewritten with that pass empty, so it cannot be
+    reconstructed: it must be absent from ``written`` and reported in ``n_skipped`` while
+    progress still advances over every frame.
+    """
+    import scipy.io
+    from fixtures.vector_sets import (
+        DEFAULT_PASSES,
+        VECTOR_NAME_FORMAT,
+        GridSpec,
+        _frame_piv_result,
+        write_stereo_vector_sets,
+    )
+    from test_calibration_self_cal import _stereo_record
+
+    n_frames, skipped_frame = 4, 3
+    # Inside the overlap of _stereo_record's 1600x1200 pair (as test_calibration_apply_chain).
+    grid = GridSpec(origin_px=(600.0, 450.0), extent_px=(400.0, 300.0))
+    write_stereo_vector_sets(tmp_path / "u1", tmp_path / "u2", n_frames, grid=grid)
+    no_final_pass = DEFAULT_PASSES[:-1] + (None,)
+    scipy.io.savemat(
+        str(tmp_path / "u2" / VECTOR_NAME_FORMAT.format(skipped_frame)),
+        {"piv_result": _frame_piv_result(skipped_frame, no_final_pass, grid)},
+    )
+
+    progress = []
+    written, n_skipped = runio.reconstruct_stereo_run(
+        _stereo_record(),
+        tmp_path / "u1",
+        tmp_path / "u2",
+        tmp_path / "out",
+        dt=1e-3,
+        progress_cb=lambda d, t: progress.append((d, t)),
+        vector_glob="[0-9]*.mat",
+        interpolator="linear",
+    )
+
+    assert n_skipped == 1
+    assert len(written) == n_frames - 1
+    assert VECTOR_NAME_FORMAT.format(skipped_frame) not in {
+        Path(w).name for w in written
+    }
+    assert progress[-1] == (n_frames, n_frames)
 
 
 def test_record_save_load_roundtrip(tmp_path):

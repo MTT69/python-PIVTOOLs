@@ -135,18 +135,36 @@ def _settings(data: dict) -> dict:
     return settings if settings is not None else cs.default_settings()
 
 
+def _sidecar_rig(data: dict) -> dict:
+    """The ``rig`` block of the source's settings SIDECAR, ``{}`` when none exists.
+
+    Never the defaults template (see :func:`_settings`): the stereo camera pair must be
+    a user choice, so the template's ``[1, 2]`` is not an acceptable fallback for it.
+    """
+    try:
+        source = get_config().get_calibration_source(_source_idx(data))
+    except (ValueError, IndexError):
+        return {}
+    settings = cs.try_load_settings(source)
+    return (settings or {}).get("rig") or {}
+
+
 def _resolve_cameras(data: dict) -> List[int]:
-    """Resolve the camera list: explicit ``cameras``, else stereo pair, else mono camera."""
+    """Resolve the camera list: explicit ``cameras``, else stereo pair, else mono camera.
+
+    The stereo pair comes from the request or a real sidecar only; the mono camera may
+    fall back to the template's camera 1 (the documented single-camera case).
+    """
     cams = data.get("cameras")
     if cams:
         return [int(c) for c in cams]
     rig = _settings(data).get("rig") or {}
     if bool(data.get("stereo", False)):
-        pair = data.get("camera_pair") or rig.get("camera_pair")
+        pair = data.get("camera_pair") or _sidecar_rig(data).get("camera_pair")
         if not pair:
             raise ValueError(
-                "camera_pair is required for stereo: none in the request and none in the "
-                "settings rig.camera_pair"
+                "camera_pair is required for stereo: none in the request and no settings "
+                "sidecar for this source names rig.camera_pair"
             )
         if isinstance(pair, str):
             pair = [int(x) for x in pair.split(",")]

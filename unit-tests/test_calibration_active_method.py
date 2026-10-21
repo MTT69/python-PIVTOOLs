@@ -97,7 +97,11 @@ def test_model_route_takes_stereo_from_active_when_request_is_silent(
 
     monkeypatch.setattr(V, "get_config", lambda: _Cfg())
     monkeypatch.setattr(V.rec, "stereo_model_dir_for_source", _stereo_dir)
-    data = _backend_client().get("/backend/calibration/model").get_json()
+    # The pair is explicit: with no sidecar the route refuses the template's [1, 2]
+    # (P6 guard), and this test is about `active` choosing the stereo branch.
+    data = (
+        _backend_client().get("/backend/calibration/model?camera_pair=1,2").get_json()
+    )
     assert data["exists"] is False
     assert seen["stereo"] == (1, 2, "charuco")
 

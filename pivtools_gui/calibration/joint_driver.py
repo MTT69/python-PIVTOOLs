@@ -53,6 +53,9 @@ class JointDriverResult:
     info: Dict[str, object] = field(default_factory=dict)
     # Pinhole only. A polynomial map has no pose, so the metric does not exist for it.
     pose_diversity: Optional[PoseDiversity] = None
+    # (camera, 1-based frame) of every view absent from the global grid, so outside the solve:
+    # either the detection failed or (dotboard) it detected but was never anchored.
+    excluded_views: List[ViewKey] = field(default_factory=list)
 
 
 def _check_some_detected(detections_by_cam: Dict[int, List[DetectionResult]]) -> None:
@@ -73,6 +76,21 @@ def _check_some_detected(detections_by_cam: Dict[int, List[DetectionResult]]) ->
             f"joint: camera(s) {blank} detected no calibration target in any image — check the "
             f"image path, format and board parameters"
         )
+
+
+def _excluded_views(
+    global_index: Dict[ViewKey, Any], cameras: Sequence[int], n_views: int
+) -> List[ViewKey]:
+    """``(camera, 1-based frame)`` for every expected view with no entry in ``global_index``.
+
+    Frames are 1-based to match the ``global_grid: camera {cam} frame {view+1}`` messages.
+    """
+    return [
+        (int(cam), v + 1)
+        for cam in cameras
+        for v in range(n_views)
+        if (int(cam), v) not in global_index
+    ]
 
 
 def run_joint_from_spec(
@@ -145,6 +163,9 @@ def run_joint_from_spec(
     origin_mm = (float(origin_mm[0]), float(origin_mm[1]))
 
     global_index = resolve_global_grid(detections_by_cam, spec, spacing_mm=spacing_mm)
+    # The solve uses only global_index keys, so exclusion is read from it, not from
+    # det.success: a dotboard view can detect and still never be anchored to the grid.
+    excluded_views = _excluded_views(global_index, cams, n_views)
 
     # Board geometry stamped into every record so the joint model is self-describing (the
     # GUI/CLI read it back instead of config). None when the caller passed no params.
@@ -190,6 +211,9 @@ def run_joint_from_spec(
                     "joint": 1,
                     "datum_view": datum_view,
                     "dt": float(dt),
+                    "excluded_views": rec.format_excluded_views(
+                        [ev for ev in excluded_views if ev[0] == cam]
+                    ),
                     **({"geometry": geo} if geo else {}),
                 },
             )
@@ -233,6 +257,7 @@ def run_joint_from_spec(
             cross_camera_board_agreement_mm=float("nan"),
             n_board_dots=0,
             info={"datum_view": datum_view},
+            excluded_views=excluded_views,
         )
 
     result = run_joint(
@@ -271,6 +296,7 @@ def run_joint_from_spec(
                 result.cross_camera_board_agreement_mm
             ),
             "spacing_mm": result.spacing_mm,
+            "excluded_views": rec.format_excluded_views(excluded_views),
             **({"geometry": geo} if geo else {}),
         },
     )
@@ -325,4 +351,5 @@ def run_joint_from_spec(
             "n_released": int(result.info["n_released"]),
         },
         pose_diversity=result.pose_diversity,
+        excluded_views=excluded_views,
     )

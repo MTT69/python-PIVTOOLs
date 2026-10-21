@@ -1236,6 +1236,12 @@ def detect_joint_command(args) -> "Path | List[Path]":
         board_params=params,
     )
 
+    if res.excluded_views:
+        listed = ", ".join(f"cam{c} frame {f}" for c, f in res.excluded_views)
+        print(
+            f"[calibration] joint: excluded from the solve (no detection or not anchored "
+            f"to the global grid): {listed}"
+        )
     if res.model_type == "polynomial":
         for cam, p in zip(res.cameras, res.paths):
             print(
@@ -1436,7 +1442,7 @@ def apply_stereo_command(args):
     for u in units:
         # dt: --dt override > model-stamped (stereo records stamp dt at generate).
         dt = runio.resolve_dt(args.dt, u["record"].board_meta.get("dt"))
-        written = runio.reconstruct_stereo_run(
+        written, n_skipped = runio.reconstruct_stereo_run(
             u["record"],
             u["uncal1"],
             u["uncal2"],
@@ -1454,7 +1460,8 @@ def apply_stereo_command(args):
         # stamp what actually applied over the stale pointer.
         runio.stamp_unit(u, applied_pointer)
         print(
-            f"[calibration] stereo 3C {u['label']} -> {len(written)} frame(s) in {u['out']}"
+            f"[calibration] stereo 3C {u['label']} -> {len(written)} frame(s) in {u['out']}, "
+            f"{n_skipped} skipped (reconstructed pass absent in one or both cameras)"
         )
     return total
 

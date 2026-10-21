@@ -251,6 +251,21 @@ def _rig(get: Callable[[str], Any]) -> dict:
     return _settings_for(get).get("rig") or {}
 
 
+def _sidecar_rig(get: Callable[[str], Any]) -> dict:
+    """The ``rig`` block of the source's settings SIDECAR, ``{}`` when no sidecar exists.
+
+    Unlike :func:`_rig` this never falls through to the defaults template, so a caller
+    that needs a user-chosen value (the stereo camera pair) cannot pick up the
+    template's ``[1, 2]`` by accident. A present-but-invalid sidecar still raises.
+    """
+    try:
+        source = _source_path(_source_idx(get))
+    except (ValueError, IndexError):
+        return {}
+    settings = cs.try_load_settings(source)
+    return (settings or {}).get("rig") or {}
+
+
 def _methods(get: Callable[[str], Any]) -> dict:
     return _settings_for(get).get("methods") or {}
 
@@ -629,13 +644,14 @@ def _require_camera_pair(get: Callable[[str], Any]) -> Tuple[int, int]:
     """Stereo camera pair: request ``camera_pair`` (list or "a,b"), else the settings rig's.
 
     Raises ``ValueError`` when neither names one: a literal default pair would silently
-    detect, solve or restore cameras the user never chose.
+    detect, solve or restore cameras the user never chose. Only a real sidecar counts
+    (:func:`_sidecar_rig`), never the defaults template's ``[1, 2]``.
     """
-    pair = get("camera_pair") or _rig(get).get("camera_pair")
+    pair = get("camera_pair") or _sidecar_rig(get).get("camera_pair")
     if not pair:
         raise ValueError(
-            "camera_pair is required for stereo: none in the request and none in the "
-            "settings rig.camera_pair"
+            "camera_pair is required for stereo: none in the request and no settings "
+            "sidecar for this source names rig.camera_pair"
         )
     if isinstance(pair, str):
         pair = [int(x) for x in pair.split(",")]
@@ -2448,12 +2464,13 @@ _EXPLICIT_KEYS_STEREO = (
 
 def _required_camera_pair(get: Callable[[str], Any]) -> List[int]:
     """Stereo camera pair: request ``camera_pair`` (list or "a,b"), else the settings
-    sidecar's ``rig.camera_pair``; neither raises — never an assumed ``[1, 2]``."""
-    pair = get("camera_pair") or _rig(get).get("camera_pair")
+    sidecar's ``rig.camera_pair``; neither raises — never the template's ``[1, 2]``
+    (:func:`_sidecar_rig`)."""
+    pair = get("camera_pair") or _sidecar_rig(get).get("camera_pair")
     if not pair:
         raise ValueError(
-            "camera_pair is required for stereo: pass it in the request or set "
-            "rig.camera_pair in the calibration settings"
+            "camera_pair is required for stereo: none in the request and no settings "
+            "sidecar for this source names rig.camera_pair"
         )
     if isinstance(pair, str):
         pair = pair.split(",")
@@ -2837,6 +2854,7 @@ def apply_model():
 
     def _run():
         total_written = 0
+        total_skipped = 0
         warnings: List[str] = []
         try:
             job_manager.update_job(
@@ -2872,8 +2890,9 @@ def apply_model():
                         unit_label=_label,
                     )
 
+                n_skipped = 0
                 if u["stereo"]:
-                    written = c2runio.reconstruct_stereo_run(
+                    written, n_skipped = c2runio.reconstruct_stereo_run(
                         u["record"],
                         u["uncal1"],
                         u["uncal2"],
@@ -2908,6 +2927,15 @@ def apply_model():
                         f"{label}: no frames were written — nothing was calibrated"
                     )
                 total_written += len(written)
+                total_skipped += n_skipped
+                if n_skipped > 0:
+                    # The run reconstructs the final populated pass of coordinates.mat; a
+                    # frame pair missing it in either camera is not written. Reported, not silent.
+                    warnings.append(
+                        f"{label}: {n_skipped} frame(s) skipped — the reconstructed pass "
+                        "is absent in one or both cameras"
+                    )
+                    job_manager.update_job(job_id, warnings=list(warnings))
                 # Record what actually calibrated these vectors in the run's archived
                 # config. The snapshot was written when PIV started, so its calibration
                 # block still names whatever dataset was configured before this one.
@@ -2917,7 +2945,10 @@ def apply_model():
                     job_manager.update_job(job_id, warnings=list(warnings))
                 job_manager.update_job(job_id, processed=i + 1, total=n_units)
             job_manager.complete_job(
-                job_id, n_frames=total_written, out_dir="; ".join(out_dirs)
+                job_id,
+                n_frames=total_written,
+                n_frames_skipped=total_skipped,
+                out_dir="; ".join(out_dirs),
             )
         except c2runio.ApplyCancelled as exc:
             # Mid-unit cancel: the partial unit is not stamped (its run config would
@@ -3652,6 +3683,7 @@ def joint_generate():
                 paths=[str(p) for p in res.paths],
                 pose_diversity=_pose_diversity_payload(res.pose_diversity),
                 persist_skipped=persist_skipped,
+                excluded_views=[[int(c), int(f)] for c, f in res.excluded_views],
             )
         except (
             Exception
@@ -3688,13 +3720,19 @@ def joint_model():
         )
         out = {}
         geom = None
+        excluded: list = []
         for cam in cameras:
+            mdir = rec.mono_model_dir_for_source(source, cam, board)
             try:
-                mono = rec.load_mono(
-                    rec.mono_model_dir_for_source(source, cam, board), "polynomial"
-                )
+                mono = rec.load_mono(mdir, "polynomial")
             except (FileNotFoundError, ValueError):
                 continue
+            try:
+                excluded += rec.parse_excluded_views(
+                    _require_meta(mono.board_meta, "excluded_views", str(mdir))
+                )
+            except ValueError as exc:
+                return jsonify({"exists": False, "error": str(exc)}), 200
             if geom is None:
                 geom = _geometry_payload(mono.board_meta)
             # Full coefficient summary (coeffs_x/y, normalisation, mm RMS) so the results card can
@@ -3710,6 +3748,7 @@ def joint_model():
                 "cameras": [int(c) for c in out],
                 "per_camera": out,
                 "geometry": geom,
+                "excluded_views": [[c, f] for c, f in sorted(excluded)],
             }
         )
 
@@ -3721,6 +3760,12 @@ def joint_model():
     except (FileNotFoundError, ValueError):
         return jsonify({"exists": False})
     meta = jr.board_meta or {}
+    try:
+        excluded = rec.parse_excluded_views(
+            _require_meta(meta, "excluded_views", str(jp))
+        )
+    except ValueError as exc:
+        return jsonify({"exists": False, "error": str(exc)}), 200
 
     # Per-camera intrinsics + extrinsics for the results panel. Position is the camera centre in
     # the world/board frame (C = -R^T t); rotation is the world->camera orientation as Tait-Bryan
@@ -3791,6 +3836,7 @@ def joint_model():
                 if jr.pose_diversity
                 else None
             ),
+            "excluded_views": [[c, f] for c, f in excluded],
         }
     )
 

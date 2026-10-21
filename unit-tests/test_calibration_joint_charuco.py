@@ -20,6 +20,7 @@ import pytest
 from pivtools_gui.calibration.detection.base import DetectionResult
 from pivtools_gui.calibration.global_grid import resolve_global_grid
 from pivtools_gui.calibration.joint import _kabsch, run_joint, run_joint_polynomial
+from pivtools_gui.calibration.joint_driver import run_joint_from_spec
 
 SPACING = 20.0
 COLS, ROWS = 14, 9  # interior corner grid (a 15x10-square board)
@@ -138,9 +139,7 @@ def _truth_camera_centres() -> dict[int, np.ndarray]:
 
 def _solved_camera_centres(res) -> dict[int, np.ndarray]:
     """Camera centres from a solve: ``C = -R.T @ t`` (the model stores world -> camera)."""
-    return {
-        cam: (-m.R.T @ m.t).reshape(3) for cam, m in res.models.items()
-    }
+    return {cam: (-m.R.T @ m.t).reshape(3) for cam, m in res.models.items()}
 
 
 def _baselines(centres: dict[int, np.ndarray]) -> dict[tuple[int, int], float]:
@@ -247,13 +246,17 @@ def test_charuco_joint_model_world_frame_is_the_board_plane():
         image_size_by_cam=_IMG_SIZES,
     )
     board = np.array([res.board[k] for k in sorted(res.board)])
-    assert abs(board[:, 2]).max() < 2.0, "released board should sit near the world Z=0 plane"
+    assert (
+        abs(board[:, 2]).max() < 2.0
+    ), "released board should sit near the world Z=0 plane"
 
     for cam, model in sorted(res.models.items()):
         px = model.project(board)
         W, H = model.image_size
         on = (px[:, 0] >= 0) & (px[:, 0] < W) & (px[:, 1] >= 0) & (px[:, 1] < H)
-        assert on.sum() >= 20, f"cam{cam}: only {on.sum()} board points land on the sensor"
+        assert (
+            on.sum() >= 20
+        ), f"cam{cam}: only {on.sum()} board points land on the sensor"
         back = model.back_project_to_plane(px[on], z_world=0.0)[:, :2]
         err = np.linalg.norm(back - board[on][:, :2], axis=1)
         assert err.max() < 0.5, (
@@ -317,7 +320,9 @@ def test_charuco_joint_back_projects_off_plane(noise_px, tol_mm):
             back = model.back_project_to_plane(px[on], z_world=z)[:, :2]
             err = np.linalg.norm(back - pts[on][:, :2], axis=1)
             worst[(cam, z)] = float(err.max())
-    detail = "  ".join(f"cam{c} z={z:+.0f}: {e:.3f}" for (c, z), e in sorted(worst.items()))
+    detail = "  ".join(
+        f"cam{c} z={z:+.0f}: {e:.3f}" for (c, z), e in sorted(worst.items())
+    )
     assert max(worst.values()) < tol_mm, (
         f"off-plane back-projection error {max(worst.values()):.3f} mm exceeds {tol_mm} mm "
         f"at {noise_px} px noise -- {detail}"
@@ -393,8 +398,9 @@ def test_charuco_joint_polynomial_shares_one_frame():
     assert np.linalg.norm(w1 - w2) < 0.5  # one shared frame
 
 
-def test_charuco_joint_drops_failed_view():
-    """A single failed view is skipped (not anchored, not fatal); the rig still solves."""
+def test_charuco_joint_drops_failed_view(tmp_path):
+    """A single failed view is skipped (not anchored, not fatal); the rig still solves, and the
+    shared driver reports it as excluded (camera 2, 1-based frame 4)."""
     detections = _dataset(seed=3, flat=False)
     detections[2][3] = DetectionResult(  # cam2 view3 detects nothing
         success=False,
@@ -417,6 +423,21 @@ def test_charuco_joint_drops_failed_view():
     assert res.converged
     for cam in (1, 2, 3):
         assert abs(res.models[cam].K[0, 0] - _FX[cam]) / _FX[cam] < 0.02
+
+    driven = run_joint_from_spec(
+        detections,
+        _IMG_SIZES,
+        source=tmp_path,
+        board="charuco",
+        model_type="pinhole",
+        spacing_mm=SPACING,
+        dt=1.0,
+        datum_camera=1,
+        datum_view=0,
+        cameras=[1, 2, 3],
+        n_views=_N_VIEWS,
+    )
+    assert driven.excluded_views == [(2, 4)]
 
 
 def test_charuco_mixed_with_dotboard_raises():

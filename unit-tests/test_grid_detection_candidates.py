@@ -1,4 +1,4 @@
-"""Two flat-field windows x two polarities, winner by final gated grid (DETECTOR_VERSION 3).
+"""Two flat-field windows x two polarities, winner by final gated grid (DETECTOR_VERSION 4).
 
 ``detect_dotboard_blobs`` runs the flat field with every dot-diameter estimate in
 ``{min(70, est), max(70, est)}`` (``est`` = 1.3 % of the long side) and both polarities;
@@ -19,7 +19,9 @@ What each test pins:
   180/180;
 * selection by FINAL grid: a jittered half-pitch fragment set that walks a larger BFS grid
   than the real board loses once the outlier gate has run;
-* ``DETECTOR_VERSION`` is 3 and detections cached by detector 2 are stale.
+* small specks (contourArea well under the dots') are rejected by the 0.15x-median band
+  alone, now that the fixed 50 px^2 floor is gone;
+* ``DETECTOR_VERSION`` is 4 and detections cached by detector 3 are stale.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from test_calibration_detect_views_routes import env  # noqa: F401  (pytest fixt
 from test_calibration_detect_views_routes import FMT, N_VIEWS, _post_views
 
 from pivtools_cli.generate_synthetic_dotboard import generate
+from pivtools_cli.synthetic_calibration_common import render_dots
 from pivtools_gui.calibration import inputs_store as INP
 from pivtools_gui.calibration.detection import grid_detection as GD
 
@@ -154,6 +157,83 @@ def test_ramp_lit_2600px_board_stays_180_of_180(tmp_path):
         assert info["kernel_px"] == 33
 
 
+# Specks: radius 1.5-3 px discs (contourArea ~7-30 px^2) in the dot polarity, well clear of
+# every dot and of the frame edge. The 1 MP default board carries dots of several hundred
+# px^2, so 0.15x median sits far above every speck.
+N_SPECKS = 20
+SPECK_RADIUS_PX = (1.5, 3.0)
+SPECK_CLEARANCE_PITCH = 0.5  # minimum speck-to-dot distance, in local dot pitches
+SPECK_EDGE_MARGIN_PX = 10
+SPECK_MIN_SEPARATION_PX = 12  # keeps two specks from merging into one larger contour
+SPECK_MATCH_PX = 2.0
+SPECK_SEED = 20261021
+
+
+def _place_specks(
+    truth: np.ndarray, shape: tuple, rng: np.random.Generator
+) -> np.ndarray:
+    """``N_SPECKS`` centres away from every dot, the frame edge and each other."""
+    h, w = shape
+    nn = cKDTree(truth).query(truth, k=2)[0][:, 1]
+    clearance = SPECK_CLEARANCE_PITCH * float(np.median(nn))
+    dots = cKDTree(truth)
+    specks: list = []
+    for _ in range(100 * N_SPECKS):
+        c = rng.uniform(
+            [SPECK_EDGE_MARGIN_PX, SPECK_EDGE_MARGIN_PX],
+            [w - SPECK_EDGE_MARGIN_PX, h - SPECK_EDGE_MARGIN_PX],
+        )
+        if dots.query(c)[0] < clearance:
+            continue
+        if specks and np.min(np.linalg.norm(np.array(specks) - c, axis=1)) < (
+            SPECK_MIN_SEPARATION_PX
+        ):
+            continue
+        specks.append(c)
+        if len(specks) == N_SPECKS:
+            return np.array(specks)
+    raise RuntimeError(f"placed only {len(specks)} of {N_SPECKS} specks")
+
+
+def test_small_specks_rejected_by_median_band(tmp_path):
+    """No fixed area floor: sub-50 px^2 specks reach the median band and die there."""
+    gt = generate(tmp_path, n_views=1)
+    img = cv2.imread(str(Path(tmp_path) / "calib00001.png"), cv2.IMREAD_UNCHANGED)
+    truth = gt["points_px"][0][gt["visible"][0]]
+
+    ok0, grid0, info0 = GD.detect_grid_automatic(img)
+    assert ok0, info0.get("error")
+
+    rng = np.random.default_rng(SPECK_SEED)
+    specks = _place_specks(truth, img.shape, rng)
+    radii = rng.uniform(*SPECK_RADIUS_PX, size=N_SPECKS)
+    speck_layer = render_dots(specks, radii, (img.shape[1], img.shape[0]))
+    specked = np.maximum(
+        img, speck_layer
+    )  # dots are 255 on 0: specks in the dot polarity
+
+    # The specks must actually exercise the band: they survive circularity, under 50 px^2.
+    contours, _ = cv2.findContours(
+        (speck_layer > 127).astype(np.uint8) * 255,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_NONE,
+    )
+    small_round = [
+        c
+        for c in contours
+        if len(c) >= 5
+        and cv2.contourArea(c) < 50
+        and 4 * np.pi * cv2.contourArea(c) / cv2.arcLength(c, True) ** 2 > 0.4
+    ]
+    assert len(small_round) >= N_SPECKS // 2
+
+    ok, grid, info = GD.detect_grid_automatic(specked)
+
+    assert ok, info.get("error")
+    assert len(grid["centers"]) == len(grid0["centers"])
+    assert cKDTree(grid["centers"]).query(specks)[0].min() > SPECK_MATCH_PX
+
+
 # ---------------------------------------------------------------------------
 # Selection by final grid, not BFS grid
 # ---------------------------------------------------------------------------
@@ -248,19 +328,19 @@ def test_no_candidate_with_a_grid_fails_loudly():
 
 
 # ---------------------------------------------------------------------------
-# DETECTOR_VERSION 3
+# DETECTOR_VERSION 4
 # ---------------------------------------------------------------------------
 
 
-def test_detector_version_is_3():
-    assert GD.DETECTOR_VERSION == 3
+def test_detector_version_is_4():
+    assert GD.DETECTOR_VERSION == 4
     assert INP.DETECTOR_VERSION == GD.DETECTOR_VERSION
 
 
-def test_detections_from_detector_version_2_are_stale(env, monkeypatch):
-    """The two-window detector returns different points: a v2 sidecar must not be reused."""
+def test_detections_from_detector_version_3_are_stale(env, monkeypatch):
+    """Removing the area floor can change the points: a v3 sidecar must not be reused."""
     client, _base, _params = env
-    monkeypatch.setattr(INP, "DETECTOR_VERSION", 2)
+    monkeypatch.setattr(INP, "DETECTOR_VERSION", 3)
     _post_views(client, camera=1)
     monkeypatch.setattr(INP, "DETECTOR_VERSION", GD.DETECTOR_VERSION)
 
