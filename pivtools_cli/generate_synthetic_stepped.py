@@ -5,8 +5,11 @@ layout) with exact ground truth, for mono and stereo stepped-calibration tests.
 
 Geometry (``synthetic_calibration_common.stepped_board_points_mm``)
     - peak level: 21 x 21 dots on a 15 mm grid at z = 0 (peak (0, 0) = origin)
-    - trough level: 20 x 20 dots on the half-pitch-offset grid at z = -3 mm
+    - trough level: 20 x 20 dots on the half-pitch-offset grid at z = +3 mm
+      (the cameras sit on the -z side, so the trough is recessed from them)
     - dot diameter 3 mm, projected through a pinhole (no distortion)
+    - plate thickness T = --thickness-mm (default STEPPED_THICKNESS_MM = 14.8,
+      the calibrator default), front peak plane to back peak plane
 
 Dots are rendered anti-aliased at sub-pixel centres (4x oversample, ``cv2.circle``
 fixed-point ``shift``, ``INTER_AREA`` reduction).  The old in-test renderers
@@ -19,9 +22,26 @@ centroid by half the included angle ``theta = --stereo-angle-deg``
     same_side     cam 1 Ry(-theta/2), cam 2 Ry(+theta/2); R_stereo = Ry(theta)
                   both cameras see the same face
     transmission  cam 1 Ry(-theta/2), cam 2 Ry(180 deg + theta/2);
-                  R_stereo = Ry(180 deg + theta).  Camera 2 sees the back face,
-                  so the level nearest camera 2 is the farthest from camera 1
-                  and its peak/trough labels invert (recorded in ``levels``).
+                  R_stereo = Ry(180 deg + theta).  Camera 2 renders the BACK
+                  face (``back_face_points_mm``): the front set translated by
+                  +(T - step) along the board normal, an opaque plate T thick
+                  whose front face the -z cameras see and whose back face the
+                  +z camera sees.  In the stepped calibrator's terms
+                  (``stepped_calibrate.compute_z_and_offsets`` with
+                  ``z_toward_cam1=False``, which the generator's row-major +Y
+                  fiducial resolves to):
+                      front  peak lattice   z = 0          (cam 1's datum level,
+                                                            raised toward cam 1)
+                             trough lattice z = +step      (recessed from cam 1)
+                      back   lattice behind the front peaks   z = T - step
+                                                            (cam 2's pockets, 'trough')
+                             lattice behind the front troughs z = T
+                                                            (back outer plane, 'peak')
+                  Same (x, y) lattices on both faces, so cam 2's datum dot is
+                  the one straight through the plate from cam 1's.  No explicit
+                  mirror: viewing from Ry(180 deg) reverses the image handedness
+                  of the (+X, +Y) dots, as the calibrator's classifier expects.
+                  T = step reproduces the old zero-thickness render bitwise.
 ``R_stereo`` / ``T_stereo`` map camera 1 to camera 2 for every pose
 (``R2 = R_stereo R1``, ``t2 = R_stereo t1 + T_stereo``).
 
@@ -37,9 +57,16 @@ Output (default ``unit-tests/synthetic_calibration/stepped``)
                                   (c, r), (c + 1, r), (c, r + 1) is wholly inside
                                   the pose-0 frame of every camera
         fiducials_px_cam{c} (3, 2)  that origin, +X, +Y triple in the pose-0 view
-        levels (n_poses, n_cameras) int8  0 = the z = 0 level is nearer that camera,
-                                          1 = the z = -step level is nearer
-        points_mm (N, 3)  peak points first;  points_px_cam{c} (n_poses, N, 2)
+        thickness_mm              plate thickness T (all configs; only transmission
+                                  cam 2 renders it)
+        levels (n_poses, n_cameras) int8  for the face that camera renders:
+                                          0 = its peak lattice is nearer the camera,
+                                          1 = its trough lattice is nearer
+        points_mm (N, 3)  front face, peak points first (cam 1, same_side cam 2)
+        points_mm_cam2 (N, 3)  (--cameras 2) the 3-D points cam 2 renders: the
+                               back face for transmission, == points_mm for
+                               same_side.  Project cam c with its own set.
+        points_px_cam{c} (n_poses, N, 2)
         visible_cam{c} (n_poses, N) bool -- disc wholly inside the frame
 
 Units: object points, tvecs and T_stereo are in millimetres (the unit the stepped
@@ -63,6 +90,7 @@ from pivtools_cli.synthetic_calibration_common import (
     STEPPED_PEAK_SHAPE,
     STEPPED_SPACING_MM,
     STEPPED_STEP_MM,
+    STEPPED_THICKNESS_MM,
     STEPPED_TROUGH_SHAPE,
     centred_pose_depth,
     fully_inside,
@@ -117,13 +145,36 @@ def fiducial_triple(visible_pose0: list, cols: int, rows: int, label: str) -> tu
     raise ValueError(f"no fully visible fiducial triple in pose 0 for {label}")
 
 
+def back_face_points_mm(
+    peak_mm: np.ndarray, trough_mm: np.ndarray, thickness_mm: float, step_mm: float
+) -> tuple:
+    """Back face of a plate ``thickness_mm`` thick, as the stepped calibrator models it.
+
+    The cameras sit on the -z side of the front face (peak z = 0, trough z = +step),
+    so the plate extends to +z and the back face is the front set translated by
+    +(T - step): the lattice behind the front peaks lands at z = T - step (camera 2's
+    pockets, its 'trough') and the lattice behind the front troughs at z = T (the
+    back outer plane, camera 2's 'peak'). This is ``compute_z_and_offsets``
+    (transmission) with ``z_toward_cam1=False``.
+
+    Returns (peak-lattice (Np, 3), trough-lattice (Nt, 3)) of the back face.
+    """
+    if thickness_mm < step_mm:
+        raise ValueError(
+            f"thickness_mm ({thickness_mm}) must be >= step_mm ({step_mm}): the "
+            "back face would cut through the front"
+        )
+    shift = np.array([0.0, 0.0, thickness_mm - step_mm])
+    return peak_mm + shift, trough_mm + shift
+
+
 def nearer_level(
     peak_mm: np.ndarray,
     trough_mm: np.ndarray,
     rvec: np.ndarray,
     tvec: np.ndarray,
 ) -> int:
-    """0 if the z = 0 level has the smaller mean camera depth, else 1."""
+    """0 if the peak lattice has the smaller mean camera depth, else 1."""
     R, _ = cv2.Rodrigues(np.asarray(rvec, np.float64))
     t = np.asarray(tvec, np.float64).reshape(3)
     z_peak = np.einsum("j,nj->n", R[2], peak_mm).mean() + t[2]
@@ -144,10 +195,13 @@ def generate(
     overview_figure: Path | None = None,
     fill: float = BOARD_FILL,
     dot_diameter_mm: float = STEPPED_DOT_DIAMETER_MM,
+    thickness_mm: float = STEPPED_THICKNESS_MM,
 ) -> dict:
     """Render the set into ``out`` and return the ground-truth dict.
 
-    See the module docstring for the on-disk layout and ground-truth keys.
+    ``thickness_mm`` only changes transmission camera 2, which renders the
+    back face (``back_face_points_mm``).  See the module docstring for the
+    on-disk layout and ground-truth keys.
     """
     if cameras not in (1, 2):
         raise ValueError(f"cameras must be 1 or 2, got {cameras}")
@@ -163,6 +217,7 @@ def generate(
     peak, trough = stepped_board_points_mm(
         STEPPED_PEAK_SHAPE, STEPPED_TROUGH_SHAPE, STEPPED_SPACING_MM, STEPPED_STEP_MM
     )
+    back = back_face_points_mm(peak, trough, thickness_mm, STEPPED_STEP_MM)
     allpts = np.vstack([peak, trough])
     board_w = (STEPPED_PEAK_SHAPE[0] - 1) * STEPPED_SPACING_MM
     fit_px = float(min(W, H))
@@ -185,8 +240,11 @@ def generate(
         "step_mm": STEPPED_STEP_MM,
         "spacing_mm": STEPPED_SPACING_MM,
         "dot_diameter_mm": dot_diameter_mm,
+        "thickness_mm": float(thickness_mm),
         "points_mm": allpts,
     }
+    # The (peak, trough) set each camera renders.
+    faces = {1: (peak, trough)}
     if cameras == 2:
         poses[1], poses[2], R_stereo, T_stereo = symmetric_stereo_rig(
             poses_rig,
@@ -196,6 +254,8 @@ def generate(
         )
         gt["R_stereo"] = R_stereo
         gt["T_stereo"] = T_stereo.reshape(3, 1)
+        faces[2] = back if stereo_config == "transmission" else (peak, trough)
+        gt["points_mm_cam2"] = np.vstack(faces[2])
 
     levels = np.zeros((n_poses, cameras), np.int8)
     datum_img, datum_px = None, None
@@ -204,15 +264,16 @@ def generate(
         cam_dir = out / f"cam{cam}"
         cam_dir.mkdir(parents=True, exist_ok=True)
         pts_px, vis = [], []
+        face_peak, face_trough = faces[cam]
         for i, (rvec, tvec) in enumerate(cam_poses):
             img, px, radii = render_stepped_view(
-                peak, trough, rvec, tvec, K, (W, H), dot_diameter_mm
+                face_peak, face_trough, rvec, tvec, K, (W, H), dot_diameter_mm
             )
             if not cv2.imwrite(str(cam_dir / f"calib{i + 1:05d}.png"), img):
                 raise OSError(f"could not write {cam_dir / f'calib{i + 1:05d}.png'}")
             pts_px.append(px)
             vis.append(fully_inside(px, radii, (W, H)))
-            levels[i, cam - 1] = nearer_level(peak, trough, rvec, tvec)
+            levels[i, cam - 1] = nearer_level(face_peak, face_trough, rvec, tvec)
             if cam == 1 and i == 0:
                 datum_img, datum_px = img, px
         pts_px_by_cam[cam] = np.array(pts_px)
@@ -275,6 +336,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="frontal board extent / short image side",
     )
     p.add_argument("--dot-diameter-mm", type=float, default=STEPPED_DOT_DIAMETER_MM)
+    p.add_argument(
+        "--thickness-mm",
+        type=float,
+        default=STEPPED_THICKNESS_MM,
+        help="plate thickness, front peak plane to back peak plane, mm (transmission "
+        "camera 2 renders the back face; must be >= the 3 mm step)",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument(
         "--overview-figure",
@@ -301,6 +369,7 @@ def main(argv: list | None = None) -> None:
         a.overview_figure,
         a.fill,
         a.dot_diameter_mm,
+        a.thickness_mm,
     )
 
 

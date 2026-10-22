@@ -1478,12 +1478,27 @@ def generate_model():
                     method=method,
                     assumed_poses=assumed_poses,
                     figures=_list_figures(fig_dir),
+                    # +1 / -1: the clicked frame's +Z toward / away from camera 1.
+                    world_z_toward_camera=float(
+                        _require_meta(
+                            record.board_meta, "world_z_toward_camera", "stepped solve"
+                        )
+                    ),
                 )
                 if model_type == "pinhole":
                     # Per-camera intrinsics so the card fills without a second fetch.
                     # Compose has no joint reprojection RMS -> no stereo_rms_px reported.
                     done["intrinsics1"] = _intrinsics(record.model1)
                     done["intrinsics2"] = _intrinsics(record.model2)
+                    for key in (
+                        "n_gated_points1",
+                        "n_gated_points2",
+                        "gate_limit_px1",
+                        "gate_limit_px2",
+                    ):
+                        done[key] = _require_meta(
+                            record.board_meta, key, "stepped solve"
+                        )
                 job_manager.complete_job(
                     job_id,
                     **done,
@@ -1525,6 +1540,11 @@ def generate_model():
                     clicked_level=record.board_meta.get("clicked_level"),
                     assumed_poses=assumed_poses,
                     figures=_list_figures(fig_dir),
+                    world_z_toward_camera=float(
+                        _require_meta(
+                            record.board_meta, "world_z_toward_camera", "stepped solve"
+                        )
+                    ),
                 )
                 if model_type == "pinhole":
                     # Intrinsics are pinhole-only; a polynomial has no K.
@@ -1533,6 +1553,12 @@ def generate_model():
                         fy=float(cm.K[1, 1]),
                         cx=float(cm.K[0, 2]),
                         cy=float(cm.K[1, 2]),
+                        n_gated_points=_require_meta(
+                            record.board_meta, "n_gated_points", "stepped solve"
+                        ),
+                        gate_limit_px=_require_meta(
+                            record.board_meta, "gate_limit_px", "stepped solve"
+                        ),
                     )
                 job_manager.complete_job(
                     job_id,

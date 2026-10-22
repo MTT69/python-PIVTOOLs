@@ -81,7 +81,11 @@ RVEC_EXTRA = (0.0, 0.25, 0.0)
 
 
 # ---------------------------------------------------------------------------
-# Synthetic stepped board render (peak z=0, trough z=-step, +half-spacing xy)
+# Synthetic stepped board render (peak z=0, trough z=+step, +half-spacing xy).
+# The cameras sit on the -z side (board at +Z along the optical axis), so the
+# trough is recessed from them and the labels are physical. The clicks (+Y one
+# row DOWN the image) give +Z = +X x +Y pointing into the board, which the
+# calibrator reads from the click handedness and honours.
 # ---------------------------------------------------------------------------
 
 
@@ -93,7 +97,7 @@ def _board_points_mm():
     for r in range(TROUGH_ROWS):
         for c in range(TROUGH_COLS):
             trough.append(
-                [c * SPACING_MM + OFFSET_MM, r * SPACING_MM + OFFSET_MM, -STEP_MM]
+                [c * SPACING_MM + OFFSET_MM, r * SPACING_MM + OFFSET_MM, STEP_MM]
             )
     return np.array(peak, np.float64), np.array(trough, np.float64)
 
@@ -152,13 +156,13 @@ def _level_a_label(detection, proj, gt_z):
     a_full = detection.level_data["a"]
     centers = np.asarray(a_full["centers"], dtype=np.float64)
     idx = cKDTree(proj).query(centers)[1]
-    return "peak" if np.median(gt_z[idx]) > -STEP_MM / 2.0 else "trough"
+    return "peak" if np.median(gt_z[idx]) < STEP_MM / 2.0 else "trough"
 
 
 def _gt_z():
     n_peak = PEAK_COLS * PEAK_ROWS
     return np.concatenate(
-        [np.zeros(n_peak), np.full(TROUGH_COLS * TROUGH_ROWS, -STEP_MM)]
+        [np.zeros(n_peak), np.full(TROUGH_COLS * TROUGH_ROWS, STEP_MM)]
     )
 
 
@@ -232,6 +236,8 @@ def same_side_scene():
         "detections2": detections2,
         "fiducials1": _fiducials(projs1[0]),
         "fiducials2": _fiducials(projs2[0]),
+        "projs1": projs1,
+        "projs2": projs2,
         "pose_levels1": pose_levels1,
         "pose_levels2": pose_levels2,
         "R_stereo_gt": R_stereo_gt,

@@ -385,7 +385,11 @@ STEPPED_SPACING_MM = 15.0
 STEPPED_STEP_MM = 3.0
 STEPPED_DOT_DIAMETER_MM = 3.0
 STEPPED_PEAK_SHAPE = (21, 21)  # (cols, rows) of the z = 0 level
-STEPPED_TROUGH_SHAPE = (20, 20)  # (cols, rows) of the z = -step level
+STEPPED_TROUGH_SHAPE = (20, 20)  # (cols, rows) of the z = +step level
+# Plate thickness, front peak plane to back peak plane.  Matches the stepped
+# calibrator default (SteppedBoardSpec.board_thickness_mm) and the 309-15-3
+# plates used on Andre's and Zefanya's data.
+STEPPED_THICKNESS_MM = 14.8
 
 
 def stepped_board_points_mm(
@@ -397,8 +401,12 @@ def stepped_board_points_mm(
     """Two-level stepped plate dot centres in mm (board frame, row-major).
 
     Peak dots sit on the integer grid at z = 0; trough dots on the
-    half-spacing-offset grid at z = -step (LaVision 309-15-3 layout: 21 x 21
+    half-spacing-offset grid at z = +step (LaVision 309-15-3 layout: 21 x 21
     over 20 x 20, 15 mm pitch, 3 mm step).  Peak (col 0, row 0) is the origin.
+    The synthetic cameras sit on the -z side of the board (``make_centred_poses``
+    puts the board at +Z along each optical axis), so +step is AWAY from them: the
+    peak face is raised toward the cameras and the trough recessed, which is what
+    the labels mean to the stepped calibrator.
 
     Returns (peak (Np, 3), trough (Nt, 3)).
     """
@@ -409,7 +417,7 @@ def stepped_board_points_mm(
         for c in range(peak_shape[0])
     ]
     trough = [
-        [c * spacing_mm + off, r * spacing_mm + off, -step_mm]
+        [c * spacing_mm + off, r * spacing_mm + off, step_mm]
         for r in range(trough_shape[1])
         for c in range(trough_shape[0])
     ]

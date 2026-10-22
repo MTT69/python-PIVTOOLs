@@ -298,13 +298,29 @@ def compute_z_and_offsets(
     cam1_clicked_level: str,
     cam2_clicked_level: str,
     board: SteppedBoardSpec,
+    z_toward_cam1: bool = True,
 ) -> dict:
     """Compute Z values and XY offsets for each camera's levels.
 
     Convention: cam1's clicked level is at Z=0 (reference plane). The clicked level
     on both cameras has xy_offset=0; the other level has xy_offset=level_offset_mm.
-    Ported verbatim from v1. Mono uses only the 'Cam1' slice (cam1's Z values are
-    independent of stereo_config).
+    Mono uses only the 'Cam1' slice (cam1's Z values are independent of
+    stereo_config).
+
+    ``'peak'`` / ``'trough'`` are PHYSICAL labels: the face raised toward / recessed
+    from the camera that sees it. Camera 2 in transmission views the back of the
+    plate, so its ``'peak'`` is the back outer plane (``-thickness`` from the front
+    peak plane) and its ``'trough'`` the back pockets (``-(thickness - step)``); which
+    of the two camera 2 CLICKED does not change where each one sits. (Until
+    2026-10-22 the table was keyed by clicked/other, which silently assumed the
+    camera 2 origin was always on the back pockets.)
+
+    ``z_toward_cam1`` is whether the clicked world frame's +Z (= +X x +Y) points
+    toward camera 1 (``z_toward_camera_from_clicks``). The table is derived for
+    that case and negated otherwise, so an operator who clicks +Y clockwise of +X
+    gets the frame they drew with the levels still at the right physical heights
+    (previously the trough was hard-wired to -step along +Z, which is only "farther
+    from the camera" when +Z points at it).
 
     Raises ``ValueError`` for a ``same_side`` rig whose cameras clicked different
     levels: both see the same face, so the datum fiducial must be the same physical
@@ -335,14 +351,21 @@ def compute_z_and_offsets(
     if stereo_config == "same_side":
         cam2_z = cam1_z.copy()
     else:
-        # Transmission: cam2 sees opposite face.
+        # Transmission: cam2 sees the back face. Its pockets ('trough', recessed from
+        # cam2) are the lattice behind the front peaks at -(thickness - step); its outer
+        # plane ('peak', raised toward cam2) is at -thickness. Keyed by the physical
+        # label, not by which one was clicked.
         shift = 0.0 if cam1_clicked_level == "peak" else step
         cam2_z = {
-            cam2_clicked_level: -(thickness - step) + shift,
-            cam2_other: -thickness + shift,
+            "trough": -(thickness - step) + shift,
+            "peak": -thickness + shift,
         }
 
     cam2_xy_offset = {cam2_clicked_level: 0.0, cam2_other: offset}
+
+    if not z_toward_cam1:
+        cam1_z = {k: -v for k, v in cam1_z.items()}
+        cam2_z = {k: -v for k, v in cam2_z.items()}
 
     return {
         "Cam1": {"z": cam1_z, "xy_offset": cam1_xy_offset},
@@ -353,6 +376,46 @@ def compute_z_and_offsets(
 # ---------------------------------------------------------------------------
 # Two-stage pinhole fit — ported verbatim
 # ---------------------------------------------------------------------------
+
+
+# Reprojection gate applied after the pinhole fit. A dot whose residual exceeds
+# max(_GATE_FLOOR_PX, _GATE_MEDIAN_FACTOR * median residual) is removed and the fit
+# repeated, at most _GATE_ROUNDS times. The floor keeps a tight sub-pixel fit from
+# shedding its own tail (a 0.4 px RMS board has a p99 near 1.5 px, all real dots);
+# the factor scales the limit up on noisier boards. Zefanya cam2 (2026-10-22): three
+# two-tone edge dots at 10.7 / 14.7 / 3.1 px against a next-worst 1.9 px dragged fx
+# by 0.9% and the principal point by ~100 px; the gate removes those three and
+# nothing else, and a 1 px limit would have stripped a whole edge row instead.
+_GATE_FLOOR_PX = 2.0
+_GATE_MEDIAN_FACTOR = 4.0
+_GATE_ROUNDS = 2
+# A view must keep this many dots to stay in the fit after gating.
+_GATE_MIN_VIEW_POINTS = 6
+
+
+def _view_residuals(
+    obj_views: list, img_views: list, K: np.ndarray, dist: np.ndarray, rvecs, tvecs
+) -> list:
+    """Per-point reprojection residual (px) for every view, position-aligned."""
+    out = []
+    for obj, img, rv, tv in zip(obj_views, img_views, rvecs, tvecs):
+        proj, _ = cv2.projectPoints(np.asarray(obj, np.float64), rv, tv, K, dist)
+        out.append(
+            np.linalg.norm(proj.reshape(-1, 2) - np.asarray(img, np.float64), axis=1)
+        )
+    return out
+
+
+def z_toward_camera_from_clicks(fiducials: Dict[str, Sequence[float]]) -> bool:
+    """Whether the clicked frame's +Z = +X x +Y points toward the camera that clicked.
+
+    Image pixels are y-down, so +X to the right and +Y clicked ABOVE the origin
+    (counter-clockwise on screen) give a negative 2D cross product and a +Z that comes
+    out of the board toward the camera; +Y clicked below gives +Z into the board. The
+    calibrator honours either and places the levels accordingly
+    (``compute_z_and_offsets``). Raises via ``_click_chirality`` on degenerate clicks.
+    """
+    return _click_chirality(fiducials) < 0.0
 
 
 def fit_pinhole(
@@ -495,7 +558,14 @@ def _build_non_datum_pose_view(
     ``orientation_override`` (the datum pose's fiducial-derived swap/col/row) is
     forwarded so every non-datum stitch reuses the same convention — without it,
     strongly-foreshortened poses can invert chirality and break the multi-view fit.
-    Per-dot z / xy_offset come from the operator-supplied A/B labels via geo_cam.
+    Per-dot z comes from the operator-supplied A/B labels via geo_cam. The in-plane
+    half-pitch offset follows the STITCH's roles (reference lattice at 0, other at
+    ``level_offset_mm``), because the stitch already indexed the other lattice half a
+    pitch from its reference; the pose-local frame is arbitrary, so that is always a
+    valid frame. Until 2026-10-22 the offset was looked up by label (0 for the clicked
+    level), which coincides with the stitch roles only when the clicked level is the
+    larger one: a trough-lattice datum click (or a view where the trough lattice has
+    more dots) put the two levels a full pitch apart, 75 px RMS and fx / 4.
 
     Returns (obj_np, img_np, stitch_meta) or (None, None, None).
     """
@@ -518,14 +588,13 @@ def _build_non_datum_pose_view(
 
     all_obj = []
     all_img = []
-    for entry in (ref, other):
+    for entry, xy_off in ((ref, 0.0), (other, board.level_offset_mm)):
         if entry is None:
             continue
         level_name = _level_name(entry["source_level"])
         gi = np.asarray(entry["grid_indices"], dtype=np.int32)
         centers = np.asarray(entry["centers"], dtype=np.float32)
         z_mm = geo_cam["z"][level_name]
-        xy_off = geo_cam["xy_offset"][level_name]
         obj = build_object_points(gi, z_mm, spacing, xy_off)
         all_obj.append(obj)
         all_img.append(centers)
@@ -621,16 +690,17 @@ def _calibrate_stepped_mono_poly3d(
     figure_dir: Optional[Path],
     figure_prefix: str,
     n_images: int,
+    z_sign: float,
 ) -> MonoRecord:
     """Fit a single-view 3D polynomial (world->image) on the datum view's two planes.
 
     The two physical levels of ONE view give the Z leverage, so no extra poses are
-    needed (matches DaVis ``poly1`` = 1 image/camera). +Z is toward the camera by the
-    stepped clicked-level convention (the dotted peak face is nearer the camera than
-    the trough), so ``world_z_toward_camera = +1``.
+    needed (matches DaVis ``poly1`` = 1 image/camera). ``z_sign`` (+1 / -1) is whether
+    the clicked frame's +Z points toward camera 1 (``z_toward_camera_from_clicks``),
+    carried as ``world_z_toward_camera`` for the stereo W sign.
     """
     model = fit_polynomial3d(
-        datum_obj, datum_img, image_size, world_z_toward_camera=1.0
+        datum_obj, datum_img, image_size, world_z_toward_camera=float(z_sign)
     )
     logger.info(
         f"stepped poly3d cam{camera}: rms={model.rms_px:.3f}px, "
@@ -657,6 +727,7 @@ def _calibrate_stepped_mono_poly3d(
         # Image count, not the single datum view the poly fit uses: the GUI compares this
         # with the configured number of images ("settings changed" banner).
         "n_views": int(n_images),
+        "world_z_toward_camera": float(z_sign),
         "geometry": geometry_meta("stepped", board, model_type="polynomial3d"),
     }
     if figure_dir is not None:
@@ -698,6 +769,7 @@ def calibrate_stepped_mono(
     images: Optional[Sequence[np.ndarray]] = None,
     figure_dir: Optional[Path] = None,
     figure_prefix: str = "",
+    z_toward_cam1: Optional[bool] = None,
 ) -> MonoRecord:
     """Calibrate one camera from stepped-board poses (pinhole) or one datum view (poly).
 
@@ -740,11 +812,18 @@ def calibrate_stepped_mono(
         there. Figure failures are non-fatal.
     figure_prefix : filename prefix for the figures (``"cam1_"`` / ``"cam2_"`` in a
         stereo run; empty for mono — the empty-prefix run also gets the 3D boards plot).
+    z_toward_cam1 : whether the shared frame's +Z points toward camera 1. Mono derives
+        it from its own clicks (``z_toward_camera_from_clicks``) when ``None``; a stereo
+        run passes camera 1's value to BOTH cameras so the two records carry one
+        ``world_z_toward_camera`` convention for the W sign. Must accompany
+        ``geo_override`` (the override is already signed).
 
     Returns
     -------
     MonoRecord with a ``CameraModel`` (one (R,t,K,dist) covering both surfaces) and
-    the resolved ``WorldFrame``.
+    the resolved ``WorldFrame``. ``board_meta`` reports ``world_z_toward_camera``
+    (+1 / -1), and for the pinhole fit the reprojection gate (``n_gated_points``,
+    ``gate_limit_px``).
     """
     if clicked_level not in ("peak", "trough"):
         raise ValueError(
@@ -765,11 +844,23 @@ def calibrate_stepped_mono(
 
     other_level = "trough" if clicked_level == "peak" else "peak"
     if geo_override is not None:
+        if z_toward_cam1 is None:
+            raise ValueError(
+                "calibrate_stepped_mono: geo_override needs z_toward_cam1 (the "
+                "override is signed by the shared frame, so the sign must be stated)"
+            )
         geo_cam = geo_override
     else:
+        if z_toward_cam1 is None:
+            z_toward_cam1 = z_toward_camera_from_clicks(fiducials)
         geo_cam = compute_z_and_offsets(
-            "same_side", clicked_level, clicked_level, board
+            "same_side", clicked_level, clicked_level, board, z_toward_cam1
         )["Cam1"]
+    z_sign = 1.0 if z_toward_cam1 else -1.0
+    logger.info(
+        f"cam{camera}: world +Z points {'toward' if z_toward_cam1 else 'away from'} "
+        f"camera 1 (from the clicked +X/+Y handedness)"
+    )
     spacing = board.dot_spacing_mm
 
     # ---- Datum pose: fiducial-anchored world frame ----
@@ -849,6 +940,7 @@ def calibrate_stepped_mono(
             figure_dir=figure_dir,
             figure_prefix=figure_prefix,
             n_images=len(detections),
+            z_sign=z_sign,
         )
     if model_type != "pinhole":
         raise ValueError(
@@ -921,6 +1013,44 @@ def calibrate_stepped_mono(
         pose_obj_views, pose_img_views, W_H, fix_k2=fix_k2
     )
 
+    # ---- Reprojection gate: drop gross outlier dots and refit (see _GATE_*) ----
+    n_gated = 0
+    gate_limit = float("nan")
+    for _round in range(_GATE_ROUNDS):
+        resid = _view_residuals(pose_obj_views, pose_img_views, K, dist, rvecs, tvecs)
+        gate_limit = max(
+            _GATE_FLOOR_PX,
+            _GATE_MEDIAN_FACTOR * float(np.median(np.concatenate(resid))),
+        )
+        keep = [r <= gate_limit for r in resid]
+        n_bad = int(sum(int((~k).sum()) for k in keep))
+        if n_bad == 0:
+            break
+        for vi, k in enumerate(keep):
+            if k.sum() < _GATE_MIN_VIEW_POINTS:
+                raise RuntimeError(
+                    f"cam{camera} pose {used_pose_indices[vi]}: only {int(k.sum())} dots "
+                    f"within the {gate_limit:.2f} px reprojection gate (of {len(k)}); "
+                    "the view does not fit the model"
+                )
+        dropped = [
+            f"pose {used_pose_indices[vi]} ({x:.1f}, {y:.1f}) {r:.1f} px"
+            for vi, (img, k, res) in enumerate(zip(pose_img_views, keep, resid))
+            for (x, y), r in zip(img[~k], res[~k])
+        ]
+        pose_obj_views = [o[k] for o, k in zip(pose_obj_views, keep)]
+        pose_img_views = [i[k] for i, k in zip(pose_img_views, keep)]
+        n_gated += n_bad
+        logger.warning(
+            f"cam{camera}: reprojection gate removed {n_bad} dot(s) above "
+            f"{gate_limit:.2f} px (round {_round + 1}), refitting: "
+            + "; ".join(dropped)
+        )
+        rms, K, dist, rvecs, tvecs = _fit(
+            pose_obj_views, pose_img_views, W_H, fix_k2=fix_k2
+        )
+    datum_obj, datum_img = pose_obj_views[0], pose_img_views[0]
+
     # ---- Datum pose in the world frame (SQPNP, both levels non-coplanar) ----
     R, t = fit_pose(datum_obj, datum_img, K, dist, planar=False)
 
@@ -957,6 +1087,9 @@ def calibrate_stepped_mono(
         # Image count (dense detection list), not the usable pose count: the GUI compares
         # this with the configured number of images. Usable poses are in per_view_rms.
         "n_views": int(len(detections)),
+        "world_z_toward_camera": float(z_sign),
+        "n_gated_points": int(n_gated),
+        "gate_limit_px": float(gate_limit),
         "geometry": geometry_meta("stepped", board, model_type="pinhole"),
     }
 
@@ -1129,7 +1262,13 @@ def calibrate_stepped_stereo(
             f"got {stereo_config!r}"
         )
 
-    geo = compute_z_and_offsets(resolved_config, clicked_level1, clicked_level2, board)
+    # The shared frame is cam1's clicked frame; whether its +Z points at cam1 is read
+    # from cam1's click handedness and honoured (levels placed accordingly), never
+    # assumed. Both cameras carry the same value as world_z_toward_camera.
+    z_toward_cam1 = z_toward_camera_from_clicks(fiducials1)
+    geo = compute_z_and_offsets(
+        resolved_config, clicked_level1, clicked_level2, board, z_toward_cam1
+    )
 
     # A stereo run prefixes each camera's mono figures so they don't collide; the
     # cam-specific prefix also suppresses the per-camera 3D-boards plot (the stereo
@@ -1154,6 +1293,7 @@ def calibrate_stepped_stereo(
         images=images1,
         figure_dir=figure_dir,
         figure_prefix=cam1_prefix,
+        z_toward_cam1=z_toward_cam1,
     )
     # Cam2 into the SAME frame: its levels sit at their absolute Z (geo['Cam2']).
     rec2 = calibrate_stepped_mono(
@@ -1172,6 +1312,7 @@ def calibrate_stepped_stereo(
         images=images2,
         figure_dir=figure_dir,
         figure_prefix=cam2_prefix,
+        z_toward_cam1=z_toward_cam1,
     )
 
     model1, model2 = rec1.camera_model, rec2.camera_model
@@ -1194,6 +1335,7 @@ def calibrate_stepped_stereo(
             "clicked_level1": str(clicked_level1),
             "clicked_level2": str(clicked_level2),
             "model_type": "polynomial3d",
+            "world_z_toward_camera": 1.0 if z_toward_cam1 else -1.0,
             "z_sign_toward_cameras": camera_z_sign(model1, model2),
             "stereo_method": "polynomial",
             "n_stereo_views": int(min(len(rec1.per_view_rms), len(rec2.per_view_rms))),
@@ -1243,6 +1385,11 @@ def calibrate_stepped_stereo(
         "clicked_level2": str(clicked_level2),
         "baseline_mm": baseline_mm,
         "relative_angle_deg": relative_angle_deg,
+        "world_z_toward_camera": 1.0 if z_toward_cam1 else -1.0,
+        "n_gated_points1": int(rec1.board_meta["n_gated_points"]),
+        "n_gated_points2": int(rec2.board_meta["n_gated_points"]),
+        "gate_limit_px1": float(rec1.board_meta["gate_limit_px"]),
+        "gate_limit_px2": float(rec2.board_meta["gate_limit_px"]),
         "z_sign_toward_cameras": camera_z_sign(model1, model2),
         "stereo_method": "compose",
         "n_stereo_views": int(min(len(rec1.per_view_rms), len(rec2.per_view_rms))),
