@@ -2245,6 +2245,20 @@ def load_model():
                     "stereo_rms_px": _finite_or_none(r.board_meta.get("stereo_rms_px")),
                     "method": stereo_method,
                     "stereo_config": r.board_meta.get("stereo_config"),
+                    # Stepped-only (None for the flat boards, which have no levels and
+                    # no reprojection gate): the clicked frame's +Z direction and the
+                    # dots the gate removed per camera.
+                    "world_z_toward_camera": _finite_or_none(
+                        r.board_meta.get("world_z_toward_camera")
+                    ),
+                    "n_gated_points1": r.board_meta.get("n_gated_points1"),
+                    "n_gated_points2": r.board_meta.get("n_gated_points2"),
+                    "gate_limit_px1": _finite_or_none(
+                        r.board_meta.get("gate_limit_px1")
+                    ),
+                    "gate_limit_px2": _finite_or_none(
+                        r.board_meta.get("gate_limit_px2")
+                    ),
                 }
             )
         return jsonify(common)

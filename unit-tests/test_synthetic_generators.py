@@ -115,31 +115,31 @@ STEPPED_KEYS = {
     "thickness_mm",
 }
 
-# Pre-thickness (2026-10-21) same_side cam 2 pixels for the default 3-pose set
-# (seed 42, 1.3 MP), poses x peak dots (0, 220, 440, 441, 840).  Pins that adding
-# the plate thickness left the same_side render untouched.
+# same_side cam 2 pixels for the default 3-pose set (seed 42, 1.3 MP), poses x dots
+# (0, 220, 440 peak; 441, 840 trough), regenerated 2026-10-22 when the trough moved
+# to z = +step.  Pins that the plate thickness leaves the same_side render untouched.
 SAME_SIDE_CAM2_REF_IDX = [0, 220, 440, 441, 840]
 SAME_SIDE_CAM2_REF_PX = [
     [
-        [203.532662041, 72.109028928],
-        [638.041613063, 510.0],
-        [1113.171893984, 988.828478927],
-        [220.432953553, 90.245582501],
-        [1090.542180321, 967.225962088],
+        [199.657118436, 69.251568908],
+        [636.954693732, 510.0],
+        [1115.426195887, 992.24727465],
+        [224.564698643, 93.251298347],
+        [1088.257474686, 963.661929975],
     ],
     [
-        [214.332750927, 24.831968811],
-        [637.973400916, 509.640237082],
-        [1065.681597988, 999.103347749],
-        [231.555689282, 46.435547475],
-        [1046.116651603, 978.624795023],
+        [210.517001434, 22.265788601],
+        [637.023376245, 510.362212128],
+        [1067.652826434, 1003.177107558],
+        [235.606023675, 49.085150991],
+        [1044.105875779, 974.319920794],
     ],
     [
-        [213.685353425, 1.614080998],
-        [637.525532313, 509.718388778],
-        [1042.03766492, 994.652020284],
-        [232.335998496, 24.646652813],
-        [1024.91198353, 974.7660977],
+        [210.656277168, -1.375554256],
+        [637.474292587, 510.283542497],
+        [1044.698047723, 998.453514716],
+        [235.503947711, 27.737848967],
+        [1022.1218758, 970.745560139],
     ],
 ]
 REF_PX_TOL = 1e-8  # the reference is rounded to 1e-9 px
@@ -269,12 +269,13 @@ def test_stepped_stereo_ground_truth_is_self_consistent(tmp_path, config):
     )
     assert np.isclose(axis_deg, expected_axis_deg, atol=1e-9)
     # Which level faces each camera.  Every camera of the symmetric rig is at most
-    # theta/2 + max_tilt (~16 deg) off the board normal, so the trough level
-    # (z = -step, the side the cameras view from) is nearer cam 1 and same_side
-    # cam 2 in every pose; transmission cam 2 views the back face, so the peak
-    # level is nearer.  Verified with gstep.nearer_level on these poses.
-    expected_cam2 = 1 if config == "same_side" else 0
-    assert (gt["levels"][:, 0] == 1).all()
+    # theta/2 + max_tilt (~16 deg) off the board normal. The cameras sit on the -z
+    # side, so the peak lattice (z = 0) is nearer cam 1 and same_side cam 2 in every
+    # pose; transmission cam 2 views the back face from +z, where the lattice behind
+    # the front troughs (z = T, its outer plane) is nearer.  Verified with
+    # gstep.nearer_level on these poses.
+    expected_cam2 = 0 if config == "same_side" else 1
+    assert (gt["levels"][:, 0] == 0).all()
     assert (gt["levels"][:, 1] == expected_cam2).all()
     for cam in (1, 2):
         assert len(list((tmp_path / f"cam{cam}").glob("calib*.png"))) == 3
@@ -378,14 +379,16 @@ RIG_KEYS = (
 def test_stepped_transmission_back_face_matches_calibrator_model(tmp_path):
     """Transmission cam 2 renders the back face of a plate ``thickness_mm`` thick.
 
-    The back face is the front set translated by -(T - step) along the board
-    normal, so its peak lattice sits at z = -(T - step) and its trough lattice
-    at z = -T: the front peak plane and the back outer plane are T apart and the
-    z values are exactly the production ``compute_z_and_offsets`` transmission
-    model (cam 1 clicks the z = 0 'peak', cam 2 its datum lattice 'trough', the
-    P6 label convention).  The rig is untouched: thickness moves dots, not
-    cameras, so R_stereo / T_stereo and every pose are bitwise equal to the
-    zero-thickness (T = step) set, and cam 1 does not change at all.
+    The cameras sit on the -z side of the front face, so the back face is the
+    front set translated by +(T - step): the lattice behind the front peaks sits
+    at z = T - step (camera 2's pockets, 'trough') and the lattice behind the
+    front troughs at z = T (the back outer plane, 'peak'). The front peak plane
+    and the back outer plane are T apart, and the z values are exactly the
+    production ``compute_z_and_offsets`` transmission model with
+    ``z_toward_cam1=False`` (cam 1 clicks the z = 0 peak, cam 2 the pocket dot
+    straight through the plate, its 'trough'). The rig is untouched: thickness
+    moves dots, not cameras, so R_stereo / T_stereo and every pose are bitwise
+    equal to the zero-thickness (T = step) set, and cam 1 does not change at all.
     """
     from pivtools_gui.calibration.detection.stepped_levels import SteppedBoardSpec
     from pivtools_gui.calibration.stepped_calibrate import compute_z_and_offsets
@@ -398,9 +401,9 @@ def test_stepped_transmission_back_face_matches_calibrator_model(tmp_path):
 
     front, back = gt["points_mm"], gt["points_mm_cam2"]
     assert np.array_equal(back[:, :2], front[:, :2])  # same (x, y) lattices
-    assert np.allclose(back[:, 2] - front[:, 2], -(thick - step), atol=1e-12)
-    # T = front peak plane (z = 0) to the back face's outermost plane (z = -T).
-    assert np.isclose(front[:n_peak, 2].max() - back[n_peak:, 2].min(), thick)
+    assert np.allclose(back[:, 2] - front[:, 2], thick - step, atol=1e-12)
+    # T = front peak plane (z = 0) to the back face's outermost plane (z = T).
+    assert np.isclose(back[n_peak:, 2].max() - front[:n_peak, 2].min(), thick)
 
     geo = compute_z_and_offsets(
         "transmission",
@@ -411,6 +414,7 @@ def test_stepped_transmission_back_face_matches_calibrator_model(tmp_path):
             step_height_mm=step,
             board_thickness_mm=thick,
         ),
+        z_toward_cam1=False,
     )
     assert np.allclose(front[:n_peak, 2], geo["Cam1"]["z"]["peak"])
     assert np.allclose(front[n_peak:, 2], geo["Cam1"]["z"]["trough"])

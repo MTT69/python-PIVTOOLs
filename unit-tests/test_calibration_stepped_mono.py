@@ -52,7 +52,11 @@ W, H = 1280, 1024
 
 
 def _board_points_mm():
-    """Peak + trough 3D points in mm; peak (col=0,row=0) is at the origin."""
+    """Peak + trough 3D points in mm; peak (col=0,row=0) is at the origin.
+
+    The camera sits on the -z side, so the trough at z=+step is recessed from it
+    (physical labels); the row-major +Y click puts +Z into the board.
+    """
     peak, trough = [], []
     for r in range(PEAK_ROWS):
         for c in range(PEAK_COLS):
@@ -60,7 +64,7 @@ def _board_points_mm():
     for r in range(TROUGH_ROWS):
         for c in range(TROUGH_COLS):
             trough.append(
-                [c * SPACING_MM + OFFSET_MM, r * SPACING_MM + OFFSET_MM, -STEP_MM]
+                [c * SPACING_MM + OFFSET_MM, r * SPACING_MM + OFFSET_MM, STEP_MM]
             )
     return np.array(peak, np.float64), np.array(trough, np.float64)
 
@@ -104,7 +108,7 @@ def _level_a_label(detection, proj, gt_z):
     a_full = detection.level_data["a"]
     centers = np.asarray(a_full["centers"], dtype=np.float64)
     idx = cKDTree(proj).query(centers)[1]
-    return "peak" if np.median(gt_z[idx]) > -STEP_MM / 2.0 else "trough"
+    return "peak" if np.median(gt_z[idx]) < STEP_MM / 2.0 else "trough"
 
 
 @pytest.fixture(scope="module")
@@ -127,11 +131,11 @@ def stepped_mono_scene():
     )
     detections = [det.detect(im) for im in images]
 
-    # Ground-truth z per projected point (peak block z=0, trough block z=-step),
+    # Ground-truth z per projected point (peak block z=0, trough block z=+step),
     # used to label each pose's level A — the synthetic analogue of GUI click-to-label.
     n_peak = PEAK_COLS * PEAK_ROWS
     gt_z = np.concatenate(
-        [np.zeros(n_peak), np.full(TROUGH_COLS * TROUGH_ROWS, -STEP_MM)]
+        [np.zeros(n_peak), np.full(TROUGH_COLS * TROUGH_ROWS, STEP_MM)]
     )
     pose_levels = [_level_a_label(d, p, gt_z) for d, p in zip(detections, projs)]
     return K_true, images, detections, fiducials, pose_levels

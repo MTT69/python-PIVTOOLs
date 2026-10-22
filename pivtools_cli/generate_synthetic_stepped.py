@@ -5,7 +5,8 @@ layout) with exact ground truth, for mono and stereo stepped-calibration tests.
 
 Geometry (``synthetic_calibration_common.stepped_board_points_mm``)
     - peak level: 21 x 21 dots on a 15 mm grid at z = 0 (peak (0, 0) = origin)
-    - trough level: 20 x 20 dots on the half-pitch-offset grid at z = -3 mm
+    - trough level: 20 x 20 dots on the half-pitch-offset grid at z = +3 mm
+      (the cameras sit on the -z side, so the trough is recessed from them)
     - dot diameter 3 mm, projected through a pinhole (no distortion)
     - plate thickness T = --thickness-mm (default STEPPED_THICKNESS_MM = 14.8,
       the calibrator default), front peak plane to back peak plane
@@ -23,22 +24,24 @@ centroid by half the included angle ``theta = --stereo-angle-deg``
     transmission  cam 1 Ry(-theta/2), cam 2 Ry(180 deg + theta/2);
                   R_stereo = Ry(180 deg + theta).  Camera 2 renders the BACK
                   face (``back_face_points_mm``): the front set translated by
-                  -(T - step) along the board normal, the model of the stepped
-                  calibrator (``stepped_calibrate.compute_z_and_offsets``):
-                      front  peak lattice   z = 0          (cam 1's datum level)
-                             trough lattice z = -step
-                      back   peak lattice   z = -(T - step) (cam 2's datum level)
-                             trough lattice z = -T
+                  +(T - step) along the board normal, an opaque plate T thick
+                  whose front face the -z cameras see and whose back face the
+                  +z camera sees.  In the stepped calibrator's terms
+                  (``stepped_calibrate.compute_z_and_offsets`` with
+                  ``z_toward_cam1=False``, which the generator's row-major +Y
+                  fiducial resolves to):
+                      front  peak lattice   z = 0          (cam 1's datum level,
+                                                            raised toward cam 1)
+                             trough lattice z = +step      (recessed from cam 1)
+                      back   lattice behind the front peaks   z = T - step
+                                                            (cam 2's pockets, 'trough')
+                             lattice behind the front troughs z = T
+                                                            (back outer plane, 'peak')
                   Same (x, y) lattices on both faces, so cam 2's datum dot is
                   the one straight through the plate from cam 1's.  No explicit
                   mirror: viewing from Ry(180 deg) reverses the image handedness
                   of the (+X, +Y) dots, as the calibrator's classifier expects.
                   T = step reproduces the old zero-thickness render bitwise.
-                  The generator's clicks (+X = +col, +Y = +row, image-down)
-                  give a frame with +z AWAY from cam 1, so the back-face set
-                  lies on cam 1's side of the front set: each camera images
-                  the face farther from it.  This is the calibrator's model
-                  in this frame, not an opaque-plate rendering.
 ``R_stereo`` / ``T_stereo`` map camera 1 to camera 2 for every pose
 (``R2 = R_stereo R1``, ``t2 = R_stereo t1 + T_stereo``).
 
@@ -147,19 +150,21 @@ def back_face_points_mm(
 ) -> tuple:
     """Back face of a plate ``thickness_mm`` thick, as the stepped calibrator models it.
 
-    ``compute_z_and_offsets`` (transmission, cam 1 datum level at z = 0) puts
-    camera 2's datum (peak) lattice at z = -(T - step) and its other lattice
-    at z = -T, on the same (x, y) lattices as the front.  That is the front
-    set translated by -(T - step) along z (a constant wall T - step).
+    The cameras sit on the -z side of the front face (peak z = 0, trough z = +step),
+    so the plate extends to +z and the back face is the front set translated by
+    +(T - step): the lattice behind the front peaks lands at z = T - step (camera 2's
+    pockets, its 'trough') and the lattice behind the front troughs at z = T (the
+    back outer plane, camera 2's 'peak'). This is ``compute_z_and_offsets``
+    (transmission) with ``z_toward_cam1=False``.
 
-    Returns (peak (Np, 3), trough (Nt, 3)) of the back face.
+    Returns (peak-lattice (Np, 3), trough-lattice (Nt, 3)) of the back face.
     """
     if thickness_mm < step_mm:
         raise ValueError(
             f"thickness_mm ({thickness_mm}) must be >= step_mm ({step_mm}): the "
             "back face would cut through the front"
         )
-    shift = np.array([0.0, 0.0, -(thickness_mm - step_mm)])
+    shift = np.array([0.0, 0.0, thickness_mm - step_mm])
     return peak_mm + shift, trough_mm + shift
 
 
