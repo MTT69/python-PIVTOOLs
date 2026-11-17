@@ -52,9 +52,7 @@ def _single_geometry(win=8, sum_win=24, crop=16):
         dtype=np.float64,
     )
     w_A = np.asarray(
-        CrossCorrelator._window_weight_fun(
-            (win, win), "singlepix", (sum_win, sum_win)
-        ),
+        CrossCorrelator._window_weight_fun((win, win), "singlepix", (sum_win, sum_win)),
         dtype=np.float64,
     )
     env = _linear_pair_envelope(w_B, w_B, (crop, crop))
@@ -127,9 +125,7 @@ def _dense_expected_spectrum(fx, fy, w_B, kernel, hole):
     E = np.empty((sh, sw))
     for iy in range(sh):
         for ix in range(sw):
-            f_k = np.exp(
-                -2j * np.pi * (iy * yy / sh + ix * xx / sw)
-            ).ravel()
+            f_k = np.exp(-2j * np.pi * (iy * yy / sh + ix * xx / sw)).ravel()
             E[iy, ix] = np.real(np.conj(f_k) @ M @ f_k)
     return E
 
@@ -270,7 +266,14 @@ class TestVsMonteCarlo:
         h, w = env.shape
         rng = np.random.default_rng(14)
         P_sim = simulate_floor(
-            0.25, env, _N_PAIRS, _IMG, h, w, rng, kernel="lanczos",
+            0.25,
+            env,
+            _N_PAIRS,
+            _IMG,
+            h,
+            w,
+            rng,
+            kernel="lanczos",
             window_mean=False,
         )
         P_ana = analytic_floor_single(0.25, 0.0, env, w_B, "lanczos", False)

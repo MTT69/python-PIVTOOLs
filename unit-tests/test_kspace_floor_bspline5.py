@@ -181,9 +181,7 @@ def _window_periodograms(frame: np.ndarray, w_B: np.ndarray, hole: bool) -> np.n
     sh, sw = w_B.shape
     starts_y = range(_MARGIN, _IMG - _MARGIN - sh + 1, sh + _GAP)
     starts_x = range(_MARGIN, _IMG - _MARGIN - sw + 1, sw + _GAP)
-    wins = np.stack(
-        [frame[y : y + sh, x : x + sw] for y in starts_y for x in starts_x]
-    )
+    wins = np.stack([frame[y : y + sh, x : x + sw] for y in starts_y for x in starts_x])
     if hole:
         wins = wins - (wins * w_B).sum(axis=(1, 2), keepdims=True) / w_B.sum()
     return np.fft.fftshift(np.abs(np.fft.fft2(wins * w_B)) ** 2, axes=(-2, -1))
