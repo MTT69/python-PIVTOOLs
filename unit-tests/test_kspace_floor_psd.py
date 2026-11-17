@@ -28,7 +28,7 @@ from pivtools_cli.piv.piv_backend.single_pass_accumulator import (
     _linear_pair_envelope,
 )
 
-KERNELS = ("lanczos", "cubic")
+KERNELS = ("lanczos", "cubic", "bspline5")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

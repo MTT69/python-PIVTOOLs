@@ -49,6 +49,18 @@ is all-ones, which is the offline-validated flat-weight limit; non-square
 tapers are covered by the same algebra but were not part of the offline
 gates.
 
+Kernels: any warp that is a linear, shift-invariant interpolator enters only
+through its per-shift effective weights c_n(f) (``KERNEL_TAPS``), via
+``tap_autocorr``. ``bspline5`` (prefiltered quintic B-spline) has infinite
+effective support; its weights are the exact closed form truncated at a
+proven tail bound (``interpolation_noise_psd.BSPLINE5_TAIL_TOL``). Its floor
+is gated in unit-tests/test_kspace_floor_bspline5.py against the empirical
+spectrum of white noise warped by scipy's quintic spline (an implementation
+independent of KERNEL_TAPS). The prefilter's mirror boundary is not modelled:
+windows within ~40 px of the image edge (|z1|^40 = 2e-15) see a slightly
+different colour, the same interior assumption as the finite kernels' edge
+clamping.
+
 Scope: the colouring is exact for separable per-axis fractional shifts (the
 fused-warp model), parameterized by ``(fx, fy) = frac_distance(pred/2)`` per
 window. P provenance (kernel, hole flag, f grids) is recorded in the fit
@@ -59,46 +71,60 @@ from __future__ import annotations
 
 import numpy as np
 
-from .interpolation_noise_psd import bicubic_weights, lanczos3_weights
+from .interpolation_noise_psd import (
+    BSPLINE5_OFFSETS,
+    bicubic_weights,
+    bspline5_weights,
+    lanczos3_weights,
+)
 from .kspace_common import _fft_planes
 
-# kernel name -> (tap offsets, weights function); keys match the production
+# kernel name -> (contiguous tap offsets, weights function); keys match the
 # ensemble_image_warp_interpolation options (fused_warp.c taps: cubic = Keys
-# a=-0.75 4-tap, lanczos = Lanczos-3 6-tap)
+# a=-0.75 4-tap, lanczos = Lanczos-3 6-tap). bspline5 is the prefiltered
+# quintic B-spline: its effective interpolator has infinite, exponentially
+# decaying support, stored here as the closed-form weights truncated at a
+# proven tail bound (interpolation_noise_psd.BSPLINE5_TAIL_TOL, 60 taps).
 KERNEL_TAPS = {
     "lanczos": (np.array([-2, -1, 0, 1, 2, 3]), lanczos3_weights),
     "cubic": (np.array([-1, 0, 1, 2]), bicubic_weights),
+    "bspline5": (BSPLINE5_OFFSETS, bspline5_weights),
 }
 
 N_FRACS_DEFAULT = 21  # f grid = linspace(0, 0.5, 21): the offline-validated density
 
 
 def tap_autocorr(f: float, kernel: str = "lanczos") -> tuple[np.ndarray, np.ndarray]:
-    """Autocorrelation r(tau) of the warp-kernel taps at fractional shift f."""
+    """Autocorrelation r(tau) = sum_i c_i c_{i+tau} of the warp-kernel taps at
+    fractional shift f, on tau = -span..span.
+
+    The offsets are contiguous unit-step, so the pair (i, j) with
+    offsets[j] - offsets[i] = tau is j = i + tau; each lag sums its pairs in
+    ascending i, starting from integer 0 (O(n * span), not O(n^2 * span)).
+    """
     if kernel not in KERNEL_TAPS:
         raise ValueError(f"unknown kernel '{kernel}' (valid: {set(KERNEL_TAPS)})")
     offsets, weights_fun = KERNEL_TAPS[kernel]
-    c = np.asarray(weights_fun(f), dtype=np.float64)
     n = len(offsets)
-    span = int(offsets[-1] - offsets[0])
+    if not np.array_equal(offsets, np.arange(offsets[0], offsets[0] + n)):
+        raise ValueError(f"kernel '{kernel}' tap offsets are not contiguous: {offsets}")
+    c = np.asarray(weights_fun(f), dtype=np.float64)
+    span = n - 1
     taus = np.arange(-span, span + 1)
     r = np.array(
-        [
-            sum(
-                c[i] * c[j]
-                for i in range(n)
-                for j in range(n)
-                if offsets[j] - offsets[i] == t
-            )
-            for t in taus
-        ]
+        [sum(c[i] * c[i + t] for i in range(max(0, -t), min(n, n - t))) for t in taus]
     )
     return taus, r
 
 
 def _shift_pad(a: np.ndarray, tau: int, axis: int) -> np.ndarray:
-    """a shifted by +tau along axis with zero padding: out(x) = a(x + tau)."""
+    """a shifted by +tau along axis with zero padding: out(x) = a(x + tau).
+
+    |tau| >= the axis length leaves no overlap: the result is all zeros.
+    """
     out = np.zeros_like(a)
+    if abs(tau) >= a.shape[axis]:
+        return out
     src = [slice(None)] * a.ndim
     dst = [slice(None)] * a.ndim
     if tau >= 0:
@@ -144,33 +170,36 @@ def analytic_floor_single(
 
     # v = C w_B: separable zero-padded correlation, x taps then y taps.
     # v(x) = sum_tau r(tau) w(x + tau); taps beyond the window edge vanish
-    # because w_B is only supported inside the window.
+    # because w_B is only supported inside the window, so a lag of at least
+    # the window length contributes exactly zero and is skipped (reachable
+    # only for long-support kernels such as bspline5).
     vx = np.zeros_like(w_B)
     for tau, rv in zip(taus_x, r_x):
-        if rv != 0.0:
+        if rv != 0.0 and abs(tau) < sw:
             vx += rv * _shift_pad(w_B, int(tau), axis=1)
     v = np.zeros_like(w_B)
     for tau, rv in zip(taus_y, r_y):
-        if rv != 0.0:
+        if rv != 0.0 and abs(tau) < sh:
             v += rv * _shift_pad(vx, int(tau), axis=0)
 
     sumB = w_B.sum()
     q = float((w_B * v).sum())
 
     # T1(k): expected weighted periodogram (no mean removal).
-    # A(tau_x, tau_y) = 2-D zero-padded lag autocorrelation of w_B; support
-    # is the tap-autocorr span per axis (<= +-5), so the double sum is tiny.
+    # A(tau_x, tau_y) = 2-D zero-padded lag autocorrelation of w_B; it
+    # vanishes for |tau| >= the window length, so the double sum runs over
+    # min(tap-autocorr span, window - 1) lags per axis.
     my = np.arange(sh)
     mx = np.arange(sw)
     phase_y = np.exp(-2j * np.pi * np.outer(my, taus_y) / sh)  # (sh, n_ty)
     phase_x = np.exp(-2j * np.pi * np.outer(mx, taus_x) / sw)  # (sw, n_tx)
     T1 = np.zeros((sh, sw))
     for iy, (ty, ry) in enumerate(zip(taus_y, r_y)):
-        if ry == 0.0:
+        if ry == 0.0 or abs(ty) >= sh:
             continue
         wy = _shift_pad(w_B, int(ty), axis=0)
         for ix, (tx, rx) in enumerate(zip(taus_x, r_x)):
-            if rx == 0.0:
+            if rx == 0.0 or abs(tx) >= sw:
                 continue
             A = float((w_B * _shift_pad(wy, int(tx), axis=1)).sum())
             if A == 0.0:
