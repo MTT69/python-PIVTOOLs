@@ -251,10 +251,8 @@ class TestFloorVsQuinticWarpedNoise:
             a, _ = _warp_pair_scipy(rng, dy, dx)
             pw = _window_periodograms(a, w_B, hole)
             per_window.append(pw)
-            m = analytic_floor_single(
-                _frac_distance(dx / 2.0), _frac_distance(dy / 2.0),
-                np.ones(w_B.shape), w_B, "bspline5", hole,
-            )
+            fx, fy = _frac_distance(dx / 2.0), _frac_distance(dy / 2.0)
+            m = analytic_floor_single(fx, fy, np.ones(w_B.shape), w_B, "bspline5", hole)
             models.append(np.broadcast_to(m, pw.shape))
         per_window = np.concatenate(per_window)
         model = np.concatenate(models).mean(axis=0)
@@ -268,11 +266,15 @@ class TestFloorVsQuinticWarpedNoise:
         w_B = _flat_w()
         rng = np.random.default_rng(99)
         per_window = np.concatenate(
-            [_window_periodograms(_warp_pair_scipy(rng, 0.0, 1.0)[0], w_B, True)
-             for _ in range(_N_IMAGES)]
+            [
+                _window_periodograms(_warp_pair_scipy(rng, 0.0, 1.0)[0], w_B, True)
+                for _ in range(_N_IMAGES)
+            ]
         )
         for kernel in ("lanczos", "cubic"):
-            wrong = analytic_floor_single(0.5, 0.0, np.ones(w_B.shape), w_B, kernel, True)
+            wrong = analytic_floor_single(
+                0.5, 0.0, np.ones(w_B.shape), w_B, kernel, True
+            )
             assert np.max(np.abs(_z_scores(per_window, wrong))) > _z_max(w_B.size)
 
 
